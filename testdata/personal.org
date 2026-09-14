@@ -1,0 +1,11 @@
+#+TITLE: 个人
+
+* 生活
+** TODO [#B] 买菜 :errand:
+SCHEDULED: <2026-09-14 Mon>
+** TODO 体检预约
+DEADLINE: <2026-09-18 Fri>
+** 读书笔记
+   看了《深度工作》第三章 <2026-09-14 Mon 21:00>
+* 旅行
+** CANCELLED 订机票

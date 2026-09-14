@@ -1,0 +1,27 @@
+#+TITLE: 工作
+#+CATEGORY: work
+#+TODO: TODO NEXT WAITING | DONE CANCELLED
+
+* NEXT [#A] 写季度汇报 :report:urgent:
+DEADLINE: <2026-09-16 Wed>
+SCHEDULED: <2026-09-14 Mon 09:00-11:00>
+:PROPERTIES:
+:EFFORT:   2:00
+:END:
+:LOGBOOK:
+CLOCK: [2026-09-13 Sun 14:00]--[2026-09-13 Sun 15:30] =>  1:30
+:END:
+把 Q3 的数据整理成 slides。
+
+** TODO 收集各组数据
+SCHEDULED: <2026-09-15 Tue>
+** DONE 确认汇报时间
+CLOSED: [2026-09-12 Sat 10:12]
+
+* TODO 每周例会 :meeting:
+SCHEDULED: <2026-09-14 Mon 15:00-16:00 +1w>
+
+* WAITING 等法务回复合同 :legal:
+DEADLINE: <2026-09-20 Sun -3d>
+
+* TODO 整理桌面

@@ -1,0 +1,7 @@
+# 构建产物
+/jarvis
+/org
+
+# 编辑器与系统文件
+.DS_Store
+*.swp
