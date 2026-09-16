@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract ios-check
+.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract ios-check ios-install
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -45,6 +45,10 @@ ios-framework:
 		exit 1; }
 	gomobile bind -target=ios -o ios/Mobile.xcframework ./mobile
 	@echo "生成好了：ios/Mobile.xcframework，拖进 Xcode 项目即可"
+
+# 装到插着的 iPhone 上。条件不齐会说明白差什么。
+ios-install:
+	@sh ios/install-device.sh
 
 # 拿真正的 iOS SDK 类型检查 Swift 代码。macOS 上编能过不代表 iOS 上能过——
 # 不少 SwiftUI 的初始化器只在 iOS 有，或者签名不一样。需要完整 Xcode。

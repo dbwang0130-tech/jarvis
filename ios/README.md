@@ -58,22 +58,29 @@ open ios/Jarvis.xcodeproj
 
 工程文件已经在仓库里了，源文件、framework 嵌入、Scheme 都配好了，不用手动拖。
 
-### 4. 签名
+### 4. 登 Apple ID
 
-Target → Signing & Capabilities：
-
-- Team 选你的 Apple ID（没有就 Xcode → Settings → Accounts 加一个）
-- Bundle Identifier 默认 `com.dabao.jarvis`，被占用的话改一个
-
-免费账号签的 app **7 天过期**，到期插上电脑重新 Run 一次就行。
-付费开发者账号（$99/年）签的管一年。
+Xcode → Settings → Accounts → **+** → Apple ID。免费账号就行。
 
 ### 5. 装到手机
 
-手机插电脑，Xcode 顶部选你的设备，按 ⌘R。
+手机插上数据线，点「信任此电脑」，保持解锁，然后：
+
+```sh
+make ios-install
+```
+
+它会自己找签名身份、从证书里取 Team ID、找插着的真机（模拟器会跳过），
+然后编译、签名、安装、启动。缺什么会直接说缺什么。
+
+想指定的话：`DEVELOPMENT_TEAM=XXXXXXXXXX DEVICE_ID=<udid> make ios-install`。
+Bundle ID 默认 `com.dabao.jarvis`，被占用了用 `BUNDLE_ID=... make ios-install`。
 
 第一次装完手机上会提示「不受信任的开发者」——
 设置 → 通用 → VPN 与设备管理 → 点你的 Apple ID → 信任。
+
+免费 Apple ID 签的 app **七天过期**，到期插上电脑再 `make ios-install` 一次。
+付费开发者账号（$99/年）签的管一年。
 
 ### 6. 在 app 里选目录
 
@@ -96,6 +103,7 @@ Target → Signing & Capabilities：
 | `SettingsView.swift` | 模型、目录、自述 |
 | `Keychain.swift` | 密钥存取 |
 | `Jarvis.xcodeproj` | Xcode 工程，源文件和 framework 都配好了 |
+| `install-device.sh` | 装到真机，`make ios-install` 调它 |
 
 Go 那边只有两个入口，都在 `mobile/`：
 
