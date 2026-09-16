@@ -6,6 +6,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 jarvis 是一个终端个人助理（Go，无框架），把日程（org-mode）、邮件（IMAP/SMTP）、记账（ledger-cli）、浏览器（CDP）合并到一个由大模型驱动的工具调用循环里。代码注释、提交信息、面向用户的文案一律中文。
 
+## iOS 端
+
+`mobile/` 是给 iOS 用的桥接层，`ios/` 是 Swift 源码（见 `ios/README.md`）。
+
+**桥接层是纯函数**：`Snapshot`/`Ask` 收 JSON 吐 JSON，Go 一个文件都不碰——
+iOS 那边文件访问的坑（沙箱授权、iCloud 占位符、`NSFileCoordinator` 协调）
+全留在 Swift 的 `Vault` 里。`Ask` 内部把内容落到临时目录让现成的 orgtools
+去改，改完读回来**只交出真变过的那几个文件**。
+
+两条硬规矩：
+
+- **不许 panic**。手机上崩一次就是整个 app 挂掉，出错一律填在返回值的
+  `error` 字段里。`mobile` 的测试里有一组专喂烂输入的用例守着。
+- **`mobile` 的 JSON 字段就是契约**，改了要同步改 `ios/Models.swift`。
+  gomobile 只认得基本类型，map 和结构体切片都过不去，所以只能走 JSON。
+
+iOS 端只带日程和记账两项技能（都是 RiskNone、改的都是本地文件），所以不会
+冒出确认框；邮件和浏览器留在桌面端。
+
 ## 常用命令
 
 测试覆盖（`go test ./... -cover`）：核心链路都有测——`agent` 的工具调用循环用注入 `http.RoundTripper` 的假模型跑脚本，不碰网络；`orgtools` 直接建临时 org 文件、调工具、把文件读回来比对，重点盯快照/撤销和删除的边界。`mail`/`browser` 要真的 IMAP 和 Chrome，没测。

@@ -224,7 +224,14 @@ func New(opts Options) (*Client, error) {
 
 // transportFor 按配置决定模型接口怎么走网络。
 func transportFor(proxy string) (http.RoundTripper, error) {
-	tr := http.DefaultTransport.(*http.Transport).Clone()
+	// 默认 transport 通常是 *http.Transport，但不保证——测试或别的库
+	// 换过它的时候，硬断言会直接 panic。认不出来就原样用，代理设置
+	// 也就无从谈起了。
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return http.DefaultTransport, nil
+	}
+	tr := base.Clone()
 	switch strings.ToLower(strings.TrimSpace(proxy)) {
 	case "":
 		// 跟随环境变量。

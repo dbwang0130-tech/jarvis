@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test fmt clean
+.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -34,5 +34,17 @@ test:
 fmt:
 	gofmt -l -w .
 
+# 把 Go 侧编译成 iOS 用的 framework。需要先装 Xcode，
+# 第一次还要 go install golang.org/x/mobile/cmd/gomobile@latest && gomobile init。
+ios-framework:
+	@command -v gomobile >/dev/null || { \
+		echo "先装 gomobile："; \
+		echo "  go install golang.org/x/mobile/cmd/gomobile@latest"; \
+		echo "  gomobile init"; \
+		exit 1; }
+	gomobile bind -target=ios -o ios/Mobile.xcframework ./mobile
+	@echo "生成好了：ios/Mobile.xcframework，拖进 Xcode 项目即可"
+
 clean:
 	rm -f $(BIN)
+	rm -rf ios/Mobile.xcframework

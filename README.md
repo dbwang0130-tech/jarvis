@@ -156,6 +156,12 @@ jarvis
 
 邮箱密码和模型密钥一律存 macOS 钥匙串，配置文件里不落明文（也可用 `password_cmd` / `api_key_cmd` 从 1Password、pass 等取）。
 
+## iOS 端
+
+手机上看日程待办账本、跟秘书说话改日程记账，数据是 iCloud 里那一份，
+跟电脑上读写同一批文件。搭法见 [ios/README.md](ios/README.md)——
+要装 Xcode，不装的话这部分跳过不影响桌面端。
+
 ## 开发
 
 ```sh
