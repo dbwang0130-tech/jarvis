@@ -19,20 +19,27 @@ xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1 || die "需要完整 Xcode�
 [ -d ios/Mobile.xcframework ] || die "还没生成 framework：
   make ios-framework"
 
-# --- 3. 签名身份 ---
-# 免费 Apple ID 签出来的证书也叫 Apple Development，一样能用，只是七天过期。
-IDENT=$(security find-identity -v -p codesigning 2>/dev/null \
-        | grep -o '"Apple Develop[^"]*"' | head -1 | tr -d '"')
-[ -n "$IDENT" ] || die "Xcode 里还没加 Apple ID（现在 0 个签名身份）：
+# --- 3. Team ID ---
+# 证书不用预先存在：第一次带 -allowProvisioningUpdates 签名构建时，
+# Xcode 会把开发证书和描述文件一起办好。所以这里只认 Team，不认证书。
+# 找 Team 的顺序：环境变量 → Xcode 里登的账号 → 已有证书的 OU。
+TEAM=$DEVELOPMENT_TEAM
+if [ -z "$TEAM" ]; then
+	# plist 里写的是 `teamID = XXXXXXXXXX;`，带不带引号都有可能。
+	TEAM=$(defaults read com.apple.dt.Xcode IDEProvisioningTeamByIdentifier 2>/dev/null \
+	       | sed -n 's/.*teamID[[:space:]]*=[[:space:]]*"\{0,1\}\([A-Z0-9]\{10\}\)"\{0,1\};.*/\1/p' \
+	       | head -1)
+fi
+if [ -z "$TEAM" ]; then
+	IDENT=$(security find-identity -v -p codesigning 2>/dev/null \
+	        | grep -o '"Apple Develop[^"]*"' | head -1 | tr -d '"')
+	[ -n "$IDENT" ] && TEAM=$(security find-certificate -c "$IDENT" -p 2>/dev/null \
+	      | openssl x509 -noout -subject 2>/dev/null \
+	      | tr ',/' '\n\n' | awk -F= '$1=="OU"||$1==" OU"{gsub(/ /,"",$2); print $2}' | head -1)
+fi
+[ -n "$TEAM" ] || die "Xcode 里还没登 Apple ID：
   Xcode → Settings → Accounts → + → Apple ID
-加完再跑一次。"
-
-# 证书的 OU 就是 Team ID。没显式指定就从证书里取。
-TEAM=${DEVELOPMENT_TEAM:-$(security find-certificate -c "$IDENT" -p 2>/dev/null \
-      | openssl x509 -noout -subject 2>/dev/null \
-      | tr ',/' '\n\n' | awk -F= '$1=="OU"||$1==" OU"{gsub(/ /,"",$2); print $2}' | head -1)}
-[ -n "$TEAM" ] || die "取不到 Team ID，用环境变量指定：
-  DEVELOPMENT_TEAM=XXXXXXXXXX sh ios/install-device.sh"
+免费账号就行。登完再跑一次。"
 
 # --- 4. 真机 ---
 # devicectl 会把模拟器也列出来，Reality 那列写着 simulated，要滤掉。
@@ -40,9 +47,13 @@ UDID=${DEVICE_ID:-$(xcrun devicectl list devices 2>/dev/null \
       | awk '$0 !~ /simulated/ && /connected/ {for(i=1;i<=NF;i++) if($i ~ /^[0-9A-F-]{25,}$/) {print $i; exit}}')}
 [ -n "$UDID" ] || die "没有插着的 iPhone。
 插上数据线，手机上点「信任此电脑」，解锁屏幕，再跑一次。
-（第一次连还要在 Xcode 里等它 Preparing device 走完）"
+（第一次连还要在 Xcode 里等它 Preparing device 走完）
 
-say "身份 $IDENT / Team $TEAM / 设备 $UDID"
+手机是硬条件，不是图省事：免费账号的开发证书和描述文件都得有一台已注册
+的设备才能生成，Apple 那边直接回绝——
+  Your team has no devices from which to generate a provisioning profile."
+
+say "Team $TEAM / 设备 $UDID"
 
 say "编译并签名"
 xcodebuild -project "$PROJ" -scheme Jarvis -configuration Debug \
