@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework
+.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -44,6 +44,15 @@ ios-framework:
 		exit 1; }
 	gomobile bind -target=ios -o ios/Mobile.xcframework ./mobile
 	@echo "生成好了：ios/Mobile.xcframework，拖进 Xcode 项目即可"
+
+# 验两端的 JSON 契约：Go 真实出参能不能被 iOS 真正在用的 Models.swift 解开。
+# 只要 swiftc（命令行工具就有），不需要完整 Xcode。
+ios-contract:
+	@command -v swiftc >/dev/null || { echo "没有 swiftc，先 xcode-select --install"; exit 1; }
+	@tmp=$$(mktemp -d) && \
+	go run ./ios/contract $$tmp && \
+	swiftc -swift-version 5 ios/Models.swift ios/contract/main.swift -o $$tmp/check && \
+	$$tmp/check $$tmp; rc=$$?; rm -rf $$tmp; exit $$rc
 
 clean:
 	rm -f $(BIN)

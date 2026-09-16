@@ -179,7 +179,13 @@ func Ask(inputJSON string) string {
 	if raw, err := os.ReadFile(ledgerPath); err == nil && string(raw) != in.Ledger {
 		out.Ledger = string(raw)
 	}
-	return marshal(out)
+	return marshal(&out)
+}
+
+func (o *AskOutput) normalize() {
+	if o.History == nil {
+		o.History = []agent.Message{}
+	}
 }
 
 // changedFiles 把临时目录读回来，只挑出内容变过的和新建的。
@@ -233,5 +239,5 @@ func orDefault(v, def int) int {
 }
 
 func askError(format string, args ...any) string {
-	return marshal(AskOutput{Error: fmt.Sprintf(format, args...)})
+	return marshal(&AskOutput{Error: fmt.Sprintf(format, args...)})
 }

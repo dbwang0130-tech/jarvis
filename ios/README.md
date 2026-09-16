@@ -27,11 +27,12 @@ Swift 的 `Vault` 里，Go 只管解析和算。
 
 ### 1. 装 Xcode
 
-App Store 搜 Xcode，10+ GB。装完打开一次，让它装完附加组件。
+App Store 搜 Xcode，10+ GB。装完打开一次，让它装完附加组件，然后把命令行
+指到完整的 Xcode（默认还指着精简版的 Command Line Tools）：
 
 ```sh
-xcode-select --install                                  # 命令行工具
-sudo xcode-select -s /Applications/Xcode.app            # 指到完整的 Xcode
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -license accept
 xcodebuild -version                                     # 确认
 ```
 
@@ -43,31 +44,20 @@ gomobile init
 make ios-framework     # 产出 ios/Mobile.xcframework
 ```
 
-### 3. 建 Xcode 项目
+### 3. 打开工程
 
-Xcode → File → New → Project → iOS → App：
+```sh
+open ios/Jarvis.xcodeproj
+```
 
-- Product Name: `Jarvis`
-- Interface: **SwiftUI**
-- Language: **Swift**
-- 存到本仓库的 `ios/` 旁边（别放进 `ios/` 里，免得跟源文件混）
-
-然后：
-
-1. 把 `ios/` 下的 `.swift` 全选，拖进 Xcode 的项目导航器
-   （勾 **Copy items if needed** 不用勾，选 **Create groups**）
-2. 把 `ios/Mobile.xcframework` 拖进去，
-   Target → General → **Frameworks, Libraries, and Embedded Content**
-   里确认它在，且是 **Embed & Sign**
-3. 删掉 Xcode 自动生成的 `ContentView.swift` 和它自己的 `App.swift`
-   （我们有 `JarvisApp.swift`）
+工程文件已经在仓库里了，源文件、framework 嵌入、Scheme 都配好了，不用手动拖。
 
 ### 4. 签名
 
 Target → Signing & Capabilities：
 
 - Team 选你的 Apple ID（没有就 Xcode → Settings → Accounts 加一个）
-- Bundle Identifier 改成唯一的，比如 `com.你的名字.jarvis`
+- Bundle Identifier 默认 `com.dabao.jarvis`，被占用的话改一个
 
 免费账号签的 app **7 天过期**，到期插上电脑重新 Run 一次就行。
 付费开发者账号（$99/年）签的管一年。
@@ -99,6 +89,7 @@ Target → Signing & Capabilities：
 | `Views.swift` | 日程 / 待办 / 财务 / 对话四个页面 |
 | `SettingsView.swift` | 模型、目录、自述 |
 | `Keychain.swift` | 密钥存取 |
+| `Jarvis.xcodeproj` | Xcode 工程，源文件和 framework 都配好了 |
 
 Go 那边只有两个入口，都在 `mobile/`：
 

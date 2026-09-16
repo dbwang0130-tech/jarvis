@@ -121,7 +121,7 @@ func Snapshot(inputJSON string) string {
 	if strings.TrimSpace(in.Ledger) != "" {
 		out.Ledger = buildLedger(ledger.ParseBook(in.Ledger))
 	}
-	return marshal(out)
+	return marshal(&out)
 }
 
 // collect 把「文件名 → 内容」解析成一个集合。
@@ -241,10 +241,50 @@ func weekday(t time.Time) string {
 }
 
 func errorOut(format string, args ...any) string {
-	return marshal(SnapshotOutput{Error: fmt.Sprintf(format, args...)})
+	return marshal(&SnapshotOutput{Error: fmt.Sprintf(format, args...)})
 }
 
+func (o *SnapshotOutput) normalize() {
+	if o.Days == nil {
+		o.Days = []Day{}
+	}
+	for i := range o.Days {
+		if o.Days[i].Items == nil {
+			o.Days[i].Items = []Item{}
+		}
+		fillTags(o.Days[i].Items)
+	}
+	if o.Todos == nil {
+		o.Todos = []Item{}
+	}
+	fillTags(o.Todos)
+	if o.Ledger != nil {
+		if o.Ledger.Accounts == nil {
+			o.Ledger.Accounts = []Account{}
+		}
+		if o.Ledger.Recent == nil {
+			o.Ledger.Recent = []TxnBrief{}
+		}
+	}
+}
+
+func fillTags(items []Item) {
+	for i := range items {
+		if items[i].Tags == nil {
+			items[i].Tags = []string{}
+		}
+	}
+}
+
+// Swift 那边的数组字段是非可选的，Go 的 nil slice 会序列化成 null，
+// 解码时直接抛错、整个出参作废。空数组和 null 在这里差别是致命的，
+// 所以统一在序列化出口把数组补齐，不指望每个赋值点都记得。
+type normalizer interface{ normalize() }
+
 func marshal(v any) string {
+	if n, ok := v.(normalizer); ok {
+		n.normalize()
+	}
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Sprintf(`{"error":%q}`, err.Error())

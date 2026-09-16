@@ -5,3 +5,8 @@
 # 编辑器与系统文件
 .DS_Store
 *.swp
+
+# gomobile 生成的，每次 make ios-framework 重建
+ios/Mobile.xcframework/
+# Xcode 的个人状态（窗口布局、断点），不该进仓库
+**/xcuserdata/

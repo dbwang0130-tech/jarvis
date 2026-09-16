@@ -2,6 +2,7 @@ package mobile
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -212,4 +213,47 @@ func mustJSON(t *testing.T, v any) string {
 		t.Fatal(err)
 	}
 	return string(raw)
+}
+
+// Swift 的数组字段是非可选的，出参里冒出一个 null 就会让整个解码失败、
+// 界面一片空白。这条守着所有出口——包括出错的那条路，
+// 不然用户看到的是解码错误而不是真正的原因。
+func TestNoNullArrays(t *testing.T) {
+	cases := map[string]string{
+		"正常":     Snapshot(mustJSON(t, SnapshotInput{Files: map[string]string{"a.org": "* TODO 没有标签\n"}, Days: 3})),
+		"空输入":    Snapshot(`{}`),
+		"入参不合法":  Snapshot("不是 JSON"),
+		"时间不合法":  Snapshot(`{"now":"不是时间"}`),
+		"Ask 出错": Ask("不是 JSON"),
+	}
+	for name, out := range cases {
+		t.Run(name, func(t *testing.T) {
+			var v any
+			if err := json.Unmarshal([]byte(out), &v); err != nil {
+				t.Fatalf("出参不是合法 JSON: %v", err)
+			}
+			walkNull(t, "", v)
+		})
+	}
+}
+
+// 这几个字段在 Swift 那边是可选的，允许缺席；其余数组都不能是 null。
+var nullableFields = map[string]bool{"ledger": true, "steps": true, "files": true, "error": true}
+
+func walkNull(t *testing.T, path string, v any) {
+	t.Helper()
+	switch x := v.(type) {
+	case map[string]any:
+		for k, sub := range x {
+			if sub == nil && !nullableFields[k] {
+				t.Errorf("%s/%s 是 null，Swift 解不了", path, k)
+				continue
+			}
+			walkNull(t, path+"/"+k, sub)
+		}
+	case []any:
+		for i, sub := range x {
+			walkNull(t, fmt.Sprintf("%s[%d]", path, i), sub)
+		}
+	}
 }

@@ -1,0 +1,68 @@
+// 命令 gen 把 mobile 包的真实出参写到临时目录，交给 check.swift 用
+// iOS 那边真正在用的 Models.swift 解一遍。
+//
+// 这一步单独存在是因为：Go 改了字段名或让某个数组变成 nil，Go 自己的测试
+// 照样绿，装到手机上才发现整个界面空白。字段名就是两端的契约，得有人对。
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/dabao/jarvis/mobile"
+)
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "用法: gen <输出目录>")
+		os.Exit(2)
+	}
+	dir := os.Args[1]
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		panic(err)
+	}
+
+	// 尽量把边角都占上：有标签的和没标签的、子任务、循环事件、多种 kind。
+	org := `#+TITLE: 工作
+
+* NEXT [#A] 写毕业论文  :thesis:work:
+  SCHEDULED: <2026-09-16 三 14:00-16:00>
+** TODO 补开题报告 [1/3]
+   DEADLINE: <2026-09-18 五>
+   - [X] 查文献
+   - [ ] 写初稿
+   - [ ] 改格式
+* TODO 每周组会
+  SCHEDULED: <2026-09-17 四 10:00 +1w>
+* TODO 没有任何标签的待办
+`
+	ledger := `2026/09/01 房租
+    Expenses:Housing:Rent          3000.00
+    Assets:Bank:CMB
+
+2026/09/10 发工资
+    Assets:Bank:CMB               18000.00
+    Income:Salary
+`
+	in, _ := json.Marshal(map[string]any{
+		"files":  map[string]string{"work.org": org},
+		"ledger": ledger,
+		"days":   7,
+		"now":    "2026-09-16T09:00:00+08:00",
+	})
+
+	write(dir, "snapshot.json", mobile.Snapshot(string(in)))
+	// 空输入也得能解——第一次装上、目录还是空的就是这个形状。
+	write(dir, "snapshot_empty.json", mobile.Snapshot(`{}`))
+	// 出错那条路同样要能解，不然用户看到的是解码失败而不是真正的原因。
+	write(dir, "snapshot_error.json", mobile.Snapshot("不是 JSON"))
+	write(dir, "ask_error.json", mobile.Ask("不是 JSON"))
+}
+
+func write(dir, name, content string) {
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		panic(err)
+	}
+}
