@@ -22,9 +22,15 @@ final class Vault {
     var isConfigured: Bool { root != nil }
 
     /// 目录选好之后记下来，下次启动直接用。
+    ///
+    /// 书签必须在安全作用域**里面**建。选目录拿到的 URL 是带作用域的，
+    /// 在作用域外 bookmarkData 建出来的书签下次解出来没有访问权——
+    /// 这次用着一切正常，重启之后一个文件都读不到。
     func remember(_ url: URL) throws {
-        let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil,
-                                        relativeTo: nil)
+        let data = try withAccess(to: url) {
+            try url.bookmarkData(options: [], includingResourceValuesForKeys: nil,
+                                 relativeTo: nil)
+        }
         UserDefaults.standard.set(data, forKey: Self.bookmarkKey)
         root = url
     }
@@ -57,13 +63,14 @@ final class Vault {
             let orgDir = root.appendingPathComponent("org", isDirectory: true)
             let dir = FileManager.default.fileExists(atPath: orgDir.path) ? orgDir : root
 
-            let urls = try FileManager.default.contentsOfDirectory(
+            let entries = try FileManager.default.contentsOfDirectory(
                 at: dir, includingPropertiesForKeys: nil)
-                .filter { $0.pathExtension == "org" }
 
             var out: [String: String] = [:]
-            for url in urls {
-                out[url.lastPathComponent] = try readCoordinated(url)
+            for entry in entries {
+                guard let name = orgName(entry) else { continue }
+                // 一律按真名去读，readCoordinated 会先把它下下来。
+                out[name] = try readCoordinated(dir.appendingPathComponent(name))
             }
             return out
         }
@@ -74,7 +81,7 @@ final class Vault {
         guard let root else { throw VaultError.notConfigured }
         return try withAccess(to: root) {
             let url = root.appendingPathComponent("ledger.dat")
-            guard FileManager.default.fileExists(atPath: url.path) else { return "" }
+            guard exists(url) else { return "" }
             return try readCoordinated(url)
         }
     }
@@ -98,6 +105,31 @@ final class Vault {
                 try writeCoordinated(root.appendingPathComponent("ledger.dat"), ledger)
             }
         }
+    }
+
+    // MARK: - iCloud 的占位符
+
+    /// 还没下载下来的 iCloud 文件，在目录里的名字是 `.真名.icloud`。
+    /// 按扩展名挑 `.org` 会把它们整个漏掉——界面上就少了几个文件，
+    /// 而且不报错，看起来像是那些日程本来就不存在。
+    ///
+    /// 返回这一项对应的真实文件名，不是 org 文件就返回 nil。
+    private func orgName(_ url: URL) -> String? {
+        let name = url.lastPathComponent
+        guard name.hasPrefix("."), name.hasSuffix(".icloud") else {
+            return url.pathExtension == "org" ? name : nil
+        }
+        let real = String(name.dropFirst().dropLast(".icloud".count))
+        return real.hasSuffix(".org") ? real : nil
+    }
+
+    /// 文件在不在。没下载的只有占位符，直接 fileExists 会说不在。
+    private func exists(_ url: URL) -> Bool {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: url.path) { return true }
+        let placeholder = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(url.lastPathComponent).icloud")
+        return fm.fileExists(atPath: placeholder.path)
     }
 
     // MARK: - 沙箱与 iCloud 的那些讲究
