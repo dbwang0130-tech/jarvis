@@ -21,6 +21,16 @@ iOS 那边文件访问的坑（沙箱授权、iCloud 占位符、`NSFileCoordina
   `error` 字段里。`mobile` 的测试里有一组专喂烂输入的用例守着。
 - **`mobile` 的 JSON 字段就是契约**，改了要同步改 `ios/Models.swift`。
   gomobile 只认得基本类型，map 和结构体切片都过不去，所以只能走 JSON。
+  Swift 那边数组字段是非可选的，Go 的 nil slice 序列化成 `null` 会让整个
+  出参解码失败、界面一片空白，所以 `marshal` 出口统一把数组补齐
+  （`normalizer` 接口）。`TestNoNullArrays` 守着，包括出错那几条路。
+
+改完跑这两个（Go 自己的测试对字段改名和可选性变化是无感的）：
+
+```sh
+make ios-contract   # 拿 ios/Models.swift 去解 Go 真实出参，只要 swiftc
+make ios-check      # Swift 在真实 iOS SDK 下类型检查，要完整 Xcode
+```
 
 iOS 端只带日程和记账两项技能（都是 RiskNone、改的都是本地文件），所以不会
 冒出确认框；邮件和浏览器留在桌面端。
