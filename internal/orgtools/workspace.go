@@ -228,9 +228,18 @@ func (p *Skill) Tools() []agent.Tool {
 	tools := make([]agent.Tool, 0, len(defs))
 	for _, d := range defs {
 		name := d.Name
-		tools = append(tools, orgTool{spec: d, exec: func(args string) (string, bool, error) {
+		tools = append(tools, orgTool{spec: d, readonly: orgReadOnly(name), exec: func(args string) (string, bool, error) {
 			return ws.execOrg(name, args)
 		}})
 	}
 	return tools
+}
+
+// orgReadOnly 标记哪些日程工具是只读、可并发的。
+func orgReadOnly(name string) bool {
+	switch name {
+	case "list_agenda", "list_todos", "find_free_slots", "get_item":
+		return true
+	}
+	return false
 }

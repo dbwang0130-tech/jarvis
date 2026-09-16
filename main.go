@@ -1,76 +1,68 @@
-// jarvis 是个人助理：一个终端同时管理日程（org-mode）与邮箱。
+// jarvis 是个人助理：日程 + 邮箱 + 记账 + 浏览器，一个流式终端搞定。
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/dabao/jarvis/internal/agent"
+	"github.com/dabao/jarvis/internal/chat"
 	"github.com/dabao/jarvis/internal/config"
-	"github.com/dabao/jarvis/internal/configskill"
-	"github.com/dabao/jarvis/internal/ledger"
-	"github.com/dabao/jarvis/internal/mail"
-	"github.com/dabao/jarvis/internal/orgtools"
-	"github.com/dabao/jarvis/internal/ui"
+	"github.com/dabao/jarvis/internal/remind"
 )
 
 func main() {
+	// 子命令：jarvis remind 由 launchd 定时调用，检查一次日程提醒后退出。
+	if len(os.Args) > 1 && os.Args[1] == "remind" {
+		if err := runRemind(); err != nil {
+			fmt.Fprintln(os.Stderr, "jarvis remind: "+err.Error())
+			os.Exit(1)
+		}
+		return
+	}
+
+	cont := flag.Bool("c", false, "继续上次的会话")
 	flag.Usage = usage
 	flag.Parse()
-	if err := run(); err != nil {
+	if err := chat.Run(*cont); err != nil {
 		fmt.Fprintln(os.Stderr, "jarvis: "+err.Error())
 		os.Exit(1)
 	}
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `jarvis — 个人助理：日程 + 邮箱，一个终端搞定
+	fmt.Fprint(os.Stderr, `jarvis — 个人助理：日程 + 邮箱 + 记账 + 浏览器
 
 用法：
-  jarvis
+  jarvis         开一个全新会话
+  jarvis -c      继续上次的会话
+  jarvis remind  检查一次日程提醒（供 launchd 定时调用）
 
-启动后直接在秘书面板说话。所有配置都在界面里用 / 命令完成：
-  /login  /provider  /model    模型与密钥
-  /mail  /accounts  /mailrm    邮箱账号
-  /files /inbox                org 文件
-  /ledger [路径]               账本（ledger-cli 格式）
-  /help                        全部命令
+进去之后：tab 轮换视图（秘书 / 日程 / 待办 / 邮件 / 财务），
+滚轮或 PageUp/PageDown 往回翻历史，/help 看全部命令。
+第一次用先敲 /setup，跟着走一遍就配好了。
 `)
 }
 
-func run() error {
-	cfgPath := config.Path()
-	cfg, err := config.Load(cfgPath)
+func runRemind() error {
+	cfg, err := config.Load(config.Path())
 	if err != nil {
 		return err
 	}
-
-	coll, err := ui.LoadOrg(cfg)
+	coll, err := chat.LoadOrg(cfg)
 	if err != nil {
 		return err
 	}
-	coll.SetLogStates(cfg.LogStateChanges)
-
-	orgWS := orgtools.NewWorkspace(coll, cfg)
-	mailS := mail.NewSession(cfg)
-	ledgerSkill := ledger.NewSkill(cfg.LedgerFile)
-
-	skills := []agent.Skill{
-		orgtools.NewSkill(orgWS),
-		mail.NewSkill(mailS),
-		ledger.NewSkill(cfg.LedgerFile),
-		configskill.New(cfgPath),
+	store := &remind.Store{Path: filepath.Join(config.Dir(), "reminded.json")}
+	reminded := store.Load()
+	for _, text := range remind.Check(coll, time.Now(), reminded) {
+		if err := remind.Notify(text); err != nil {
+			// launchd 把 stdout/stderr 收进 /tmp/jarvis-remind.log，
+			// 发不出去的时候至少在那儿留个痕迹。
+			fmt.Fprintf(os.Stderr, "发通知失败：%v\n", err)
+		}
 	}
-	ag, agentErr := agent.Build(cfg, skills...)
-
-	prog := tea.NewProgram(
-		ui.New(cfgPath, cfg, coll, orgWS, mailS, ledgerSkill, skills, ag, agentErr),
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-	)
-	_, err = prog.Run()
-	return err
+	return store.Save(reminded)
 }

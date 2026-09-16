@@ -72,14 +72,16 @@ func (s *Skill) Tools() []agent.Tool {
 }
 
 type tool struct {
-	spec agent.ToolSpec
-	run  func(args string) (string, bool, error)
+	spec     agent.ToolSpec
+	run      func(args string) (string, bool, error)
+	readonly bool
 }
 
 func (t tool) Spec() agent.ToolSpec                   { return t.spec }
 func (t tool) Risk() agent.Risk                       { return agent.RiskNone }
 func (t tool) Preview(string) (string, string, error) { return "", "", nil }
 func (t tool) Run(args string) (string, bool, error)  { return t.run(args) }
+func (t tool) ReadOnly() bool                         { return t.readonly }
 
 func obj(props map[string]any, required ...string) map[string]any {
 	m := map[string]any{"type": "object", "properties": props}
@@ -184,6 +186,7 @@ func (s *Skill) toolListAccounts() agent.Tool {
 				"account": str("可选，账户名或前缀，如 Expenses 或 Assets:Cash"),
 			}),
 		},
+		readonly: true,
 		run: func(raw string) (string, bool, error) {
 			var a struct {
 				Account string `json:"account"`
@@ -219,6 +222,7 @@ func (s *Skill) toolListTransactions() agent.Tool {
 				"limit":   num("最多返回多少笔，默认 20"),
 			}),
 		},
+		readonly: true,
 		run: func(raw string) (string, bool, error) {
 			var a struct {
 				Account string `json:"account"`

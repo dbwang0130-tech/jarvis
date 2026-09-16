@@ -89,6 +89,8 @@ type Pending struct {
 	Tool   string
 	Title  string
 	Detail string
+	// Risk 是该动作的风险等级，界面据此给出「以后不再问」的选项。
+	Risk Risk
 	// Reply 是界面回传是否批准的通道（缓冲 1，发送不阻塞）。
 	Reply chan bool
 	run   func() (string, bool, error)
@@ -96,6 +98,12 @@ type Pending struct {
 
 // Do 在用户批准后执行该动作。
 func (p *Pending) Do() (string, bool, error) { return p.run() }
+
+// ReadOnlyTool 是可选接口：实现它的工具表示只读、不修改共享状态，
+// 可以和其他只读工具并发执行。未实现的工具一律按「会改状态」串行处理。
+type ReadOnlyTool interface {
+	ReadOnly() bool
+}
 
 // Skill 是一项技能，向秘书贡献工具、环境描述和行为规则。
 // 新增场景时实现这个接口即可接入，无需改动核心循环。

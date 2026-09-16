@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // EventKind 区分秘书在工作过程中发出的进度事件。
@@ -71,6 +72,8 @@ type Agent struct {
 	Auto AutoLevel
 	// Profile 是用户的自述，交给模型判断什么算要紧。
 	Profile string
+	// Plan 是模型列出的执行计划，供界面展示进度。
+	Plan []Step
 }
 
 // NewAgent 构造秘书。
@@ -89,10 +92,10 @@ func (a *Agent) SetSkills(skills []Skill) {
 	a.tools = a.flattenTools()
 }
 
-// flattenTools 把所有技能的工具按名字拍平；重名时后者覆盖前者。
+// flattenTools 把所有技能的工具按名字拍平；核心工具 plan/step_done 排在最前。
 func (a *Agent) flattenTools() []Tool {
-	var out []Tool
-	seen := map[string]bool{}
+	out := []Tool{planTool{a: a}, stepDoneTool{a: a}}
+	seen := map[string]bool{"plan": true, "step_done": true}
 	for _, s := range a.Skills {
 		for _, t := range s.Tools() {
 			if seen[t.Spec().Name] {
@@ -109,6 +112,7 @@ func (a *Agent) flattenTools() []Tool {
 func (a *Agent) Reset() {
 	a.History = nil
 	a.Usage = Usage{}
+	a.Plan = nil
 }
 
 // SetAuto 切换自动档位，并告诉模型一声。
@@ -120,11 +124,21 @@ func (a *Agent) SetAuto(l AutoLevel) {
 	a.History = append(a.History, Message{Role: "system", Content: autoNotice(l)})
 }
 
+// NoteInterrupted 在上下文里记一笔：上一条指令被用户叫停了。
+// 界面会把那条消息退回输入框，用户多半要改了重发，
+// 模型得知道前一条没干完，别当成已经完成。
+func (a *Agent) NoteInterrupted() {
+	a.History = append(a.History, Message{Role: "system",
+		Content: "用户中途叫停了上一条指令，它没有执行完。已经做过的动作保留，没做的就别当成做过了。"})
+}
+
 // systemPrompt 生成统一系统提示：身份 + 各场景的环境与规则 + 档位 + 用户自述。
 func (a *Agent) systemPrompt() string {
 	var b strings.Builder
-	b.WriteString("你是用户的私人助理 Jarvis，一个终端工具，同时帮他管理日程和邮箱。\n")
-	b.WriteString("全程使用中文，短句为主，不说客套话。\n\n")
+	b.WriteString("你是 Jarvis，用户的私人 AI 管家——就像钢铁侠身边的那一位。\n")
+	b.WriteString("性格：沉稳、干练、忠诚，带一点英式冷幽默；说话简洁，不奉承，也不在关键时刻掉链子。\n")
+	b.WriteString("称呼用户为「先生」。任务完成用一两句话汇报，必要时提醒他注意风险。\n")
+	b.WriteString("全程使用中文，短句为主，不说空话套话。\n\n")
 
 	for _, s := range a.Skills {
 		fmt.Fprintf(&b, "【%s】\n", s.Name())
@@ -136,6 +150,7 @@ func (a *Agent) systemPrompt() string {
 
 	b.WriteString("通用规则：\n")
 	b.WriteString("- 用户说「刷新」「重新拉」「看看有没有新邮件」时，必须真去服务器同步，不许拿旧清单敷衍。\n")
+	b.WriteString("- 三步以上的多步任务，先调 plan 列出步骤，每完成一步调 step_done；中途情况变化就重新 plan。\n")
 	b.WriteString("- 修改完成后，用一两句话说明你做了什么，说人话，不要罗列引用和工具名。\n")
 	b.WriteString("- 如果用户的要求不清楚，先问清楚再动手。\n\n")
 
@@ -198,16 +213,75 @@ func (a *Agent) Ask(ctx context.Context, input string, emit func(Event)) (string
 		for _, call := range reply.ToolCalls {
 			emit(Event{Kind: EventToolCall, Tool: call.Function.Name,
 				Text: describeCall(call)})
-			result := a.executeCall(emit, call)
-			a.History = append(a.History, Message{
-				Role:       "tool",
-				ToolCallID: call.ID,
-				Name:       call.Function.Name,
-				Content:    result,
-			})
+		}
+		if a.canParallel(reply.ToolCalls) && len(reply.ToolCalls) > 1 {
+			a.executeParallel(emit, reply.ToolCalls)
+		} else {
+			for _, call := range reply.ToolCalls {
+				result := a.executeCall(emit, call)
+				a.History = append(a.History, Message{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Name:       call.Function.Name,
+					Content:    result,
+				})
+			}
 		}
 	}
 	return "", fmt.Errorf("连续调用了 %d 轮工具仍未得出结论，已中止", a.MaxSteps)
+}
+
+// canParallel 判断一批工具调用能否并发执行：必须全部只读。
+func (a *Agent) canParallel(calls []ToolCall) bool {
+	for _, c := range calls {
+		t := a.lookupTool(c.Function.Name)
+		if t == nil {
+			return false
+		}
+		ro, ok := t.(ReadOnlyTool)
+		if !ok || !ro.ReadOnly() {
+			return false
+		}
+	}
+	return true
+}
+
+// executeParallel 并发执行一批只读工具，结果按原顺序回灌。
+func (a *Agent) executeParallel(emit func(Event), calls []ToolCall) {
+	type res struct {
+		content string
+		changed bool
+		err     error
+	}
+	results := make([]res, len(calls))
+	var wg sync.WaitGroup
+	for i, call := range calls {
+		wg.Add(1)
+		go func(i int, c ToolCall) {
+			defer wg.Done()
+			t := a.lookupTool(c.Function.Name)
+			text, changed, err := t.Run(c.Function.Arguments)
+			results[i] = res{content: text, changed: changed, err: err}
+		}(i, call)
+	}
+	wg.Wait()
+	for i, call := range calls {
+		r := results[i]
+		content := r.content
+		if r.err != nil {
+			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: r.err.Error()})
+			content = "执行失败：" + r.err.Error()
+		} else if r.content != "" {
+			emit(Event{Kind: EventToolResult, Tool: call.Function.Name,
+				Text: firstLine(r.content), Changed: r.changed})
+		}
+		a.History = append(a.History, Message{
+			Role:       "tool",
+			ToolCallID: call.ID,
+			Name:       call.Function.Name,
+			Content:    content,
+		})
+	}
 }
 
 // wireTools 把内部工具接口转成发往模型的声明。
@@ -235,7 +309,8 @@ func (a *Agent) executeCall(emit func(Event), call ToolCall) string {
 			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error()})
 			return "执行失败：" + err.Error()
 		}
-		p := &Pending{Tool: t.Spec().Name, Title: title, Detail: detail, Reply: make(chan bool, 1)}
+		p := &Pending{Tool: t.Spec().Name, Title: title, Detail: detail,
+			Risk: t.Risk(), Reply: make(chan bool, 1)}
 		p.run = func() (string, bool, error) { return t.Run(call.Function.Arguments) }
 		emit(Event{Kind: EventPending, Tool: p.Tool, Text: p.Title, Pending: p})
 		if !<-p.Reply {

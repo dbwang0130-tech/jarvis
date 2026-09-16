@@ -86,6 +86,13 @@ type MailAccount struct {
 	Signature string `json:"signature,omitempty"` // 追加到草稿末尾的签名
 }
 
+// Browser 是 Chrome 自动化的接入配置。
+type Browser struct {
+	// Endpoint 是 Chrome DevTools 的 WebSocket 地址，
+	// 需以 --remote-debugging-port=9222 启动 Chrome。
+	Endpoint string `json:"endpoint,omitempty"`
+}
+
 // Config 是 jarvis 的全部配置。
 type Config struct {
 	// 日程（org-mode）
@@ -101,6 +108,17 @@ type Config struct {
 
 	// 记账（ledger-cli 纯文本格式）
 	LedgerFile string `json:"ledger_file,omitempty"`
+
+	// Theme 是界面主题：dark / light / auto。
+	Theme string `json:"theme,omitempty"`
+
+	// Mouse 决定要不要收鼠标上报。开着滚轮才能翻历史，代价是终端
+	// 原生的拖选复制会被拦掉（按住 option/shift 拖仍然能选）。
+	// 关掉就换回拖选，翻历史改用 PageUp/PageDown。零值视为开。
+	Mouse *bool `json:"mouse,omitempty"`
+
+	// Browser 是 Chrome 自动化接入。
+	Browser Browser `json:"browser"`
 
 	// 邮件
 	Profile  Profile       `json:"profile"`
@@ -124,6 +142,8 @@ func Default() Config {
 			TimeoutSec:  120,
 		},
 		LedgerFile: "~/finance/ledger.dat",
+		Theme:      "auto",
+		Browser:    Browser{Endpoint: "ws://127.0.0.1:9222"},
 		Behavior:   Behavior{AutoConfirm: "clean"},
 	}
 }
@@ -161,8 +181,12 @@ func Expand(p string) string {
 }
 
 // Load 读取配置文件；文件不存在时返回默认配置。
-func Load(path string) (Config, error) {
-	cfg := Default()
+func Load(path string) (cfg Config, err error) {
+	cfg = Default()
+	// 不管成不成，返回的都是一份能直接用的配置：读不出来就是默认值。
+	// 配置坏了不该让人连界面都进不去——进去了才好修。
+	defer cfg.normalize()
+
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return cfg, nil
@@ -170,11 +194,25 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err = json.Unmarshal(data, &cfg); err != nil {
+		cfg = Default() // 半解析的内容不要，退回默认
 		return cfg, fmt.Errorf("解析配置 %s 失败: %w", path, err)
 	}
 	cfg.fill()
 	return cfg, nil
+}
+
+// normalize 把配置里的路径一次性展开成绝对路径。
+//
+// 这些路径会被直接拿去建文件建目录，`~` 没展开就会在当前工作目录下
+// 造出一个名叫 ~ 的目录。展开责任放在加载这一处，调用方一律假定
+// 拿到的就是绝对路径，不必各自记得调 Expand。
+func (c *Config) normalize() {
+	for i, f := range c.Files {
+		c.Files[i] = Expand(f)
+	}
+	c.Inbox = Expand(c.Inbox)
+	c.LedgerFile = Expand(c.LedgerFile)
 }
 
 // fill 用默认值补齐缺失的字段。
@@ -203,6 +241,12 @@ func (c *Config) fill() {
 	}
 	if c.LedgerFile == "" {
 		c.LedgerFile = d.LedgerFile
+	}
+	if c.Theme == "" {
+		c.Theme = d.Theme
+	}
+	if c.Browser.Endpoint == "" {
+		c.Browser.Endpoint = d.Browser.Endpoint
 	}
 	for i := range c.Accounts {
 		c.Accounts[i].fill()
@@ -254,13 +298,16 @@ func (c Config) Save(path string) error {
 	return os.WriteFile(path, append(data, '\n'), 0o600)
 }
 
+// MouseOn 报告要不要收鼠标上报，没配过就是开着。
+func (c Config) MouseOn() bool { return c.Mouse == nil || *c.Mouse }
+
 // InboxFile 返回新建条目应写入的文件路径。
 func (c Config) InboxFile() string {
 	if c.Inbox != "" {
-		return Expand(c.Inbox)
+		return c.Inbox
 	}
 	if len(c.Files) > 0 {
-		return Expand(c.Files[0])
+		return c.Files[0]
 	}
 	return ""
 }

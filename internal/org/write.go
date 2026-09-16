@@ -558,6 +558,123 @@ func (d *Document) DeleteNode(n *Node) int {
 	return removed
 }
 
+// subtreeNodes 返回节点及其全部子条目，按文档顺序（先序）。
+func (n *Node) subtreeNodes() []*Node {
+	out := []*Node{n}
+	for _, c := range n.Children {
+		out = append(out, c.subtreeNodes()...)
+	}
+	return out
+}
+
+// adjustHeadingLevel 把一行标题的星号数增加 delta（负数为减少，至少保留 1 个星号）。
+func adjustHeadingLevel(line string, delta int) string {
+	stars := 0
+	for stars < len(line) && line[stars] == '*' {
+		stars++
+	}
+	if stars == 0 {
+		return line
+	}
+	if delta >= 0 {
+		return strings.Repeat("*", delta) + line
+	}
+	remove := -delta
+	if stars > remove {
+		return line[remove:]
+	}
+	return "*" + line[stars:]
+}
+
+// Demote 把节点及其子树降一级（星号 +1）。
+func (d *Document) Demote(n *Node) *Node {
+	line := n.Line
+	for _, x := range n.subtreeNodes() {
+		d.Lines[x.Line] = adjustHeadingLevel(d.Lines[x.Line], 1)
+	}
+	d.Reparse()
+	return d.NodeAt(line)
+}
+
+// Promote 把节点及其子树升一级（星号 -1）；已在顶层时不变。
+func (d *Document) Promote(n *Node) *Node {
+	if n.Level <= 1 {
+		return n
+	}
+	line := n.Line
+	for _, x := range n.subtreeNodes() {
+		d.Lines[x.Line] = adjustHeadingLevel(d.Lines[x.Line], -1)
+	}
+	d.Reparse()
+	return d.NodeAt(line)
+}
+
+// MoveNode 把节点及其子树移动到 parent 的末尾；parent 为 nil 表示移到文件顶层末尾。
+func (d *Document) MoveNode(n, parent *Node) (*Node, error) {
+	if parent != nil && containsNode(n, parent) {
+		return nil, fmt.Errorf("不能移动到自身或其子条目下")
+	}
+
+	title := n.Title
+	start := n.Line
+	subtreeEnd := n.End
+	removeEnd := subtreeEnd
+	for removeEnd < len(d.Lines) && strings.TrimSpace(d.Lines[removeEnd]) == "" {
+		removeEnd++
+	}
+	subtree := append([]string(nil), d.Lines[start:subtreeEnd]...)
+	removed := removeEnd - start
+
+	// 计算插入点（删除后的行号坐标）。
+	target := len(d.Lines) - removed
+	targetLevel := 1
+	if parent != nil {
+		targetLevel = parent.Level + 1
+		if n.Line < parent.Line {
+			target = parent.End - removed
+		} else {
+			target = parent.End
+		}
+	}
+
+	// 删除子树。
+	d.Lines = append(d.Lines[:start], d.Lines[removeEnd:]...)
+
+	// 调整子树标题层级。
+	if delta := targetLevel - n.Level; delta != 0 {
+		for _, x := range n.subtreeNodes() {
+			off := x.Line - start
+			if off >= 0 && off < len(subtree) {
+				subtree[off] = adjustHeadingLevel(subtree[off], delta)
+			}
+		}
+	}
+
+	// 与上一行之间留空行。
+	if target > len(d.Lines) {
+		target = len(d.Lines)
+	}
+	d.Lines = append(d.Lines[:target], append(subtree, d.Lines[target:]...)...)
+	d.Reparse()
+
+	for _, x := range d.Nodes {
+		if x.Title == title && x.Line >= target {
+			return x, nil
+		}
+	}
+	return nil, fmt.Errorf("移动后未找到节点")
+}
+
+// containsNode 报告 node 是否是 maybeDesc 的祖先（即 maybeDesc 在 node 的子树里）。
+func containsNode(node, maybeDesc *Node) bool {
+	for cur := maybeDesc; cur != nil; cur = cur.Parent {
+		if cur == node {
+			return true
+		}
+	}
+	return false
+}
+
 // Subtree 返回节点及其子树的原始行，可用于删除前留底或移动。
 func (n *Node) Subtree() []string {
 	end := n.End

@@ -55,14 +55,16 @@ func (s *Skill) Tools() []agent.Tool {
 }
 
 type tool struct {
-	spec agent.ToolSpec
-	run  func(args string) (string, bool, error)
+	spec     agent.ToolSpec
+	run      func(args string) (string, bool, error)
+	readonly bool
 }
 
 func (t tool) Spec() agent.ToolSpec                   { return t.spec }
 func (t tool) Risk() agent.Risk                       { return agent.RiskNone }
 func (t tool) Preview(string) (string, string, error) { return "", "", nil }
 func (t tool) Run(args string) (string, bool, error)  { return t.run(args) }
+func (t tool) ReadOnly() bool                         { return t.readonly }
 
 func obj(props map[string]any, required ...string) map[string]any {
 	m := map[string]any{"type": "object", "properties": props}
@@ -86,6 +88,7 @@ func (s *Skill) toolRead() agent.Tool {
 			Description: "读取当前配置文件内容。想了解或修改设置前先看这个。",
 			Parameters:  obj(map[string]any{}),
 		},
+		readonly: true,
 		run: func(string) (string, bool, error) {
 			cfg, err := config.Load(s.Path)
 			if err != nil {
@@ -126,6 +129,8 @@ func (s *Skill) toolSet() agent.Tool {
 				"context_limit":      num("触发压缩的 token 阈值"),
 				"proxy":              str("模型接口代理：none 表示直连，或填代理地址"),
 				"ledger_file":        str("账本文件路径（ledger-cli 格式）"),
+				"browser_endpoint":   str("Chrome DevTools WebSocket 地址，如 ws://127.0.0.1:9222"),
+				"theme":              str("界面主题：dark / light / auto"),
 				"files":              arr("org 文件或目录列表"),
 				"inbox":              str("新建条目默认写入的文件"),
 			}),
@@ -213,6 +218,8 @@ type patch struct {
 	ContextLimit     *int      `json:"context_limit"`
 	Proxy            *string   `json:"proxy"`
 	LedgerFile       *string   `json:"ledger_file"`
+	BrowserEndpoint  *string   `json:"browser_endpoint"`
+	Theme            *string   `json:"theme"`
 	Files            *[]string `json:"files"`
 	Inbox            *string   `json:"inbox"`
 }
@@ -264,7 +271,13 @@ func (p *patch) apply(cfg *config.Config) {
 		cfg.Agent.Proxy = *p.Proxy
 	}
 	if p.LedgerFile != nil {
-		cfg.LedgerFile = *p.LedgerFile
+		cfg.LedgerFile = config.Expand(*p.LedgerFile) // 立刻生效，不等下次加载
+	}
+	if p.BrowserEndpoint != nil {
+		cfg.Browser.Endpoint = *p.BrowserEndpoint
+	}
+	if p.Theme != nil {
+		cfg.Theme = *p.Theme
 	}
 	if p.Files != nil {
 		cfg.Files = *p.Files
@@ -300,6 +313,12 @@ func (p *patch) summary() string {
 	}
 	if p.LedgerFile != nil {
 		names = append(names, "账本文件")
+	}
+	if p.BrowserEndpoint != nil {
+		names = append(names, "浏览器端点")
+	}
+	if p.Theme != nil {
+		names = append(names, "主题")
 	}
 	if p.Files != nil || p.Inbox != nil {
 		names = append(names, "org 文件")

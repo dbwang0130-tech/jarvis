@@ -9,10 +9,11 @@ package ledger
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -197,26 +198,28 @@ func (b *Book) Balances() map[string]float64 {
 }
 
 // SortedAccounts 返回按字母序排列的账户名。
-func (b *Book) SortedAccounts() []string {
-	bal := b.Balances()
-	names := make([]string, 0, len(bal))
-	for k := range bal {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return names
-}
+func (b *Book) SortedAccounts() []string { return SortedFrom(b.Balances()) }
 
-// SumByPrefix 汇总指定前缀账户的余额。
-func (b *Book) SumByPrefix(prefix string) float64 {
+// SumPrefix 把某一类账户的余额加起来。传算好的余额表进来，
+// 免得为每个前缀重扫一遍账本。前缀按账户层级卡边界：
+// "Assets" 只匹配 Assets 和 Assets:xxx，不会连上 AssetsFoo。
+func SumPrefix(bal map[string]float64, prefix string) float64 {
+	prefix = strings.TrimSuffix(prefix, ":") // "Assets" 和 "Assets:" 都当成同一类
 	var sum float64
-	for k, v := range b.Balances() {
-		if strings.HasPrefix(k, prefix) {
+	for name, v := range bal {
+		if name == prefix || strings.HasPrefix(name, prefix+":") {
 			sum += v
 		}
 	}
 	return sum
 }
+
+// SortedFrom 把算好的余额表里的账户名排好序。
+func SortedFrom(bal map[string]float64) []string { return slices.Sorted(maps.Keys(bal)) }
+
+// SumByPrefix 汇总指定前缀账户的余额，每次都重算一遍余额表。
+// 一次要问好几个前缀的话，自己 Balances() 一次再调 SumPrefix 更划算。
+func (b *Book) SumByPrefix(prefix string) float64 { return SumPrefix(b.Balances(), prefix) }
 
 // IncomeExpense 返回自 since 以来的收入与支出（正数）。
 func (b *Book) IncomeExpense(since time.Time) (income, expense float64) {

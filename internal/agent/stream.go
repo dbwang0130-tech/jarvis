@@ -78,11 +78,12 @@ func (c *Client) ChatStream(ctx context.Context, msgs []Message, tools []ToolDef
 		return Message{}, Usage{}, fmt.Errorf("模型返回 HTTP %d: %s",
 			resp.StatusCode, truncate(strings.TrimSpace(string(data)), 300))
 	}
-	return readStream(resp.Body, onDelta)
+	return readStream(ctx, resp.Body, onDelta)
 }
 
 // readStream 解析 SSE 流并把分片拼回一条完整消息。
-func readStream(r io.Reader, onDelta func(Delta)) (Message, Usage, error) {
+// 传入 ctx 以便在用户打断时立即退出，不必等底层连接超时。
+func readStream(ctx context.Context, r io.Reader, onDelta func(Delta)) (Message, Usage, error) {
 	msg := Message{Role: "assistant"}
 	var usage Usage
 	calls := map[int]*ToolCall{}
@@ -91,6 +92,11 @@ func readStream(r io.Reader, onDelta func(Delta)) (Message, Usage, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 4<<20)
 	for sc.Scan() {
+		select {
+		case <-ctx.Done():
+			return msg, usage, ctx.Err()
+		default:
+		}
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || !strings.HasPrefix(line, "data:") {
 			continue

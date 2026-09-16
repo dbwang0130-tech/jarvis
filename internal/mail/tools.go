@@ -14,15 +14,17 @@ import (
 
 // Tool 是秘书能对邮箱执行的一个动作，实现 agent.Tool 接口。
 type Tool struct {
-	spec    agent.ToolSpec
-	risk    agent.Risk
-	sess    *Session
-	preview func(s *Session, raw string) (title, detail string, err error)
-	run     func(s *Session, raw string) (string, error)
+	spec     agent.ToolSpec
+	risk     agent.Risk
+	sess     *Session
+	readonly bool
+	preview  func(s *Session, raw string) (title, detail string, err error)
+	run      func(s *Session, raw string) (string, error)
 }
 
 func (t *Tool) Spec() agent.ToolSpec { return t.spec }
 func (t *Tool) Risk() agent.Risk     { return t.risk }
+func (t *Tool) ReadOnly() bool       { return t.readonly }
 func (t *Tool) Preview(raw string) (string, string, error) {
 	if t.preview == nil {
 		return "", "", nil
@@ -83,7 +85,8 @@ func toolListMail() *Tool {
 		spec: spec("list_mail",
 			"列出当前已知的邮件清单（编号、发件人、主题、时间、正文开头）。这是本次拉取的结果，清理掉的邮件会从中消失。清单已在对话开头给过，只有需要重看时才调用。想从服务器重新同步用 refresh_mail。",
 			obj(map[string]any{})),
-		run: func(s *Session, raw string) (string, error) { return s.Digest(), nil },
+		readonly: true,
+		run:      func(s *Session, raw string) (string, error) { return s.Digest(), nil },
 	}
 }
 

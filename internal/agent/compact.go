@@ -7,7 +7,8 @@ import (
 )
 
 // DefaultContextLimit 是触发自动压缩的估算 token 数。
-const DefaultContextLimit = 32000
+// 取值偏保守，保持上下文清爽，留足生成空间。
+const DefaultContextLimit = 16000
 
 // compactPrompt 指导模型怎么总结早期对话。
 const compactPrompt = `请把上面这段对话压缩成一份交接说明，供你自己稍后继续工作时阅读。
@@ -103,7 +104,7 @@ func (a *Agent) maybeCompact(ctx context.Context, emit func(Event)) {
 		return
 	}
 	tokens, ratio := a.ContextUsage()
-	if ratio < 0.8 {
+	if ratio < 0.7 {
 		return
 	}
 	emit(Event{Kind: EventCompact, Text: fmt.Sprintf("上下文约 %d tokens，正在压缩…", tokens)})

@@ -13,14 +13,16 @@ import (
 
 // orgTool 是日程工具对 agent.Tool 的适配：只读、无风险、执行交给 execOrg。
 type orgTool struct {
-	spec agent.ToolSpec
-	exec func(args string) (string, bool, error)
+	spec     agent.ToolSpec
+	exec     func(args string) (string, bool, error)
+	readonly bool
 }
 
 func (t orgTool) Spec() agent.ToolSpec                   { return t.spec }
 func (t orgTool) Risk() agent.Risk                       { return agent.RiskNone }
 func (t orgTool) Preview(string) (string, string, error) { return "", "", nil }
 func (t orgTool) Run(args string) (string, bool, error)  { return t.exec(args) }
+func (t orgTool) ReadOnly() bool                         { return t.readonly }
 
 func schema(props map[string]any, required ...string) map[string]any {
 	if required == nil {
@@ -140,6 +142,56 @@ func wsToolDefs() []agent.ToolSpec {
 				"file":      str("写入哪个文件，如 work.org；留空则写入默认收件箱"),
 			}, "title"),
 		},
+		{
+			Name:        "clock_in",
+			Description: "开始为某个条目计时，写入 LOGBOOK 的 CLOCK 记录。用户说「开始计时/开始做这件事」时用。",
+			Parameters: schema(map[string]any{
+				"ref":   str("条目引用，形如 work.org:12"),
+				"title": str("条目标题，用于校验"),
+			}, "ref"),
+		},
+		{
+			Name:        "clock_out",
+			Description: "结束某个条目的计时，补全 LOGBOOK 里的 CLOCK 记录。用户说「停止计时/做完了」时用。",
+			Parameters: schema(map[string]any{
+				"ref":   str("条目引用，形如 work.org:12"),
+				"title": str("条目标题，用于校验"),
+			}, "ref"),
+		},
+		{
+			Name:        "add_note",
+			Description: "在条目的 LOGBOOK 里记一条笔记。用户说「记一下进度/备注一下」时用。",
+			Parameters: schema(map[string]any{
+				"ref":   str("条目引用，形如 work.org:12"),
+				"title": str("条目标题，用于校验"),
+				"text":  str("笔记内容"),
+			}, "ref", "text"),
+		},
+		{
+			Name:        "demote_item",
+			Description: "把条目及其子条目降一级（变成更深一层的子任务）。",
+			Parameters: schema(map[string]any{
+				"ref":   str("条目引用，形如 work.org:12"),
+				"title": str("条目标题，用于校验"),
+			}, "ref"),
+		},
+		{
+			Name:        "promote_item",
+			Description: "把条目及其子条目升一级（减少一层缩进）。",
+			Parameters: schema(map[string]any{
+				"ref":   str("条目引用，形如 work.org:12"),
+				"title": str("条目标题，用于校验"),
+			}, "ref"),
+		},
+		{
+			Name:        "move_item",
+			Description: "把条目及其子条目移动到另一个父条目下（parent_ref 留空则移到文件顶层末尾）。",
+			Parameters: schema(map[string]any{
+				"ref":        str("要移动的条目引用，形如 work.org:12"),
+				"title":      str("条目标题，用于校验"),
+				"parent_ref": str("目标父条目引用，形如 work.org:5；留空移到顶层末尾"),
+			}, "ref"),
+		},
 	}
 }
 
@@ -206,6 +258,18 @@ func (w *Workspace) execOrg(name, rawArgs string) (string, bool, error) {
 		return w.deleteItem(getStr("ref"), getStr("title"))
 	case "create_item":
 		return w.createItem(args)
+	case "clock_in":
+		return w.clockIn(getStr("ref"), getStr("title"))
+	case "clock_out":
+		return w.clockOut(getStr("ref"), getStr("title"))
+	case "add_note":
+		return w.addNote(getStr("ref"), getStr("title"), getStr("text"))
+	case "demote_item":
+		return w.demote(getStr("ref"), getStr("title"))
+	case "promote_item":
+		return w.promote(getStr("ref"), getStr("title"))
+	case "move_item":
+		return w.moveItem(getStr("ref"), getStr("title"), getStr("parent_ref"))
 	}
 	return "", false, fmt.Errorf("未知工具 %q", name)
 }
@@ -688,4 +752,118 @@ func (w *Workspace) fileNames() []string {
 		out = append(out, d.Category())
 	}
 	return out
+}
+
+func (w *Workspace) clockIn(ref, title string) (string, bool, error) {
+	doc, n, err := w.resolve(ref, title)
+	if err != nil {
+		return "", false, err
+	}
+	w.snapshot(doc)
+	n, err = doc.ClockIn(n, w.now())
+	if err != nil {
+		return "", false, err
+	}
+	if err := doc.Save(); err != nil {
+		return "", false, err
+	}
+	w.record(doc, "开始为「%s」计时", n.Title)
+	return fmt.Sprintf("已开始为「%s」计时。", n.Title), true, nil
+}
+
+func (w *Workspace) clockOut(ref, title string) (string, bool, error) {
+	doc, n, err := w.resolve(ref, title)
+	if err != nil {
+		return "", false, err
+	}
+	w.snapshot(doc)
+	n, err = doc.ClockOut(n, w.now())
+	if err != nil {
+		return "", false, err
+	}
+	if err := doc.Save(); err != nil {
+		return "", false, err
+	}
+	w.record(doc, "结束「%s」计时", n.Title)
+	return fmt.Sprintf("已结束「%s」计时，累计 %s。", n.Title, humanDuration(n.ClockedTotal())), true, nil
+}
+
+func (w *Workspace) addNote(ref, title, text string) (string, bool, error) {
+	if strings.TrimSpace(text) == "" {
+		return "", false, fmt.Errorf("笔记内容不能为空")
+	}
+	doc, n, err := w.resolve(ref, title)
+	if err != nil {
+		return "", false, err
+	}
+	w.snapshot(doc)
+	doc.AddNote(n, strings.TrimSpace(text), w.now())
+	if err := doc.Save(); err != nil {
+		return "", false, err
+	}
+	w.record(doc, "为「%s」记了一条笔记", n.Title)
+	return fmt.Sprintf("已在「%s」的 LOGBOOK 里记下笔记。", n.Title), true, nil
+}
+
+func (w *Workspace) demote(ref, title string) (string, bool, error) {
+	doc, n, err := w.resolve(ref, title)
+	if err != nil {
+		return "", false, err
+	}
+	w.snapshot(doc)
+	n = doc.Demote(n)
+	if err := doc.Save(); err != nil {
+		return "", false, err
+	}
+	w.record(doc, "把「%s」降了一级", n.Title)
+	return fmt.Sprintf("已把「%s」降了一级（新引用 %s）。", n.Title, refOf(doc, n)), true, nil
+}
+
+func (w *Workspace) promote(ref, title string) (string, bool, error) {
+	doc, n, err := w.resolve(ref, title)
+	if err != nil {
+		return "", false, err
+	}
+	if n.Level <= 1 {
+		return "", false, fmt.Errorf("「%s」已在顶层，无法再升", n.Title)
+	}
+	w.snapshot(doc)
+	n = doc.Promote(n)
+	if err := doc.Save(); err != nil {
+		return "", false, err
+	}
+	w.record(doc, "把「%s」升了一级", n.Title)
+	return fmt.Sprintf("已把「%s」升了一级（新引用 %s）。", n.Title, refOf(doc, n)), true, nil
+}
+
+func (w *Workspace) moveItem(ref, title, parentRef string) (string, bool, error) {
+	doc, n, err := w.resolve(ref, title)
+	if err != nil {
+		return "", false, err
+	}
+	var parent *org.Node
+	if strings.TrimSpace(parentRef) != "" {
+		pdoc, pn, perr := w.resolve(parentRef, "")
+		if perr != nil {
+			return "", false, perr
+		}
+		if pdoc != doc {
+			return "", false, fmt.Errorf("暂不支持跨文件移动")
+		}
+		parent = pn
+	}
+	w.snapshot(doc)
+	n, err = doc.MoveNode(n, parent)
+	if err != nil {
+		return "", false, err
+	}
+	if err := doc.Save(); err != nil {
+		return "", false, err
+	}
+	where := "文件顶层"
+	if parent != nil {
+		where = "「" + parent.Title + "」下"
+	}
+	w.record(doc, "把「%s」移动到%s", n.Title, where)
+	return fmt.Sprintf("已把「%s」移动到%s（新引用 %s）。", n.Title, where, refOf(doc, n)), true, nil
 }
