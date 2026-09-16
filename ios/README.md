@@ -41,8 +41,14 @@ xcodebuild -version                                     # 确认
 ```sh
 go install golang.org/x/mobile/cmd/gomobile@latest
 gomobile init
-make ios-framework     # 产出 ios/Mobile.xcframework
+make ios-framework     # 产出 ios/Mobile.xcframework（52MB，不进仓库）
 ```
+
+`gomobile bind` 要的 gobind tool 指令已经在 go.mod 里了，不用另外 go get。
+
+> 开了代理的话，`go install` 这步把代理关掉再跑：goproxy.cn 本来就是国内源，
+> 绕一圈反而从 10MB/s 掉到 15KB/s，x/tools 那 50MB 能拖一小时。
+> `env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY go install ...`
 
 ### 3. 打开工程
 

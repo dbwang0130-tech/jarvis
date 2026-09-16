@@ -34,8 +34,9 @@ test:
 fmt:
 	gofmt -l -w .
 
-# 把 Go 侧编译成 iOS 用的 framework。需要先装 Xcode，
-# 第一次还要 go install golang.org/x/mobile/cmd/gomobile@latest && gomobile init。
+# 把 Go 侧编译成 iOS 用的 framework。需要完整 Xcode，第一次还要
+#   go install golang.org/x/mobile/cmd/gomobile@latest && gomobile init
+# gobind 的 tool 指令已经记在 go.mod 里了，不用再 go get。
 ios-framework:
 	@command -v gomobile >/dev/null || { \
 		echo "先装 gomobile："; \
