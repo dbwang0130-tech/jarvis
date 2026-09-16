@@ -59,15 +59,17 @@ struct MainTabs: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
+        // 秘书排第一，因为它是主交互——其余三页是"看"，这页是"使唤"。
+        // TabView 默认选第一个，不用另外记选中状态。
         TabView {
+            NavigationStack { ChatView() }
+                .tabItem { Label("秘书", systemImage: "bubble.left.and.text.bubble.right") }
             NavigationStack { AgendaView() }
                 .tabItem { Label("日程", systemImage: "calendar") }
             NavigationStack { TodosView() }
                 .tabItem { Label("待办", systemImage: "checklist") }
             NavigationStack { LedgerTab() }
                 .tabItem { Label("财务", systemImage: "yensign.circle") }
-            NavigationStack { ChatView() }
-                .tabItem { Label("秘书", systemImage: "bubble.left.and.text.bubble.right") }
         }
     }
 }
@@ -262,45 +264,13 @@ func money(_ v: Double) -> String {
 struct ChatView: View {
     @EnvironmentObject var store: Store
     @State private var draft = ""
+    @State private var openSettings = false
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        ForEach(Array(shownMessages.enumerated()), id: \.offset) { _, m in
-                            Bubble(message: m)
-                        }
-                        if store.thinking {
-                            ThinkingRow(steps: store.steps)
-                        }
-                        Color.clear.frame(height: 1).id("bottom")
-                    }
-                    .padding()
-                }
-                .onChange(of: store.messages.count) { _, _ in
-                    withAnimation { proxy.scrollTo("bottom") }
-                }
-            }
-
-            Divider()
-            HStack(spacing: 8) {
-                TextField("说点什么", text: $draft, axis: .vertical)
-                    .lineLimit(1...5)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($focused)
-                    .disabled(store.thinking)
-                Button {
-                    let q = draft
-                    draft = ""
-                    Task { await store.send(q) }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill").font(.title2)
-                }
-                .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || store.thinking)
-            }
-            .padding(8)
+            transcript
+            inputBar
         }
         .navigationTitle("秘书")
         .navigationBarTitleDisplayMode(.inline)
@@ -313,10 +283,133 @@ struct ChatView: View {
         }
     }
 
+    // MARK: - 对话记录
+
+    private var transcript: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if shownMessages.isEmpty && !store.thinking {
+                        Starters(pick: startWith)
+                            .padding(.top, 24)
+                    }
+                    ForEach(Array(shownMessages.enumerated()), id: \.offset) { _, m in
+                        Bubble(message: m)
+                    }
+                    if store.thinking {
+                        ThinkingRow(steps: store.steps)
+                    }
+                    Color.clear.frame(height: 1).id("bottom")
+                }
+                .padding()
+            }
+            // 往回翻的时候顺手把键盘收掉，不用专门去点空白。
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: store.messages.count) { _, _ in toBottom(proxy) }
+            .onChange(of: store.steps.count) { _, _ in toBottom(proxy) }
+            .onChange(of: store.thinking) { _, _ in toBottom(proxy) }
+        }
+    }
+
+    private func toBottom(_ proxy: ScrollViewProxy) {
+        withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+    }
+
+    // MARK: - 输入区
+
+    private var inputBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            if needsKey {
+                Button {
+                    openSettings = true
+                } label: {
+                    Label("还没填模型密钥，点这里去设置", systemImage: "key")
+                        .font(.footnote)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16).padding(.top, 8)
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                // 想说的话可能不止一行，让它自己长，最多六行。
+                TextField("说点什么", text: $draft, axis: .vertical)
+                    .lineLimit(1...6)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 20))
+                    .focused($focused)
+
+                Button(action: submit) {
+                    Image(systemName: store.thinking ? "ellipsis" : "arrow.up")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(canSend ? AnyShapeStyle(.tint)
+                                            : AnyShapeStyle(.quaternary), in: Circle())
+                }
+                .disabled(!canSend)
+                .animation(.easeInOut(duration: 0.15), value: canSend)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+        .background(.bar)
+        .sheet(isPresented: $openSettings) { SettingsView() }
+    }
+
+    private var needsKey: Bool { store.settings.apiKey.isEmpty }
+
+    private var canSend: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.thinking
+    }
+
+    private func submit() {
+        let q = draft
+        draft = ""
+        // 不收键盘：多半还要接着说下一句。
+        Task { await store.send(q) }
+    }
+
+    private func startWith(_ text: String) {
+        draft = text
+        focused = true
+    }
+
     // 工具调用那些中间消息不用给人看。
     var shownMessages: [Message] {
         store.messages.filter { ($0.role == "user" || $0.role == "assistant")
             && !$0.content.isEmpty }
+    }
+}
+
+/// 空着的时候给几句现成的，省得第一次打开不知道能说什么。
+/// 点一下只是填进输入框，不直接发——让人有机会改。
+struct Starters: View {
+    let pick: (String) -> Void
+
+    private let examples = [
+        "今天还有什么要做的？",
+        "把明天上午空出来",
+        "这周花了多少钱",
+        "记一笔：午饭 35 块",
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("可以这么使唤它")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            ForEach(examples, id: \.self) { e in
+                Button { pick(e) } label: {
+                    Text(e)
+                        .font(.callout)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(.quaternary, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

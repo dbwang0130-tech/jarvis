@@ -56,10 +56,31 @@ UDID=${DEVICE_ID:-$(xcrun devicectl list devices 2>/dev/null \
 say "Team $TEAM / 设备 $UDID"
 
 say "编译并签名"
-xcodebuild -project "$PROJ" -scheme Jarvis -configuration Debug \
-  -destination "id=$UDID" -allowProvisioningUpdates \
-  DEVELOPMENT_TEAM="$TEAM" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" \
-  build
+# 第一次连这台手机时，Xcode 会顺手把开发证书和描述文件办掉
+# （-allowProvisioningUpdates），所以证书不用预先存在。
+LOG=$(mktemp)
+if ! xcodebuild -project "$PROJ" -scheme Jarvis -configuration Debug \
+     -destination "id=$UDID" -allowProvisioningUpdates \
+     DEVELOPMENT_TEAM="$TEAM" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" \
+     build 2>&1 | tee "$LOG"; then
+	# 几个第一次装必踩的，直接说清楚怎么办，别让人去翻 xcodebuild 的输出。
+	if grep -q "Developer Mode disabled" "$LOG"; then
+		rm -f "$LOG"
+		die "手机上的「开发者模式」没开（iOS 16 以后加的一道开关，
+这台手机被 Xcode 碰过一次之后才会在设置里出现）：
+
+  设置 → 隐私与安全性 → 开发者模式 → 打开 → 按提示重启手机
+
+重启解锁后会再弹一个确认框，点「打开」。然后再跑一次。"
+	fi
+	if grep -q "no devices from which to generate" "$LOG"; then
+		rm -f "$LOG"
+		die "Apple 那头还没认下这台设备。手机保持解锁、插好，等一会儿再跑一次。"
+	fi
+	rm -f "$LOG"
+	die "编译失败，上面是 xcodebuild 的输出。"
+fi
+rm -f "$LOG"
 
 APP=$(xcodebuild -project "$PROJ" -scheme Jarvis -configuration Debug \
   -destination "id=$UDID" DEVELOPMENT_TEAM="$TEAM" -showBuildSettings 2>/dev/null \
