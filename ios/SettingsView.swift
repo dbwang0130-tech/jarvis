@@ -19,7 +19,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("模型") {
+                Section {
                     Picker("服务商", selection: $provider) {
                         ForEach(providers, id: \.self) { Text($0).tag($0) }
                     }
@@ -33,6 +33,8 @@ struct SettingsView: View {
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
+                } header: {
+                    Text("模型")
                 } footer: {
                     Text("密钥存在本机钥匙串里，不会跟着 iCloud 走。")
                 }

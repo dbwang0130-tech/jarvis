@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract
+.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract ios-check
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -44,6 +44,18 @@ ios-framework:
 		exit 1; }
 	gomobile bind -target=ios -o ios/Mobile.xcframework ./mobile
 	@echo "生成好了：ios/Mobile.xcframework，拖进 Xcode 项目即可"
+
+# 拿真正的 iOS SDK 类型检查 Swift 代码。macOS 上编能过不代表 iOS 上能过——
+# 不少 SwiftUI 的初始化器只在 iOS 有，或者签名不一样。需要完整 Xcode。
+ios-check:
+	@xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1 || { \
+		echo "需要完整 Xcode："; \
+		echo "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"; \
+		exit 1; }
+	xcrun -sdk iphoneos swiftc -typecheck \
+		-sdk $$(xcrun --sdk iphoneos --show-sdk-path) \
+		-target arm64-apple-ios17.0 ios/*.swift
+	@echo "Swift 代码在 iOS SDK 下检查通过"
 
 # 验两端的 JSON 契约：Go 真实出参能不能被 iOS 真正在用的 Models.swift 解开。
 # 只要 swiftc（命令行工具就有），不需要完整 Xcode。

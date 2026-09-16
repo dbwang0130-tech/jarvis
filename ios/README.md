@@ -108,6 +108,17 @@ app 挂掉。
 用户回话。日程和记账改的都是本地文件、都可逆，所以 iOS 端固定跑在
 「自动整理」档，不会中途拦着问你。
 
+## 改代码之后
+
+```sh
+make ios-check      # Swift 在 iOS SDK 下类型检查（需要完整 Xcode）
+make ios-contract   # 两端 JSON 字段名和可选性对不对得上（只要 swiftc）
+```
+
+`ios-contract` 值得每次动 `mobile/` 的结构体或 `Models.swift` 时跑一遍：
+Go 改了字段名、或让某个数组变回 nil，Go 自己的测试照样绿，装到手机上才
+发现界面一片空白。
+
 ## 改了 Go 代码之后
 
 ```sh
