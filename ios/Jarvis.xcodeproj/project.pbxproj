@@ -8,13 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		F485BAF143B9CC993287EEF9 /* JarvisApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7F8AC7997F46B9A22C269E /* JarvisApp.swift */; };
-		7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5464F1D332FD60C84FF7555B /* Vault.swift */; };
 		939EF22E8168702EA6A3BD9B /* Bridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D07C43188251FCFF33B98AC2 /* Bridge.swift */; };
-		621910C5F045309EAEBB1B6A /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090A09C1465CE23ABD827A8F /* Store.swift */; };
-		BA6FE2EC1562EB2EFF447CDA /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ACDE73AD888934E32EB25F9 /* Models.swift */; };
-		484365F4C183DDFCE32CCAA6 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11FD182F6BBEFF87A5F395CA /* Views.swift */; };
-		EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */; };
 		FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED29F84A2C8136AC729D9F6 /* Keychain.swift */; };
+		D25F2AD2996ABF22EB6249C7 /* Markdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13CC7509BE6ABAE9789FB465 /* Markdown.swift */; };
+		BA6FE2EC1562EB2EFF447CDA /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ACDE73AD888934E32EB25F9 /* Models.swift */; };
+		EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */; };
+		621910C5F045309EAEBB1B6A /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090A09C1465CE23ABD827A8F /* Store.swift */; };
+		7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5464F1D332FD60C84FF7555B /* Vault.swift */; };
+		484365F4C183DDFCE32CCAA6 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11FD182F6BBEFF87A5F395CA /* Views.swift */; };
 		527DBBB620101CD45838B4C5 /* Mobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F72C3D408040F7EF956AD77D /* Mobile.xcframework */; };
 		5141E406C9BDE2AAC9E6F7A1 /* Mobile.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = F72C3D408040F7EF956AD77D /* Mobile.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -35,13 +36,14 @@
 
 /* Begin PBXFileReference section */
 		7F7F8AC7997F46B9A22C269E /* JarvisApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisApp.swift; sourceTree = "<group>"; };
-		5464F1D332FD60C84FF7555B /* Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vault.swift; sourceTree = "<group>"; };
 		D07C43188251FCFF33B98AC2 /* Bridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bridge.swift; sourceTree = "<group>"; };
-		090A09C1465CE23ABD827A8F /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
-		8ACDE73AD888934E32EB25F9 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		11FD182F6BBEFF87A5F395CA /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
-		6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		EED29F84A2C8136AC729D9F6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		13CC7509BE6ABAE9789FB465 /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
+		8ACDE73AD888934E32EB25F9 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		090A09C1465CE23ABD827A8F /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
+		5464F1D332FD60C84FF7555B /* Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vault.swift; sourceTree = "<group>"; };
+		11FD182F6BBEFF87A5F395CA /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		F72C3D408040F7EF956AD77D /* Mobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Mobile.xcframework; sourceTree = "<group>"; };
 		38A007151ABE87CC01A5B6E9 /* Jarvis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jarvis.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -62,13 +64,14 @@
 			isa = PBXGroup;
 			children = (
 				7F7F8AC7997F46B9A22C269E /* JarvisApp.swift */,
-				5464F1D332FD60C84FF7555B /* Vault.swift */,
 				D07C43188251FCFF33B98AC2 /* Bridge.swift */,
-				090A09C1465CE23ABD827A8F /* Store.swift */,
-				8ACDE73AD888934E32EB25F9 /* Models.swift */,
-				11FD182F6BBEFF87A5F395CA /* Views.swift */,
-				6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */,
 				EED29F84A2C8136AC729D9F6 /* Keychain.swift */,
+				13CC7509BE6ABAE9789FB465 /* Markdown.swift */,
+				8ACDE73AD888934E32EB25F9 /* Models.swift */,
+				6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */,
+				090A09C1465CE23ABD827A8F /* Store.swift */,
+				5464F1D332FD60C84FF7555B /* Vault.swift */,
+				11FD182F6BBEFF87A5F395CA /* Views.swift */,
 				F72C3D408040F7EF956AD77D /* Mobile.xcframework */,
 				328EC33DF3954DC9B83FA285 /* Products */,
 			);
@@ -152,13 +155,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				F485BAF143B9CC993287EEF9 /* JarvisApp.swift in Sources */,
-				7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */,
 				939EF22E8168702EA6A3BD9B /* Bridge.swift in Sources */,
-				621910C5F045309EAEBB1B6A /* Store.swift in Sources */,
-				BA6FE2EC1562EB2EFF447CDA /* Models.swift in Sources */,
-				484365F4C183DDFCE32CCAA6 /* Views.swift in Sources */,
-				EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */,
 				FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */,
+				D25F2AD2996ABF22EB6249C7 /* Markdown.swift in Sources */,
+				BA6FE2EC1562EB2EFF447CDA /* Models.swift in Sources */,
+				EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */,
+				621910C5F045309EAEBB1B6A /* Store.swift in Sources */,
+				7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */,
+				484365F4C183DDFCE32CCAA6 /* Views.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -171,22 +175,22 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
 					"$(inherited)",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				ONLY_ACTIVE_ARCH = YES;
-				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -196,15 +200,15 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
-				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_VERSION = 5.0;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;

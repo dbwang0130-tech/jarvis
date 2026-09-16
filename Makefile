@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract ios-check ios-install
+.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract ios-check ios-install ios-project
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -45,6 +45,11 @@ ios-framework:
 		exit 1; }
 	gomobile bind -target=ios -o ios/Mobile.xcframework ./mobile
 	@echo "生成好了：ios/Mobile.xcframework，拖进 Xcode 项目即可"
+
+# 重新生成 Xcode 工程。加了 .swift 就跑一下——工程里的文件清单是生成的，
+# 忘了跑的表现是 cannot find 'X' in scope，看着像代码错其实是文件没进工程。
+ios-project:
+	@python3 ios/genproject.py
 
 # 装到插着的 iPhone 上。条件不齐会说明白差什么。
 ios-install:

@@ -58,11 +58,16 @@ say "Team $TEAM / 设备 $UDID"
 say "编译并签名"
 # 第一次连这台手机时，Xcode 会顺手把开发证书和描述文件办掉
 # （-allowProvisioningUpdates），所以证书不用预先存在。
+# 输出重定向到文件再回放，不走管道：管道的退出码是最后一个命令（tee）的，
+# 编译失败也会被当成成功，然后把上一次的旧包装到手机上。
 LOG=$(mktemp)
-if ! xcodebuild -project "$PROJ" -scheme Jarvis -configuration Debug \
-     -destination "id=$UDID" -allowProvisioningUpdates \
-     DEVELOPMENT_TEAM="$TEAM" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" \
-     build 2>&1 | tee "$LOG"; then
+xcodebuild -project "$PROJ" -scheme Jarvis -configuration Debug \
+  -destination "id=$UDID" -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM="$TEAM" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" \
+  build >"$LOG" 2>&1
+STATUS=$?
+cat "$LOG"
+if [ $STATUS -ne 0 ]; then
 	# 几个第一次装必踩的，直接说清楚怎么办，别让人去翻 xcodebuild 的输出。
 	if grep -q "Developer Mode disabled" "$LOG"; then
 		rm -f "$LOG"
@@ -76,6 +81,11 @@ if ! xcodebuild -project "$PROJ" -scheme Jarvis -configuration Debug \
 	if grep -q "no devices from which to generate" "$LOG"; then
 		rm -f "$LOG"
 		die "Apple 那头还没认下这台设备。手机保持解锁、插好，等一会儿再跑一次。"
+	fi
+	if grep -q "cannot find .* in scope" "$LOG"; then
+		rm -f "$LOG"
+		die "有源文件不在 Xcode 工程里。新加了 .swift 就跑一下：
+  make ios-project"
 	fi
 	rm -f "$LOG"
 	die "编译失败，上面是 xcodebuild 的输出。"

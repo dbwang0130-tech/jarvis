@@ -4,11 +4,11 @@
       <BuildActionEntries>
          <BuildActionEntry buildForTesting = "YES" buildForRunning = "YES" buildForProfiling = "YES" buildForArchiving = "YES" buildForAnalyzing = "YES">
             <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "0E8A3AD980EC179856012B7E"
-               BuildableName = "Jarvis.app"
-               BlueprintName = "Jarvis"
-               ReferencedContainer = "container:Jarvis.xcodeproj">
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "0E8A3AD980EC179856012B7E"
+            BuildableName = "Jarvis.app"
+            BlueprintName = "Jarvis"
+            ReferencedContainer = "container:Jarvis.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
