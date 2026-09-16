@@ -44,6 +44,18 @@ check("AskOutput(出错)") {
     return e
 }
 
+check("AskOutput(干完活)") {
+    let a = try dec.decode(AskOutput.self, from: try load("ask_ok.json"))
+    guard a.history.count == 4 else { throw Err("history 应该有 4 条，实际 \(a.history.count)") }
+    // 只调工具那条消息 content 是空的，但必须能解出来而不是抛错。
+    let toolCaller = a.history[1]
+    guard toolCaller.role == "assistant", toolCaller.content.isEmpty,
+          toolCaller.toolCalls?.first?.function?.name == "schedule_item" else {
+        throw Err("只调工具的那条消息解错了：\(toolCaller)")
+    }
+    return "reply=\(a.reply) history=\(a.history.count) steps=\(a.steps?.count ?? 0)"
+}
+
 // AskInput 方向相反，是 Swift 编码给 Go 的，字段名同样得对上。
 check("AskInput 编码") {
     let inp = AskInput(files: ["a.org": "* TODO x"], ledger: "", question: "今天干嘛",

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/mobile"
 )
 
@@ -59,6 +60,28 @@ func main() {
 	// 出错那条路同样要能解，不然用户看到的是解码失败而不是真正的原因。
 	write(dir, "snapshot_error.json", mobile.Snapshot("不是 JSON"))
 	write(dir, "ask_error.json", mobile.Ask("不是 JSON"))
+
+	// Ask 干完活时的形状。history 里那条「只调工具不说话」的 assistant 消息
+	// 是关键：agent.Message.Content 带 omitempty，空串会让整个 content 键消失。
+	// 真机上第一次让秘书动日程就栽在这儿——Swift 解不出来，整轮作废。
+	ok, err := json.Marshal(mobile.AskOutput{
+		Reply: "挪好了。",
+		Files: map[string]string{"work.org": "改过的内容"},
+		History: []agent.Message{
+			{Role: "user", Content: "把周会挪到周五"},
+			{Role: "assistant", ToolCalls: []agent.ToolCall{{
+				ID: "call_1", Type: "function",
+				Function: agent.FunctionCall{Name: "schedule_item", Arguments: `{"ref":"work.org:9"}`},
+			}}},
+			{Role: "tool", ToolCallID: "call_1", Name: "schedule_item", Content: "已安排"},
+			{Role: "assistant", Content: "挪好了。"},
+		},
+		Steps: []mobile.Step{{Kind: "tool", Name: "schedule_item", Text: "ref=work.org:9"}},
+	})
+	if err != nil {
+		panic(err)
+	}
+	write(dir, "ask_ok.json", string(ok))
 }
 
 func write(dir, name, content string) {

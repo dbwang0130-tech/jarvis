@@ -92,6 +92,22 @@ struct Message: Codable, Hashable {
     }
 }
 
+/// Go 那边的 agent.Message 是 OpenAI 的 wire 格式，`content` 带 omitempty——
+/// 模型只调工具不说话的那条消息，content 是空串，**整个 key 会被丢掉**。
+/// 非可选的 String 解到「键不存在」直接抛错，一轮对话就整个作废。
+/// 那几个 tag 不能动（发回模型时要合规），所以在这头容忍。
+extension Message {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        role = try c.decodeIfPresent(String.self, forKey: .role) ?? ""
+        content = try c.decodeIfPresent(String.self, forKey: .content) ?? ""
+        toolCalls = try c.decodeIfPresent([ToolCall].self, forKey: .toolCalls)
+        toolCallID = try c.decodeIfPresent(String.self, forKey: .toolCallID)
+        name = try c.decodeIfPresent(String.self, forKey: .name)
+        reasoningContent = try c.decodeIfPresent(String.self, forKey: .reasoningContent)
+    }
+}
+
 struct ToolCall: Codable, Hashable {
     var id: String?
     var type: String?

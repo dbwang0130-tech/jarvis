@@ -366,7 +366,9 @@ struct ChatView: View {
     private func submit() {
         let q = draft
         draft = ""
-        // 不收键盘：多半还要接着说下一句。
+        // 发完把键盘收掉：秘书要想一会儿，键盘杵着挡掉半屏，
+        // 正好这段时间是要看它干了什么的。
+        focused = false
         Task { await store.send(q) }
     }
 
@@ -421,7 +423,13 @@ struct Bubble: View {
     var body: some View {
         HStack {
             if isUser { Spacer(minLength: 40) }
-            Text(message.content)
+            Group {
+                if isUser {
+                    Text(message.content)
+                } else {
+                    MarkdownText(text: message.content)
+                }
+            }
                 .padding(10)
                 .background(isUser ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary),
                             in: RoundedRectangle(cornerRadius: 12))
