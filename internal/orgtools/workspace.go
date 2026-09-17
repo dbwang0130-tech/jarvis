@@ -2,6 +2,7 @@
 package orgtools
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -106,6 +107,24 @@ func refOf(d *org.Document, n *org.Node) string {
 var refRe = regexp.MustCompile(`^(.+?):(\d+)$`)
 
 // resolve 按 ref 定位节点；行号漂移时退回按标题匹配。
+// save 把改动写回磁盘，顺带处理「文件被别人改过」这件事。
+//
+// 撞上之后必须把那份重新读进来，否则手里这份永远是旧的，之后每一次保存
+// 都会被拒，直到重启——拒绝是为了让人重来一次，不是把路堵死。
+//
+// 重读之后行号全变了，所以不能替调用方重试：得让模型重新查一次引用。
+// 错误信息里说的就是这件事。
+func (w *Workspace) save(d *org.Document) error {
+	err := d.Save()
+	if !errors.Is(err, org.ErrStale) {
+		return err
+	}
+	// 整个集合重读。只重读一个文件的话，别的文件也可能同时被改过，
+	// 而下一次保存会撞上同样的事——一次收干净。
+	_ = w.Coll.Reload()
+	return fmt.Errorf("%w。我已经重新读了一遍，请重新查一次引用再改", err)
+}
+
 func (w *Workspace) resolve(ref, title string) (*org.Document, *org.Node, error) {
 	ref = strings.TrimSpace(ref)
 	m := refRe.FindStringSubmatch(ref)

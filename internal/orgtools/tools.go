@@ -525,7 +525,7 @@ func (w *Workspace) setPlanning(ref, title, key, timeStr string) (string, bool, 
 	}
 	w.snapshot(doc)
 	n = doc.SetPlanning(n, key, ts)
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 
@@ -554,7 +554,7 @@ func (w *Workspace) setState(ref, title, state string) (string, bool, error) {
 	if err != nil {
 		return "", false, fmt.Errorf("%w（该文件可用状态：%s）", err, strings.Join(doc.AllKeywords(), "、"))
 	}
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	// 重复任务标完成后，org 的做法是把状态退回原样、把计划推到下一个周期。
@@ -586,7 +586,7 @@ func (w *Workspace) setPriority(ref, title, prio string) (string, bool, error) {
 	doc.Lines[n.Line] = n.String()
 	doc.Reparse()
 	n = doc.NodeAt(n.Line)
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	w.record(doc, "把「%s」的优先级设为 %s", n.Title, orDash(prio))
@@ -607,7 +607,7 @@ func (w *Workspace) setRepeat(ref, title, rule string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	if r == nil {
@@ -645,7 +645,7 @@ func (w *Workspace) deleteItem(ref, title string) (string, bool, error) {
 	kids := n.DescendantCount()
 	w.snapshot(doc)
 	doc.DeleteNode(n)
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	w.record(doc, "删除「%s」", title)
@@ -730,7 +730,7 @@ func (w *Workspace) createItem(args map[string]any) (string, bool, error) {
 	if n == nil {
 		return "", false, fmt.Errorf("创建条目失败")
 	}
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	w.record(doc, "新建「%s」", title)
@@ -778,7 +778,7 @@ func (w *Workspace) clockIn(ref, title string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	w.record(doc, "开始为「%s」计时", n.Title)
@@ -829,7 +829,7 @@ func (w *Workspace) clockOut(ref, title string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	w.record(doc, "结束「%s」计时", n.Title)
@@ -846,7 +846,7 @@ func (w *Workspace) addNote(ref, title, text string) (string, bool, error) {
 	}
 	w.snapshot(doc)
 	doc.AddNote(n, strings.TrimSpace(text), w.now())
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	w.record(doc, "为「%s」记了一条笔记", n.Title)
@@ -860,7 +860,7 @@ func (w *Workspace) demote(ref, title string) (string, bool, error) {
 	}
 	w.snapshot(doc)
 	n = doc.Demote(n)
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	w.record(doc, "把「%s」降了一级", n.Title)
@@ -877,7 +877,7 @@ func (w *Workspace) promote(ref, title string) (string, bool, error) {
 	}
 	w.snapshot(doc)
 	n = doc.Promote(n)
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	w.record(doc, "把「%s」升了一级", n.Title)
@@ -905,7 +905,7 @@ func (w *Workspace) moveItem(ref, title, parentRef string) (string, bool, error)
 	if err != nil {
 		return "", false, err
 	}
-	if err := doc.Save(); err != nil {
+	if err := w.save(doc); err != nil {
 		return "", false, err
 	}
 	where := "文件顶层"

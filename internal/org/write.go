@@ -3,8 +3,10 @@ package org
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -29,10 +31,24 @@ func (d *Document) NodeAt(line int) *Node {
 	return nil
 }
 
+// ErrStale 表示文件在我们读进来之后被别人改过。
+//
+// 这时候整文件写回去会把对方的改动抹掉。真发生过：手机上加了一条行程，
+// 电脑这边的 jarvis 手里拿着加之前的内容，一保存就冲没了——而手机内存里
+// 还留着那条，界面照常显示，两边都看不出异样，等发现时已经找不回来。
+var ErrStale = errors.New("文件在外部被改过")
+
 // Save 把 Lines 写回磁盘。
+//
+// 写之前先比一下修改时间：跟读进来那会儿对不上就是有人动过，直接拒绝，
+// 让调用方重新读一遍再改。**整文件覆盖的写法必须配一道这样的检查**，
+// 否则两个地方同时用（手机 + 电脑）就是在互相吃改动。
 func (d *Document) Save() error {
 	if d.Path == "" {
 		return fmt.Errorf("文档没有关联路径")
+	}
+	if err := d.checkFresh(); err != nil {
+		return err
 	}
 	text := strings.Join(d.Lines, "\n")
 	if len(d.Lines) > 0 {
@@ -45,6 +61,27 @@ func (d *Document) Save() error {
 		d.ModTime = fi.ModTime()
 	}
 	return nil
+}
+
+// checkFresh 确认磁盘上还是我们读进来的那一版。
+//
+// 没记过修改时间（新建的文档、测试里手搓的）就不拦——那种情况下没有
+// 「别人改过」这回事。文件不存在也不拦，写回去正好把它建出来。
+func (d *Document) checkFresh() error {
+	if d.ModTime.IsZero() {
+		return nil
+	}
+	fi, err := os.Stat(d.Path)
+	if err != nil {
+		return nil
+	}
+	if fi.ModTime().Equal(d.ModTime) {
+		return nil
+	}
+	return fmt.Errorf("%w：%s 在 %s 被改过，而我读的是 %s 那一版。"+
+		"先重新读一遍再改，直接写回去会把那边的改动抹掉",
+		ErrStale, filepath.Base(d.Path),
+		fi.ModTime().Format("15:04:05"), d.ModTime.Format("15:04:05"))
 }
 
 func (d *Document) insertLines(at int, lines ...string) {

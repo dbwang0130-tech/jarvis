@@ -140,9 +140,18 @@ final class Store: ObservableObject, AskEvents {
                 let changed = out.files ?? [:]
                 let newLedger = out.ledger
                 let newMemory = out.memory
-                try await Task.detached(priority: .userInitiated) { [vault] in
-                    try vault.write(orgFiles: changed, ledger: newLedger, memory: newMemory)
+                // 把动手前那份一起交上去，写之前对一遍——盘上的要是已经变了，
+                // 说明电脑那头也改过，整文件覆盖会把人家的改动抹掉。
+                let before = files
+                let conflicts = try await Task.detached(priority: .userInitiated) { [vault] in
+                    try vault.write(orgFiles: changed, ledger: newLedger,
+                                    memory: newMemory, expecting: before)
                 }.value
+                if !conflicts.isEmpty {
+                    lastError = conflictNote(conflicts)
+                    await reload()
+                    return
+                }
 
                 for (name, content) in changed { files[name] = content }
                 if let newLedger { ledger = newLedger }
@@ -253,9 +262,15 @@ final class Store: ObservableObject, AskEvents {
         }
         guard let changed = r.files, !changed.isEmpty else { return true }
         do {
-            try await Task.detached(priority: .userInitiated) { [vault] in
-                try vault.write(orgFiles: changed, ledger: nil)
+            let before = files
+            let conflicts = try await Task.detached(priority: .userInitiated) { [vault] in
+                try vault.write(orgFiles: changed, ledger: nil, expecting: before)
             }.value
+            if !conflicts.isEmpty {
+                lastError = conflictNote(conflicts)
+                await reload()
+                return false
+            }
             for (name, content) in changed { files[name] = content }
             await reparse()
             await refreshReminders()
@@ -313,6 +328,15 @@ final class Store: ObservableObject, AskEvents {
         var m = settings.model
         m.apiKey = settings.apiKey
         return m
+    }
+
+    /// 撞车了要说清楚发生了什么、接下来该怎么办。
+    ///
+    /// 说「保存失败」是不够的——人会以为再点一次就好，而再点一次还是撞。
+    /// 得让他知道电脑那头改过、这边的改动没保存、刷新之后重来一次。
+    private func conflictNote(_ files: [String]) -> String {
+        "电脑那头也改了 \(files.joined(separator: "、"))，"
+            + "这次的改动没有保存——已经重新读了一遍，请再操作一次。"
     }
 
     /// 取一条条目的详情。列表里没有正文，点开才去问 Go。

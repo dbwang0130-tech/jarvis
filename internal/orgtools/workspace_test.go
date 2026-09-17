@@ -8,6 +8,7 @@ import (
 
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/org"
+	"time"
 )
 
 const sample = `#+TITLE: 测试
@@ -185,5 +186,52 @@ func TestRecordKeepsSummary(t *testing.T) {
 	ws.ResetChanges()
 	if ws.HasChanges() {
 		t.Fatal("清过之后不该还有改动")
+	}
+}
+
+// 撞上「文件被别人改过」之后要能接着用：重读一遍，让模型重新查引用再改。
+// 不重读的话手里这份永远是旧的，之后每一次保存都被拒，直到重启。
+func TestSaveReloadsAfterConflict(t *testing.T) {
+	ws, path := newWS(t)
+	// 挑一个不循环的条目——循环任务标完成会退回 TODO 并把日期推到下一轮，
+	// 断言 DONE 会白白扑空。
+	ref := refTo(t, ws, "补开题报告")
+
+	// 别人在这期间往文件末尾加了一条。
+	raw := readBack(t, path)
+	if err := os.WriteFile(path, []byte(raw+"* TODO 电脑那头加的\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	// 这一次该被拒。
+	_, _, err := toolByName(t, ws, "set_todo_state").
+		Run(`{"ref":"` + ref + `","state":"DONE"}`)
+	if err == nil {
+		t.Fatal("文件被改过了，不该直接覆盖")
+	}
+	if !strings.Contains(err.Error(), "重新查") {
+		t.Errorf("没说清楚接下来该怎么办：%v", err)
+	}
+	// 最要紧的：别人加的那条还在。
+	if !strings.Contains(readBack(t, path), "电脑那头加的") {
+		t.Fatal("把别人的改动冲掉了")
+	}
+
+	// 重读之后重新查引用，这一次该成。
+	ref = refTo(t, ws, "补开题报告")
+	if _, _, err := toolByName(t, ws, "set_todo_state").
+		Run(`{"ref":"` + ref + `","state":"DONE"}`); err != nil {
+		t.Fatalf("重读之后该能改：%v", err)
+	}
+	got := readBack(t, path)
+	if !strings.Contains(got, "DONE 补开题报告") {
+		t.Errorf("改动没落盘：\n%s", got)
+	}
+	if !strings.Contains(got, "电脑那头加的") {
+		t.Errorf("重试时把别人的改动冲掉了：\n%s", got)
 	}
 }

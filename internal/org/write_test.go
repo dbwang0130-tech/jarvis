@@ -1,6 +1,9 @@
 package org
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -570,5 +573,68 @@ CLOCK: [2026-09-14 Mon 16:00]--[2026-09-14 Mon 16:30] =>  0:30
 	half := time.Date(2026, 9, 14, 9, 30, 0, 0, time.Local)
 	if got := parent.ClockedBetween(half, half.Add(time.Hour)); got != time.Hour {
 		t.Errorf("部分重叠 = %v", got)
+	}
+}
+
+// 整文件覆盖的写法必须配一道「文件被别人改过没有」的检查，否则两个地方
+// 同时用（手机 + 电脑）就是在互相吃改动。
+//
+// 这条是补的真实事故：手机上加了一条行程，电脑这边手里拿着加之前的内容，
+// 一保存就把它冲没了——而手机内存里还留着，界面照常显示，两边都看不出
+// 异样，等发现时已经找不回来。
+func TestSaveRefusesStale(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.org")
+	if err := os.WriteFile(path, []byte("* TODO 原来的\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	coll, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := coll.Docs[0]
+
+	// 别人在这期间改了文件。mtime 的精度有限，往后挪一点确保测得出来。
+	if err := os.WriteFile(path, []byte("* TODO 原来的\n* TODO 别人加的\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	doc.Lines = append(doc.Lines, "* TODO 我加的")
+	err = doc.Save()
+	if !errors.Is(err, ErrStale) {
+		t.Fatalf("该拒绝保存，实际 err=%v", err)
+	}
+
+	// 最要紧的：别人的改动还在。
+	raw, _ := os.ReadFile(path)
+	if !strings.Contains(string(raw), "别人加的") {
+		t.Errorf("把别人的改动冲掉了：\n%s", raw)
+	}
+	if strings.Contains(string(raw), "我加的") {
+		t.Errorf("拒绝了却还是写进去了：\n%s", raw)
+	}
+
+	// 重新读一遍之后就该能存了——拒绝是为了让人重来，不是把路堵死。
+	coll, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coll.Docs[0].Lines = append(coll.Docs[0].Lines, "* TODO 重来一次")
+	if err := coll.Docs[0].Save(); err != nil {
+		t.Fatalf("重新读过之后该能存：%v", err)
+	}
+}
+
+// 没有修改时间记录的（新建的文档、测试里手搓的）不该被拦住。
+func TestSaveAllowsBrandNew(t *testing.T) {
+	doc := Parse("* TODO 新的\n")
+	doc.Path = filepath.Join(t.TempDir(), "new.org")
+	if err := doc.Save(); err != nil {
+		t.Fatalf("新建的文档该能存：%v", err)
 	}
 }

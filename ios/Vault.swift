@@ -100,15 +100,36 @@ final class Vault {
 
     /// 把改动写回去。只写真的变过的那几个文件——多写一次就多一次
     /// iCloud 同步，也多一次跟 Mac 那头撞车的机会。
-    func write(orgFiles: [String: String], ledger: String?, memory: String? = nil) throws {
+    /// 把改动写回去。
+    ///
+    /// `expecting` 是我们**动手改之前**读到的那份内容。写之前先对一遍：
+    /// 盘上的还是那份，才敢覆盖；已经变了说明电脑那头在这期间也改过，
+    /// 这时候整文件写回去就会把人家的改动抹掉。
+    ///
+    /// 这不是假想的风险——真发生过一次：手机上加了一条出差行程，电脑端的
+    /// jarvis 手里拿着加之前的内容，一保存就把它冲没了，而手机自己内存里
+    /// 还留着，界面照常显示，看不出任何异样。
+    ///
+    /// 冲突的那几个文件不写，名字报回去让界面说清楚——宁可让人重做一次
+    /// 改动，也不能悄悄吃掉另一头的。
+    @discardableResult
+    func write(orgFiles: [String: String], ledger: String?, memory: String? = nil,
+               expecting: [String: String] = [:]) throws -> [String] {
         guard let root else { throw VaultError.notConfigured }
-        try withAccess(to: root) {
+        return try withAccess(to: root) {
             let orgDir = root.appendingPathComponent("org", isDirectory: true)
             let dir = FileManager.default.fileExists(atPath: orgDir.path) ? orgDir : root
 
+            var conflicts: [String] = []
             for (name, content) in orgFiles {
                 // 只取基名，别让 ../ 这种东西跑出目录。
-                let url = dir.appendingPathComponent((name as NSString).lastPathComponent)
+                let base = (name as NSString).lastPathComponent
+                let url = dir.appendingPathComponent(base)
+
+                if let before = expecting[name], changedUnderneath(url, since: before) {
+                    conflicts.append(base)
+                    continue
+                }
                 try writeCoordinated(url, content)
             }
             if let ledger {
@@ -117,7 +138,17 @@ final class Vault {
             if let memory {
                 try writeCoordinated(root.appendingPathComponent("memory.md"), memory)
             }
+            return conflicts
         }
+    }
+
+    /// 盘上的内容跟我们动手前读到的那份是不是已经不一样了。
+    ///
+    /// 读不出来（文件被删了、还没下载下来）**不算冲突**——那种情况下
+    /// 写回去是对的，拦着反而把改动卡死在手机里。
+    private func changedUnderneath(_ url: URL, since before: String) -> Bool {
+        guard let now = try? readCoordinated(url) else { return false }
+        return now != before
     }
 
     // MARK: - iCloud 的占位符
