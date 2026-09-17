@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 struct RootView: View {
     @StateObject private var store = Store()
+    @Environment(\.scenePhase) private var phase
 
     var body: some View {
         Group {
@@ -18,6 +19,13 @@ struct RootView: View {
         .environmentObject(store)
         .task {
             if store.isConfigured { await store.reload() }
+        }
+        // 切回前台重读一次。「跟电脑上是同一份」这句话得落到实处——
+        // 在 Mac 上改完、拿起手机看到的还是旧的，那就不算同一份。
+        // reload 内部会合并并发请求，跟首次进来那次撞上也不会读两遍。
+        .onChange(of: phase) { _, now in
+            guard now == .active, store.isConfigured else { return }
+            Task { await store.reload() }
         }
     }
 }
@@ -107,7 +115,9 @@ struct AgendaView: View {
         }
         .navigationTitle("日程")
         .refreshable { await store.reload() }
-        .overlay { EmptyHint(show: store.snapshot.days.isEmpty, text: "这几天没有安排") }
+        .overlay { EmptyHint(show: store.snapshot.days.isEmpty && !store.loading, text: "这几天没有安排") }
+        .overlay { LoadingHint(isEmpty: store.snapshot.days.isEmpty) }
+        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .toolbar { SettingsLink() }
         // 整个列表共用一个详情页。挂在每一行上的话，有多少行就建多少套
         // 呈现状态，滚起来明显发涩。
@@ -131,7 +141,9 @@ struct TodosView: View {
         .searchable(text: $keyword, prompt: "找点什么")
         .navigationTitle("待办")
         .refreshable { await store.reload() }
-        .overlay { EmptyHint(show: shown.isEmpty, text: "没有待办") }
+        .overlay { EmptyHint(show: shown.isEmpty && !store.loading, text: "没有待办") }
+        .overlay { LoadingHint(isEmpty: shown.isEmpty) }
+        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .safeAreaInset(edge: .bottom) { truncatedHint }
         .toolbar { SettingsLink() }
         .sheet(item: $selected) { ItemDetail(item: $0) }
@@ -225,6 +237,8 @@ struct LedgerTab: View {
         }
         .navigationTitle("财务")
         .refreshable { await store.reload() }
+        .overlay { LoadingHint(isEmpty: store.snapshot.ledger == nil) }
+        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .toolbar { SettingsLink() }
     }
 }
@@ -487,6 +501,44 @@ struct EmptyHint: View {
     var body: some View {
         if show {
             ContentUnavailableView(text, systemImage: "tray")
+        }
+    }
+}
+
+/// 读失败得说出来。原来只有设置页和秘书页显示 lastError，日程/待办/财务
+/// 下拉刷新失败什么都不显示——转圈停了、数字没变，看着就像「本来就没变化」。
+struct ErrorBar: View {
+    @EnvironmentObject var store: Store
+
+    var body: some View {
+        if let err = store.lastError, !err.isEmpty {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                Text(err).lineLimit(3)
+                Spacer(minLength: 0)
+                Button { store.lastError = nil } label: { Image(systemName: "xmark") }
+                    .accessibilityLabel("关掉")
+            }
+            .font(.caption)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(Color.red.opacity(0.9))
+        }
+    }
+}
+
+/// 第一次进来要读 iCloud、下载占位符，可能要等几秒。
+/// 不给指示的话就是一屏空白，像是数据没了。
+struct LoadingHint: View {
+    @EnvironmentObject var store: Store
+    let isEmpty: Bool
+
+    var body: some View {
+        if store.loading && isEmpty {
+            VStack(spacing: 10) {
+                ProgressView()
+                Text("正在读 iCloud…").font(.footnote).foregroundStyle(.secondary)
+            }
         }
     }
 }

@@ -31,10 +31,37 @@ final class Store: ObservableObject {
     private var files: [String: String] = [:]
     private var ledger = ""
 
+    /// 正在跑的那次刷新。下拉、切回前台、首次打开三条路会撞上，
+    /// 撞上就跟着等前一个，而不是各读各的文件最后谁写谁赢。
+    private var refreshing: Task<Void, Never>?
+
+    /// 秘书干活期间来过刷新请求，等它收工再补一次。
+    private var refreshWanted = false
+
     // MARK: - 读
 
     func reload() async {
         guard vault.isConfigured else { return }
+
+        // 秘书正拿着改之前的内容在干活。这会儿把文件重读进来，等它回话时
+        // 写回的还是基于旧内容算出来的，会把刚同步下来的改动冲掉。
+        // 记一笔，等它收工再刷。
+        if thinking {
+            refreshWanted = true
+            return
+        }
+
+        if let t = refreshing {
+            await t.value
+            return
+        }
+        let t = Task { await doReload() }
+        refreshing = t
+        await t.value
+        refreshing = nil
+    }
+
+    private func doReload() async {
         loading = true
         lastError = nil
         defer { loading = false }
@@ -54,7 +81,7 @@ final class Store: ObservableObject {
                 lastError = err
             }
         } catch {
-            lastError = error.localizedDescription
+            lastError = "读不到 iCloud 里的内容：\(error.localizedDescription)"
         }
     }
 
@@ -89,6 +116,7 @@ final class Store: ObservableObject {
             lastError = err
             messages.append(Message(role: "__local", content: "没办成：\(err)"))
             persist()
+            await refreshIfMissed()
             return
         }
 
@@ -112,6 +140,17 @@ final class Store: ObservableObject {
                 lastError = "改动没写回去：\(error.localizedDescription)"
             }
         }
+
+        await refreshIfMissed()
+    }
+
+    /// 干活期间来过的刷新请求，收工后补上。
+    /// 得先把 thinking 放开——defer 还没轮到，不放开 reload 会以为它还在忙。
+    private func refreshIfMissed() async {
+        guard refreshWanted else { return }
+        refreshWanted = false
+        thinking = false
+        await reload()
     }
 
     func clearChat() {
