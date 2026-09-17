@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -150,35 +148,25 @@ func askWith(inputJSON string, host Host) string {
 		return askError("还没设模型服务商")
 	}
 
-	dir, err := os.MkdirTemp("", "jarvis-mobile-")
+	wd, err := newWorkdir(in.Files, "jarvis-ask-")
 	if err != nil {
-		return askError("建不了临时目录：%v", err)
+		return askError("%v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer wd.close()
 
-	orgDir := filepath.Join(dir, "org")
-	if err := os.MkdirAll(orgDir, 0o700); err != nil {
-		return askError("建不了临时目录：%v", err)
+	orgDir := wd.orgDir
+	ledgerPath := wd.path("ledger.dat")
+	if err := wd.write("ledger.dat", in.Ledger); err != nil {
+		return askError("%v", err)
 	}
-	for name, content := range in.Files {
-		// 只取文件名，不让 ../ 这类东西跑出临时目录。
-		p := filepath.Join(orgDir, filepath.Base(name))
-		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
-			return askError("写临时文件失败：%v", err)
-		}
-	}
-	ledgerPath := filepath.Join(dir, "ledger.dat")
-	if err := os.WriteFile(ledgerPath, []byte(in.Ledger), 0o600); err != nil {
-		return askError("写临时账本失败：%v", err)
-	}
-	memoryPath := filepath.Join(dir, "memory.md")
-	if err := os.WriteFile(memoryPath, []byte(in.Memory), 0o600); err != nil {
-		return askError("写临时记忆失败：%v", err)
+	memoryPath := wd.path("memory.md")
+	if err := wd.write("memory.md", in.Memory); err != nil {
+		return askError("%v", err)
 	}
 
 	cfg := config.Config{
 		Files:      []string{orgDir},
-		Inbox:      filepath.Join(orgDir, defaultInbox(in.Files)),
+		Inbox:      wd.inboxPath(),
 		LedgerFile: ledgerPath,
 		WorkHours:  config.WorkHours{Start: 9, End: 22},
 		AgendaDays: 7,
@@ -246,7 +234,7 @@ func askWith(inputJSON string, host Host) string {
 	}
 
 	out := AskOutput{Reply: reply, History: ag.History, Steps: steps, Stopped: stopped}
-	out.Files, err = changedFiles(orgDir, in.Files)
+	out.Files, err = wd.changed()
 	if err != nil {
 		return askError("读回改动失败：%v", err)
 	}
@@ -263,49 +251,6 @@ func (o *AskOutput) normalize() {
 	if o.History == nil {
 		o.History = []agent.Message{}
 	}
-}
-
-// changedFiles 把临时目录读回来，只挑出内容变过的和新建的。
-func changedFiles(dir string, before map[string]string) (map[string]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	var changed map[string]string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".org") {
-			continue
-		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			return nil, err
-		}
-		if string(raw) == before[e.Name()] {
-			continue // 一个字都没动
-		}
-		if changed == nil {
-			changed = map[string]string{}
-		}
-		changed[e.Name()] = string(raw)
-	}
-	return changed, nil
-}
-
-// defaultInbox 挑一个收件箱：优先叫 inbox.org 的，没有就按名字取第一个。
-// 新建条目没指定文件时会落在这儿。
-func defaultInbox(files map[string]string) string {
-	if _, ok := files["inbox.org"]; ok {
-		return "inbox.org"
-	}
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
-	}
-	if len(names) == 0 {
-		return "inbox.org"
-	}
-	sort.Strings(names)
-	return names[0]
 }
 
 func orDefault(v, def int) int {

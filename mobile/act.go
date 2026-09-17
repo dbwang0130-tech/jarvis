@@ -3,8 +3,6 @@ package mobile
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -55,22 +53,12 @@ func Act(inputJSON string) string {
 	}
 	applyTimeZone(in.TZ)
 
-	dir, err := os.MkdirTemp("", "jarvis-act-")
+	wd, err := newWorkdir(in.Files, "jarvis-act-")
 	if err != nil {
-		return marshal(&ActOutput{Error: fmt.Sprintf("建不了临时目录：%v", err)})
+		return marshal(&ActOutput{Error: err.Error()})
 	}
-	defer os.RemoveAll(dir)
-
-	orgDir := filepath.Join(dir, "org")
-	if err := os.MkdirAll(orgDir, 0o700); err != nil {
-		return marshal(&ActOutput{Error: fmt.Sprintf("建不了临时目录：%v", err)})
-	}
-	for name, content := range in.Files {
-		p := filepath.Join(orgDir, filepath.Base(name))
-		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
-			return marshal(&ActOutput{Error: fmt.Sprintf("写临时文件失败：%v", err)})
-		}
-	}
+	defer wd.close()
+	orgDir := wd.orgDir
 
 	coll, err := org.Load(orgDir)
 	if err != nil {
@@ -78,7 +66,7 @@ func Act(inputJSON string) string {
 	}
 	cfg := config.Config{
 		Files:     []string{orgDir},
-		Inbox:     filepath.Join(orgDir, defaultInbox(in.Files)),
+		Inbox:     wd.inboxPath(),
 		WorkHours: config.WorkHours{Start: 9, End: 22},
 	}
 	ws := orgtools.NewWorkspace(coll, cfg)
@@ -90,7 +78,7 @@ func Act(inputJSON string) string {
 	}
 
 	out := ActOutput{Message: msg}
-	out.Files, err = changedFiles(orgDir, in.Files)
+	out.Files, err = wd.changed()
 	if err != nil {
 		return marshal(&ActOutput{Error: fmt.Sprintf("读回改动失败：%v", err)})
 	}
