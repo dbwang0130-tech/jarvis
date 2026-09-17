@@ -12,6 +12,7 @@
 		FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED29F84A2C8136AC729D9F6 /* Keychain.swift */; };
 		D25F2AD2996ABF22EB6249C7 /* Markdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13CC7509BE6ABAE9789FB465 /* Markdown.swift */; };
 		BA6FE2EC1562EB2EFF447CDA /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ACDE73AD888934E32EB25F9 /* Models.swift */; };
+		F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7CAA3A267067C3AC9942A5 /* Session.swift */; };
 		EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */; };
 		621910C5F045309EAEBB1B6A /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090A09C1465CE23ABD827A8F /* Store.swift */; };
 		7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5464F1D332FD60C84FF7555B /* Vault.swift */; };
@@ -40,6 +41,7 @@
 		EED29F84A2C8136AC729D9F6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		13CC7509BE6ABAE9789FB465 /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
 		8ACDE73AD888934E32EB25F9 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		FF7CAA3A267067C3AC9942A5 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		090A09C1465CE23ABD827A8F /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		5464F1D332FD60C84FF7555B /* Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vault.swift; sourceTree = "<group>"; };
@@ -68,6 +70,7 @@
 				EED29F84A2C8136AC729D9F6 /* Keychain.swift */,
 				13CC7509BE6ABAE9789FB465 /* Markdown.swift */,
 				8ACDE73AD888934E32EB25F9 /* Models.swift */,
+				FF7CAA3A267067C3AC9942A5 /* Session.swift */,
 				6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */,
 				090A09C1465CE23ABD827A8F /* Store.swift */,
 				5464F1D332FD60C84FF7555B /* Vault.swift */,
@@ -159,6 +162,7 @@
 				FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */,
 				D25F2AD2996ABF22EB6249C7 /* Markdown.swift in Sources */,
 				BA6FE2EC1562EB2EFF447CDA /* Models.swift in Sources */,
+				F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */,
 				EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */,
 				621910C5F045309EAEBB1B6A /* Store.swift in Sources */,
 				7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */,

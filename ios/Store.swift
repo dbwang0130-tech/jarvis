@@ -22,6 +22,11 @@ final class Store: ObservableObject {
 
     var isConfigured: Bool { vault.isConfigured }
 
+    init() {
+        // 打开就接着上次那段对话。
+        messages = SessionStore.load()
+    }
+
     // 手上这份文件内容。对话要用它做入参，也用来判断哪些真的变了。
     private var files: [String: String] = [:]
     private var ledger = ""
@@ -83,11 +88,13 @@ final class Store: ObservableObject {
         if let err = out.error, !err.isEmpty {
             lastError = err
             messages.append(Message(role: "__local", content: "没办成：\(err)"))
+            persist()
             return
         }
 
         messages = out.history
         steps = out.steps ?? []
+        persist()
 
         // 秘书改了东西就写回 iCloud，然后重新解析一遍。
         if (out.files?.isEmpty == false) || (out.ledger?.isEmpty == false) {
@@ -110,6 +117,13 @@ final class Store: ObservableObject {
     func clearChat() {
         messages = []
         steps = []
+        persist()
+    }
+
+    /// 存档可能有几百 KB，别占着主线程。
+    private func persist() {
+        let now = messages
+        Task.detached(priority: .utility) { SessionStore.save(now) }
     }
 
     /// 手上的内容变了，重新解析一遍给界面。

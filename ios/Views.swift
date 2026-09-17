@@ -306,6 +306,8 @@ struct ChatView: View {
             // 一开始滚就收键盘。.interactively 要手指往下拖着才收，
             // 而这里想要的是「去看上面说了什么」，滚动本身就是意思。
             .scrollDismissesKeyboard(.immediately)
+            // 恢复出来的对话直接落在底部，不然打开看到的是最早那几句。
+            .defaultScrollAnchor(.bottom)
             .onChange(of: store.messages.count) { _, _ in toBottom(proxy) }
             .onChange(of: store.steps.count) { _, _ in toBottom(proxy) }
             .onChange(of: store.thinking) { _, _ in toBottom(proxy) }
