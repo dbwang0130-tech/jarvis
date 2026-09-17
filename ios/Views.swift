@@ -24,7 +24,12 @@ struct RootView: View {
             guard store.isConfigured else { return }
             // 提醒默认开着，但权限得当面要一次——不要的话开关开着也白搭，
             // 而且用户会以为是 app 坏了。
-            if store.settings.remind { _ = await Notifier.requestPermission() }
+            //
+            // **不能等它**：requestAuthorization 会一直挂到用户点了为止，
+            // 写成 await 的话，弹窗没点之前一个字都不会加载，界面就那么空着。
+            if store.settings.remind {
+                Task { _ = await Notifier.requestPermission() }
+            }
             await store.reload()
         }
         // 切回前台重读一次。「跟电脑上是同一份」这句话得落到实处——
@@ -90,10 +95,8 @@ struct MainTabs: View {
                 // 单个气泡，笔画密度跟旁边的清单图标一致；两个气泡叠起来的那个
                 // 在 28pt 下糊成一团，比另外三个都重。三个点直接表达「在说话」。
                 .tabItem { Label("Jarvis", systemImage: "ellipsis.bubble") }
-            NavigationStack { AgendaView() }
+            NavigationStack { PlannerView() }
                 .tabItem { Label("日程", systemImage: "calendar") }
-            NavigationStack { TodosView() }
-                .tabItem { Label("待办", systemImage: "checklist") }
             NavigationStack { LedgerTab() }
                 .tabItem { Label("财务", systemImage: "yensign.circle") }
         }
@@ -101,6 +104,54 @@ struct MainTabs: View {
 }
 
 // MARK: - 日程
+
+/// 日程只有一个入口，里面两种看法。
+///
+/// 原来是并排两个 tab，而实际数据里它们是同一批东西：用户的 11 条未完成
+/// 全都排了期，「没排期」一条都没有，于是待办就是日程摊平的样子，
+/// 今天那组跟日程的今天 100% 重合。
+///
+/// 滴答清单、Todoist、Notion Calendar 都是「一个入口 + 视图切换」，
+/// 并排两个清单展示同一批数据才是特例。合并之后标签也从四个减到三个。
+struct PlannerView: View {
+    @EnvironmentObject var store: Store
+    @AppStorage("jarvis.planner.mode") private var raw = Mode.days.rawValue
+
+    enum Mode: String, CaseIterable {
+        case days = "按天"
+        case list = "清单"
+    }
+
+    private var mode: Binding<Mode> {
+        Binding(get: { Mode(rawValue: raw) ?? .days }, set: { raw = $0.rawValue })
+    }
+
+    var body: some View {
+        Group {
+            if mode.wrappedValue == .days {
+                AgendaView()
+            } else {
+                TodosView()
+            }
+        }
+        .navigationTitle("日程")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await store.reload() }
+        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("", selection: mode) {
+                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 160)
+            }
+            SettingsLink()
+            QuickAddButton()
+        }
+    }
+}
 
 struct AgendaView: View {
     @EnvironmentObject var store: Store
@@ -132,13 +183,10 @@ struct AgendaView: View {
                 }
             }
         }
-        .navigationTitle("日程")
-        .refreshable { await store.reload() }
+        // 标题、刷新、工具栏、错误条都归 PlannerView 管——两边都写一遍的话
+        // 工具栏会出现两个 + 和两个齿轮。
         .overlay { EmptyHint(show: store.snapshot.days.isEmpty && !store.loading, text: "这几天没有安排") }
-        .toolbar { QuickAddButton() }
         .overlay { LoadingHint(isEmpty: store.snapshot.days.isEmpty) }
-        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
-        .toolbar { SettingsLink() }
         // 整个列表共用一个详情页。挂在每一行上的话，有多少行就建多少套
         // 呈现状态，滚起来明显发涩。
         .sheet(item: $selected) { ItemDetail(item: $0) }
@@ -225,13 +273,9 @@ struct TodosView: View {
             }
         }
         .searchable(text: $keyword, prompt: "找点什么")
-        .navigationTitle("待办")
-        .refreshable { await store.reload() }
         .overlay { EmptyHint(show: groups.isEmpty && !store.loading, text: "没有待办") }
         .overlay { LoadingHint(isEmpty: groups.isEmpty) }
-        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .safeAreaInset(edge: .bottom) { truncatedHint }
-        .toolbar { QuickAddButton() }
         .sheet(item: $selected) { ItemDetail(item: $0) }
         // 过滤和分组放进 task：写成计算属性的话，每次 body 重算都要把整份
         // 待办再过一遍。id 变了旧任务会被取消，顺带就是输入防抖。
@@ -301,6 +345,8 @@ struct TodosView: View {
 
 struct LedgerTab: View {
     @EnvironmentObject var store: Store
+    /// 展开过就记住——每次进来都要再点一下，比不收起来还烦。
+    @AppStorage("jarvis.ledger.showTxns") private var showTxns = false
 
     var body: some View {
         Group {
@@ -330,19 +376,40 @@ struct LedgerTab: View {
                             ForEach(group.items) { AccountRow(account: $0) }
                         }
                     }
-                    // 按天分组。一条一条平铺的话，日期在每行重复一遍，
-                    // 而「今天花了多少」这个最常问的问题反而得自己加。
-                    ForEach(dayGroups(l.recent), id: \.date) { day in
-                        Section {
-                            ForEach(day.items) { TxnRow(txn: $0) }
-                        } header: {
+                    // 流水默认收起来。打开财务页多半是想看「还剩多少」，
+                    // 而流水能有几十上百条，一进来就糊一屏，净资产反倒被挤走了。
+                    Section {
+                        Button {
+                            withAnimation(.snappy) { showTxns.toggle() }
+                        } label: {
                             HStack {
-                                Text(dayTitle(day.date))
+                                Label("最近流水", systemImage: "list.bullet.rectangle")
                                 Spacer()
-                                if day.spent > 0 {
-                                    Text("支出 " + moneyRound(day.spent))
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
+                                Text("\(l.recent.count) 笔")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: showTxns ? "chevron.up" : "chevron.down")
+                                    .font(.caption).foregroundStyle(.tertiary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if showTxns {
+                        // 按天分组。一条一条平铺的话，日期在每行重复一遍，
+                        // 而「今天花了多少」这个最常问的问题反而得自己加。
+                        ForEach(dayGroups(l.recent), id: \.date) { day in
+                            Section {
+                                ForEach(day.items) { TxnRow(txn: $0) }
+                            } header: {
+                                HStack {
+                                    Text(dayTitle(day.date))
+                                    Spacer()
+                                    if day.spent > 0 {
+                                        Text("支出 " + moneyRound(day.spent))
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                             }
                         }
