@@ -169,6 +169,12 @@ struct MailTab: View {
     /// 只读本地，一个网络请求都不发——打开页面要秒开。
     private func reload() {
         let r = store.mail(op: "list")
+        // 错误不能丢。之前这儿把 r.error 扔了，本地库打不开时界面只显示
+        // 「没有邮件」，看着像没同步过——实际是读失败了。
+        if let err = r.error, !err.isEmpty {
+            store.lastError = err
+            return
+        }
         items = r.items
     }
 

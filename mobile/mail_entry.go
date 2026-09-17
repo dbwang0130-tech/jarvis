@@ -148,7 +148,6 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 
 	// 先把拉到的并进本地，再分拣——万一分拣那步出岔子（没配模型、网络断了），
 	// 邮件本身已经存下来了，不用再拉一遍。
-	triaged := 0
 	byAccount := map[string][]mailstore.Record{}
 	for _, it := range items {
 		m := it.Msg
@@ -164,7 +163,23 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 		}
 	}
 
-	if in.Model.Provider != "" && in.Model.APIKey != "" && len(items) > 0 {
+	// **先看本地判过没有**。分拣要花一次模型调用，而同一封信的结论不会变——
+	// 服务器重发、换设备、翻页拉回旧邮件，都会让已经判过的又出现在清单里。
+	// 把已知结论填回会话，模型看到的清单上它们已经有标签了，不会重判。
+	known := knownVerdicts(store, byAccount)
+	need := 0
+	for _, it := range items {
+		v, ok := known[mailKeyOf(it.Msg.Account, uint32(it.Msg.UID))]
+		if ok {
+			_ = sess.SetTriage(it.No, v)
+			continue
+		}
+		need++
+	}
+
+	triaged := 0
+	// 一封没判过的都没有就别调模型了——白花一次钱换一句「都判过了」。
+	if need > 0 && in.Model.Provider != "" && in.Model.APIKey != "" {
 		triaged = runTriage(sess, in)
 		for _, it := range items {
 			if it.Verdict == "" {
@@ -176,8 +191,11 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 	}
 
 	msg := fmt.Sprintf("拉到 %d 封新的", len(items))
-	if triaged > 0 {
+	switch {
+	case triaged > 0:
 		msg += fmt.Sprintf("，分拣了 %d 封", triaged)
+	case need == 0 && len(items) > 0:
+		msg += "，都是判过的，没再麻烦模型"
 	}
 	if len(res.Errors) > 0 {
 		var parts []string
@@ -189,7 +207,31 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 	return marshal(&MailOutput{Items: listLocal(store, in.Accounts), Message: msg})
 }
 
-// runTriage 让模型把这一批分拣一遍，返回判了几封。
+// knownVerdicts 从本地索引里捞出已经判过的结论，键是「账号:UID」。
+func knownVerdicts(store *mailstore.Store, byAccount map[string][]mailstore.Record) map[string]mail.Triage {
+	out := map[string]mail.Triage{}
+	for acct := range byAccount {
+		recs, err := store.Load(acct)
+		if err != nil {
+			continue
+		}
+		for _, r := range recs {
+			if r.Verdict == "" {
+				continue
+			}
+			out[mailKeyOf(r.Account, r.UID)] = mail.Triage{
+				Verdict: mail.Verdict(r.Verdict), Reason: r.Reason,
+			}
+		}
+	}
+	return out
+}
+
+func mailKeyOf(account string, uid uint32) string {
+	return account + ":" + strconv.FormatUint(uint64(uid), 10)
+}
+
+// runTriage 让模型把还没判过的分拣一遍，返回判了几封。
 //
 // 走的是跟秘书同一套工具（list_mail + triage），不是另写一遍判断规则——
 // 两处各判各的，手机上和电脑上对同一封信会给出不同结论。
@@ -202,7 +244,8 @@ func runTriage(sess *mail.Session, in MailInput) int {
 	ag.Stream = false
 	ag.Auto = agent.AutoClean
 	_, _ = ag.Ask(context.Background(),
-		"把清单里的邮件分拣一遍，只调工具，不用写汇报。", nil)
+		"把清单里**还没有处置标签**的邮件分拣一遍。已经有标签的跳过，"+
+			"别重判。只调工具，不用写汇报。", nil)
 
 	n := 0
 	for _, it := range sess.Items() {

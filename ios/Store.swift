@@ -266,16 +266,21 @@ final class Store: ObservableObject, AskEvents {
         }
     }
 
-    /// 索引跟着 iCloud 走，正文留本地。
+    /// 邮件库放本机，**不进 iCloud**。
     ///
-    /// 索引里的分拣结论是花过模型调用才得到的，丢了要重新判一遍——值得放到
-    /// 能扛住重装、将来也能跟电脑共用的地方。正文大但随时能从服务器重拉，
-    /// 塞进 iCloud 只会拖慢同步、多出冲突副本。
+    /// 试过把索引放进 iCloud 目录（想跟电脑共用分拣结论），结果重开 app
+    /// 邮件全空了——iCloud 那个目录是**安全作用域 URL**，只有在
+    /// startAccessingSecurityScopedResource 里面才能碰，而 Go 是直接按
+    /// 路径写的，一律被拒。
+    ///
+    /// 要做也不是不行（把每次调用包进作用域里），但今天没有收益：电脑那边
+    /// 还没用这套存储，共用不起来；而一个每次同步都重写的文件放进 iCloud，
+    /// 不走 NSFileCoordinator 就是在等冲突副本。等桌面端也接上再说。
+    ///
+    /// 重复拉取的真正原因是 ~/.config 在 iOS 上写不了，同步进度一直没存下来——
+    /// 那个已经修了。
     nonisolated var mailIndexDir: String {
-        if let root = vault.root {
-            return root.appendingPathComponent("mail").path
-        }
-        return Paths.support.appendingPathComponent("mail").path
+        Paths.support.appendingPathComponent("mail").path
     }
 
     nonisolated var mailBodyDir: String {
