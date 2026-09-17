@@ -85,6 +85,7 @@ final class Store: ObservableObject, AskEvents {
             if let err = snap.error, !err.isEmpty {
                 lastError = err
             }
+            await refreshReminders()
         } catch {
             lastError = "读不到 iCloud 里的内容：\(error.localizedDescription)"
         }
@@ -218,6 +219,14 @@ final class Store: ObservableObject, AskEvents {
         }.value
     }
 
+    /// 按当前这份日程重排提醒。每次读完文件都重排一遍——条目的时间变了、
+    /// 标完成了，提醒也得跟着变。
+    func refreshReminders() async {
+        let s = settings
+        await Notifier.reschedule(from: snapshot,
+                                  leadMinutes: s.remindLead, enabled: s.remind)
+    }
+
     /// 叫停正在跑的那一轮。已经做完的改动会照常写回来，不会白干。
     func stopThinking() {
         guard thinking else { return }
@@ -229,11 +238,13 @@ final class Store: ObservableObject, AskEvents {
     /// 走的是跟秘书同一套 orgtools 工具，所以改动的语义、撤销点、循环任务
     /// 的处理都跟对话里说一句完全一致，不会出现两套写回逻辑各走各的。
     @discardableResult
-    func act(_ op: String, on ref: String, days: Int = 0) async -> Bool {
+    func act(_ op: String, on ref: String, days: Int = 0, title: String = "",
+             scheduled: String = "", priority: String = "") async -> Bool {
         guard !thinking else { return false }   // 秘书正拿着旧内容干活，别插队
         let f = files
         let r = await Task.detached(priority: .userInitiated) {
-            Bridge.act(files: f, ref: ref, op: op, days: days)
+            Bridge.act(files: f, ref: ref, op: op, days: days,
+                       title: title, scheduled: scheduled, priority: priority)
         }.value
 
         if let err = r.error, !err.isEmpty {
@@ -247,6 +258,7 @@ final class Store: ObservableObject, AskEvents {
             }.value
             for (name, content) in changed { files[name] = content }
             await reparse()
+            await refreshReminders()
             return true
         } catch {
             lastError = "改动没写回去：\(error.localizedDescription)"
@@ -280,6 +292,9 @@ struct Settings: Codable {
     var profile = ""
     /// 邮箱账号。密码不在这儿，单独进钥匙串。
     var mail: [MailAccount] = []
+    /// 到点提醒，以及提前几分钟。
+    var remind = true
+    var remindLead = 10
 
     var apiKey: String {
         get { Keychain.read(key: "jarvis.apiKey") ?? "" }
@@ -289,7 +304,7 @@ struct Settings: Codable {
     private static let storeKey = "jarvis.settings"
 
     enum CodingKeys: String, CodingKey {
-        case model, profile, mail
+        case model, profile, mail, remind, remindLead
     }
 
     /// 传给 Go 的那份：现从钥匙串取密码填上，只带配全了的账号。
@@ -312,6 +327,8 @@ struct Settings: Codable {
         model = try c.decodeIfPresent(ModelConfig.self, forKey: .model) ?? ModelConfig()
         profile = try c.decodeIfPresent(String.self, forKey: .profile) ?? ""
         mail = try c.decodeIfPresent([MailAccount].self, forKey: .mail) ?? []
+        remind = try c.decodeIfPresent(Bool.self, forKey: .remind) ?? true
+        remindLead = try c.decodeIfPresent(Int.self, forKey: .remindLead) ?? 10
     }
 
     static func load() -> Settings {

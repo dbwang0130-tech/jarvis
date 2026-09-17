@@ -12,6 +12,8 @@ struct SettingsView: View {
     @State private var profile = ""
     @State private var picking = false
     @State private var checking = false
+    @State private var remind = true
+    @State private var remindLead = 10
     @State private var check: ModelCheck?
 
     /// 跟桌面端那份预设表一致。
@@ -83,6 +85,30 @@ struct SettingsView: View {
                     TextField("一句话介绍自己，秘书据此判断什么算要紧",
                               text: $profile, axis: .vertical)
                         .lineLimit(2...6)
+                }
+
+                Section {
+                    Toggle(isOn: $remind) {
+                        Label("到点提醒", systemImage: "bell")
+                    }
+                    .onChange(of: remind) { _, on in
+                        if on { Task { _ = await Notifier.requestPermission(); saveRemind() } }
+                        else { saveRemind() }
+                    }
+
+                    if remind {
+                        Picker(selection: $remindLead) {
+                            ForEach([0, 5, 10, 15, 30, 60], id: \.self) { m in
+                                Text(m == 0 ? "准点" : "提前 \(m) 分钟").tag(m)
+                            }
+                        } label: {
+                            Label("什么时候响", systemImage: "clock")
+                        }
+                        .onChange(of: remindLead) { _, _ in saveRemind() }
+                    }
+                } footer: {
+                    Text("提醒是在打开 app 时一次性排好的——iOS 不让 app 在后台一直醒着。"
+                         + "所以在电脑上新加的事，手机上得打开一次才会排上它的提醒。")
                 }
 
                 Section {
@@ -184,6 +210,17 @@ struct SettingsView: View {
         }
     }
 
+    /// 提醒这两项是开关，改完立刻生效，不等「存」那一下——
+    /// 拨了开关却没反应会让人以为坏了。
+    private func saveRemind() {
+        var s = store.settings
+        s.remind = remind
+        s.remindLead = remindLead
+        s.save()
+        store.settings = s
+        Task { await store.refreshReminders() }
+    }
+
     private func load() {
         let s = store.settings
         provider = s.model.provider.isEmpty ? "deepseek" : s.model.provider
@@ -191,6 +228,8 @@ struct SettingsView: View {
         baseURL = s.model.baseURL
         profile = s.profile
         apiKey = s.apiKey
+        remind = s.remind
+        remindLead = s.remindLead
     }
 
     private func save() {

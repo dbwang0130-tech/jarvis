@@ -53,10 +53,12 @@ enum Bridge {
 
     /// 直接对一个条目做一件事，不经过模型。标完成这种事界面已经握着 ref 了，
     /// 让模型跑一趟要好几秒和一次 API 调用。
-    static func act(files: [String: String], ref: String,
-                    op: String, days: Int = 0) -> ActResult {
+    static func act(files: [String: String], ref: String, op: String,
+                    days: Int = 0, title: String = "",
+                    scheduled: String = "", priority: String = "") -> ActResult {
         let input: [String: Any] = [
             "files": files, "ref": ref, "op": op, "days": days,
+            "title": title, "scheduled": scheduled, "priority": priority,
             "tz": TimeZone.current.identifier,
         ]
         guard let json = encode(input) else {

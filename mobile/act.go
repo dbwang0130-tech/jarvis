@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dabao/jarvis/internal/agent"
@@ -23,11 +24,18 @@ import (
 type ActInput struct {
 	Files map[string]string `json:"files"`
 	Ref   string            `json:"ref"`
-	// Op 是要做的事：done / start / stop / postpone / cancel / undone。
+	// Op 是要做的事：done / start / stop / postpone / cancel / undone / create。
 	Op string `json:"op"`
 	// Days 给 postpone 用，推迟几天，零值按 1 天算。
-	Days int    `json:"days"`
-	TZ   string `json:"tz"`
+	Days int `json:"days"`
+
+	// 下面几项给 create 用。
+	Title     string `json:"title"`
+	Scheduled string `json:"scheduled"` // 2006-01-02 或 2006-01-02 15:04
+	Priority  string `json:"priority"`
+	File      string `json:"file"` // 写进哪个文件，留空写收件箱
+
+	TZ string `json:"tz"`
 }
 
 // ActOutput 里的 Files 只含真变过的，跟 Ask 一个路子。
@@ -68,7 +76,11 @@ func Act(inputJSON string) string {
 	if err != nil {
 		return marshal(&ActOutput{Error: fmt.Sprintf("日程读不出来：%v", err)})
 	}
-	cfg := config.Config{Files: []string{orgDir}, WorkHours: config.WorkHours{Start: 9, End: 22}}
+	cfg := config.Config{
+		Files:     []string{orgDir},
+		Inbox:     filepath.Join(orgDir, defaultInbox(in.Files)),
+		WorkHours: config.WorkHours{Start: 9, End: 22},
+	}
 	ws := orgtools.NewWorkspace(coll, cfg)
 	tools := toolsByName(orgtools.NewSkill(ws))
 
@@ -106,6 +118,23 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 	ref := map[string]any{"ref": in.Ref}
 
 	switch in.Op {
+	case "create":
+		title := strings.TrimSpace(in.Title)
+		if title == "" {
+			return "", fmt.Errorf("没说要记什么")
+		}
+		args := map[string]any{"title": title}
+		if in.Scheduled != "" {
+			args["scheduled"] = in.Scheduled
+		}
+		if in.Priority != "" {
+			args["priority"] = in.Priority
+		}
+		if in.File != "" {
+			args["file"] = in.File
+		}
+		return call("create_item", args)
+
 	case "done":
 		// 还在计时就先收尾，不然那条 CLOCK 一直挂着。收不掉不算事。
 		_, _ = call("clock_out", ref)

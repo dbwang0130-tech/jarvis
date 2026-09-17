@@ -21,7 +21,11 @@ struct RootView: View {
         // 图标那个人是圆润的软塑感，字跟着圆一点才像一家人。
         .fontDesign(.rounded)
         .task {
-            if store.isConfigured { await store.reload() }
+            guard store.isConfigured else { return }
+            // 提醒默认开着，但权限得当面要一次——不要的话开关开着也白搭，
+            // 而且用户会以为是 app 坏了。
+            if store.settings.remind { _ = await Notifier.requestPermission() }
+            await store.reload()
         }
         // 切回前台重读一次。「跟电脑上是同一份」这句话得落到实处——
         // 在 Mac 上改完、拿起手机看到的还是旧的，那就不算同一份。
@@ -148,6 +152,7 @@ struct AgendaView: View {
         .navigationTitle("日程")
         .refreshable { await store.reload() }
         .overlay { EmptyHint(show: store.snapshot.days.isEmpty && !store.loading, text: "这几天没有安排") }
+        .toolbar { QuickAddButton() }
         .overlay { LoadingHint(isEmpty: store.snapshot.days.isEmpty) }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .toolbar { SettingsLink() }
@@ -175,6 +180,7 @@ struct TodosView: View {
         .navigationTitle("待办")
         .refreshable { await store.reload() }
         .overlay { EmptyHint(show: shown.isEmpty && !store.loading, text: "没有待办") }
+        .toolbar { QuickAddButton() }
         .overlay { LoadingHint(isEmpty: shown.isEmpty) }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .safeAreaInset(edge: .bottom) { truncatedHint }
@@ -860,6 +866,20 @@ struct LoadingHint: View {
                 ProgressView()
                 Text("正在读 iCloud…").font(.footnote).foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+/// 「记一条」。放在工具栏而不是右下角悬浮按钮——右下角会跟标签栏挤在一起，
+/// 而且这几页本来就有工具栏。
+struct QuickAddButton: ToolbarContent {
+    @State private var open = false
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { open = true } label: { Image(systemName: "plus") }
+                .accessibilityLabel("记一条")
+                .sheet(isPresented: $open) { QuickAddView() }
         }
     }
 }

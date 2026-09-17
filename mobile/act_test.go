@@ -116,3 +116,34 @@ func TestActBadInput(t *testing.T) {
 		}
 	}
 }
+
+// 「买牛奶」这种一句话的事，打字进对话比直接记一条还慢——得能直接新建。
+func TestActCreate(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"inbox.org": "", "work.org": actOrg},
+		Op:    "create", Title: "买牛奶", Scheduled: "2026-09-20",
+		Priority: "B", TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("不该出错：%s", out.Error)
+	}
+	body := out.Files["inbox.org"]
+	if !strings.Contains(body, "买牛奶") {
+		t.Fatalf("没记进收件箱：\n%v", out.Files)
+	}
+	if !strings.Contains(body, "2026-09-20") {
+		t.Errorf("计划时间没写上：\n%s", body)
+	}
+	if !strings.Contains(body, "[#B]") {
+		t.Errorf("优先级没写上：\n%s", body)
+	}
+	if _, ok := out.Files["work.org"]; ok {
+		t.Error("没动过的文件也交出来了")
+	}
+
+	// 标题是空的要说清楚，不能默默建一条没名字的。
+	if e := act(t, ActInput{Files: map[string]string{"inbox.org": ""},
+		Op: "create", Title: "  "}); e.Error == "" {
+		t.Error("空标题该报错")
+	}
+}
