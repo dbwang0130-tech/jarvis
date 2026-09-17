@@ -134,6 +134,14 @@ final class Store: ObservableObject {
         }.value
     }
 
+    /// 取一条条目的详情。列表里没有正文，点开才去问 Go。
+    func detail(of ref: String) async -> DetailData {
+        let f = files
+        return await Task.detached(priority: .userInitiated) {
+            Bridge.detail(files: f, ref: ref)
+        }.value
+    }
+
     // MARK: - 目录
 
     func chooseVault(_ url: URL) async {

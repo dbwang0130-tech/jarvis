@@ -11,9 +11,12 @@
 package mobile
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,10 +37,52 @@ type SnapshotInput struct {
 	Ledger string `json:"ledger"`
 	// Days 是日程往后看几天，零值按 7 天算。
 	Days int `json:"days"`
+	// TodoLimit 是待办最多给几条，零值按 1000 算。见 buildTodos。
+	TodoLimit int `json:"todo_limit"`
 	// Now 可以指定「现在」，留空就是真的现在（测试用）。
 	Now string `json:"now"`
 	// TZ 是设备的时区名（如 Asia/Shanghai）。见 applyTimeZone。
 	TZ string `json:"tz"`
+}
+
+var (
+	parseMu    sync.Mutex
+	parseKey   string
+	parseCache *org.Collection
+)
+
+// collectCached 解析一批文件，内容没变就复用上次的结果。
+//
+// Snapshot 在每次下拉刷新、每轮对话结束后都会被调一次，而文件多半一个字
+// 都没动——五千条重新解析一遍要 150ms 起步，全花在重复劳动上。只留最近
+// 一份就够了：界面任何时候看的都是同一份内容。
+//
+// 缓存的 Collection 是只读的——agenda 那边只读不写，Ask 改文件走的是自己
+// 的临时目录。哪天 agenda 开始改节点，这里要一并重新考虑。
+func collectCached(files map[string]string) *org.Collection {
+	key := filesKey(files)
+	parseMu.Lock()
+	defer parseMu.Unlock()
+	if parseCache != nil && parseKey == key {
+		return parseCache
+	}
+	c := collect(files)
+	parseKey, parseCache = key, c
+	return c
+}
+
+func filesKey(files map[string]string) string {
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	h := sha256.New()
+	for _, n := range names {
+		fmt.Fprintf(h, "%s\x00%d\x00", n, len(files[n]))
+		h.Write([]byte(files[n]))
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 var tzMu sync.Mutex
@@ -65,10 +110,12 @@ func applyTimeZone(name string) {
 
 // SnapshotOutput 是界面要显示的东西。
 type SnapshotOutput struct {
-	Days   []Day       `json:"days"`
-	Todos  []Item      `json:"todos"`
-	Ledger *LedgerView `json:"ledger,omitempty"`
-	Error  string      `json:"error,omitempty"`
+	Days  []Day  `json:"days"`
+	Todos []Item `json:"todos"`
+	// TodosTotal 是截断前的总数，界面据此提示还有多少没显示。
+	TodosTotal int         `json:"todos_total"`
+	Ledger     *LedgerView `json:"ledger,omitempty"`
+	Error      string      `json:"error,omitempty"`
 }
 
 // Day 是日程里的一天。
@@ -95,14 +142,83 @@ type Item struct {
 	Overdue  bool     `json:"overdue"`
 	Category string   `json:"category"`
 
-	// 下面这些只在详情里用，列表不显示。
-	Scheduled string     `json:"scheduled"` // 2026-09-17 14:00-16:00
+	// HasNotes 只说有没有正文，正文本身走 Detail 单独取。
+	// 正文和勾选项挂在每一条上的话，单条从约 180 字节涨到 900——
+	// 五千条就是 4.5MB，每次刷新都要过一遍 gomobile 的桥。
+	HasNotes bool   `json:"has_notes"`
+	File     string `json:"file"` // 来自哪个文件
+}
+
+// DetailInput 是 Detail 的入参：拿 ref 要一条的详情。
+type DetailInput struct {
+	Files map[string]string `json:"files"`
+	Ref   string            `json:"ref"`
+	TZ    string            `json:"tz"`
+}
+
+// DetailOutput 只带列表里没有的那几样，界面拿到后跟手上的条目合起来显示。
+type DetailOutput struct {
+	Scheduled string     `json:"scheduled"`
 	Deadline  string     `json:"deadline"`
-	Effort    string     `json:"effort"`  // :EFFORT: 属性，如 2:00
-	Clocked   int        `json:"clocked"` // 已计时分钟数
-	Notes     string     `json:"notes"`   // 条目正文
-	Boxes     []Checkbox `json:"boxes"`   // 正文里的勾选项
-	File      string     `json:"file"`    // 来自哪个文件
+	Effort    string     `json:"effort"`
+	Clocked   int        `json:"clocked"`
+	Notes     string     `json:"notes"`
+	Boxes     []Checkbox `json:"boxes"`
+	Error     string     `json:"error,omitempty"`
+}
+
+func (o *DetailOutput) normalize() {
+	if o.Boxes == nil {
+		o.Boxes = []Checkbox{}
+	}
+}
+
+// Detail 取一条条目的详情。ref 形如 work.org:12，用列表里给的那个。
+func Detail(inputJSON string) string {
+	var in DetailInput
+	if err := json.Unmarshal([]byte(inputJSON), &in); err != nil {
+		return marshal(&DetailOutput{Error: fmt.Sprintf("入参不是合法 JSON：%v", err)})
+	}
+	applyTimeZone(in.TZ)
+
+	path, line, ok := splitRef(in.Ref)
+	if !ok {
+		return marshal(&DetailOutput{Error: fmt.Sprintf("引用 %q 不合法", in.Ref)})
+	}
+	text, ok := in.Files[path]
+	if !ok {
+		return marshal(&DetailOutput{Error: fmt.Sprintf("没有文件 %s", path)})
+	}
+	doc := org.Parse(text)
+	n := doc.NodeAt(line)
+	if n == nil {
+		return marshal(&DetailOutput{Error: fmt.Sprintf("%s 第 %d 行没有条目", path, line+1)})
+	}
+
+	out := DetailOutput{
+		Scheduled: stampText(n.Scheduled),
+		Deadline:  stampText(n.Deadline),
+		Effort:    n.Props["EFFORT"],
+		Clocked:   int(n.ClockedTotal().Minutes()),
+		Notes:     strings.TrimSpace(strings.Join(n.Notes(), "\n")),
+	}
+	for _, b := range n.Boxes {
+		out.Boxes = append(out.Boxes, Checkbox{Done: b.Done, Text: b.Text})
+	}
+	return marshal(&out)
+}
+
+// splitRef 拆 "work.org:12"。文件名里可能有冒号，从最后一个切。
+func splitRef(ref string) (path string, line int, ok bool) {
+	i := strings.LastIndex(ref, ":")
+	if i < 0 {
+		return "", 0, false
+	}
+	n, err := strconv.Atoi(ref[i+1:])
+	if err != nil || n < 0 {
+		return "", 0, false
+	}
+	return ref[:i], n, true
 }
 
 // Checkbox 是正文里的一个勾选项。
@@ -156,14 +272,12 @@ func Snapshot(inputJSON string) string {
 		days = 7
 	}
 
-	coll := collect(in.Files)
+	coll := collectCached(in.Files)
 	opts := agenda.DefaultOptions()
 	opts.Now = now
 
-	out := SnapshotOutput{
-		Days:  buildDays(coll, now, days, opts),
-		Todos: buildTodos(coll),
-	}
+	out := SnapshotOutput{Days: buildDays(coll, now, days, opts)}
+	out.Todos, out.TodosTotal = buildTodos(coll, in.TodoLimit)
 	if strings.TrimSpace(in.Ledger) != "" {
 		out.Ledger = buildLedger(ledger.ParseBook(in.Ledger))
 	}
@@ -220,13 +334,25 @@ func sameDay(a, b time.Time) bool {
 	return y1 == y2 && m1 == m2 && d1 == d2
 }
 
-func buildTodos(c *org.Collection) []Item {
+// defaultTodoLimit 是待办的默认上限。这是道保险，不是真限制——
+// 未完成的待办上千条本身就说明该清理了，而不是该滑得更久。
+// 截断了会在 TodosTotal 里说清楚。
+const defaultTodoLimit = 1000
+
+func buildTodos(c *org.Collection, limit int) (items []Item, total int) {
 	its := agenda.Todos(c, agenda.TodoFilter{})
+	if limit <= 0 {
+		limit = defaultTodoLimit
+	}
+	total = len(its)
+	if len(its) > limit {
+		its = its[:limit]
+	}
 	out := make([]Item, 0, len(its))
 	for _, it := range its {
 		out = append(out, toItem(it))
 	}
-	return out
+	return out, total
 }
 
 func toItem(it agenda.Item) Item {
@@ -261,15 +387,8 @@ func toItem(it agenda.Item) Item {
 		(it.Kind == agenda.KindDeadline && it.DaysLeft <= 0)
 
 	out.File = it.Doc.Path
-	out.Scheduled = stampText(n.Scheduled)
-	out.Deadline = stampText(n.Deadline)
-	out.Effort = n.Props["EFFORT"]
-	out.Clocked = int(n.ClockedTotal().Minutes())
-	out.Notes = strings.TrimSpace(strings.Join(n.Notes(), "\n"))
-	out.Boxes = make([]Checkbox, 0, len(n.Boxes))
-	for _, b := range n.Boxes {
-		out.Boxes = append(out.Boxes, Checkbox{Done: b.Done, Text: b.Text})
-	}
+	// 正文本身不带，只说有没有——详情走 Detail 单独取。
+	out.HasNotes = len(n.Notes()) > 0
 	return out
 }
 

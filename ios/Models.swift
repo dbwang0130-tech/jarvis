@@ -18,13 +18,9 @@ struct Item: Codable, Identifiable, Hashable {
     var overdue: Bool
     var category: String
 
-    // 详情里才用的
-    var scheduled = ""
-    var deadline = ""
-    var effort = ""
-    var clocked = 0        // 已计时分钟
-    var notes = ""
-    var boxes: [Checkbox] = []
+    /// 只说有没有正文，正文本身点开详情时才取——正文和勾选项挂在每一条上，
+    /// 单条要从约 180 字节涨到 900，五千条就是几 MB 每次刷新都过一遍桥。
+    var hasNotes = false
     var file = ""
 
     var id: String { ref + kind + time }
@@ -33,7 +29,8 @@ struct Item: Codable, Identifiable, Hashable {
         case ref, kind, time, state, priority, title, parents, tags, done, total
         case repeatRule = "repeat"
         case overdue, category
-        case scheduled, deadline, effort, clocked, notes, boxes, file
+        case hasNotes = "has_notes"
+        case file
     }
 
     /// 勾选项有几个才显示进度。
@@ -68,12 +65,7 @@ extension Item {
         repeatRule = try c.decodeIfPresent(String.self, forKey: .repeatRule) ?? ""
         overdue = try c.decodeIfPresent(Bool.self, forKey: .overdue) ?? false
         category = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
-        scheduled = try c.decodeIfPresent(String.self, forKey: .scheduled) ?? ""
-        deadline = try c.decodeIfPresent(String.self, forKey: .deadline) ?? ""
-        effort = try c.decodeIfPresent(String.self, forKey: .effort) ?? ""
-        clocked = try c.decodeIfPresent(Int.self, forKey: .clocked) ?? 0
-        notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
-        boxes = try c.decodeIfPresent([Checkbox].self, forKey: .boxes) ?? []
+        hasNotes = try c.decodeIfPresent(Bool.self, forKey: .hasNotes) ?? false
         file = try c.decodeIfPresent(String.self, forKey: .file) ?? ""
     }
 }
@@ -111,10 +103,49 @@ struct LedgerView: Codable {
 struct Snapshot: Codable {
     var days: [Day]
     var todos: [Item]
+    /// 截断前的待办总数，比 todos.count 大就说明有没显示出来的。
+    var todosTotal: Int = 0
     var ledger: LedgerView?
     var error: String?
 
+    enum CodingKeys: String, CodingKey {
+        case days, todos, ledger, error
+        case todosTotal = "todos_total"
+    }
+
+    init(days: [Day], todos: [Item], ledger: LedgerView?, error: String?) {
+        self.days = days
+        self.todos = todos
+        self.todosTotal = todos.count
+        self.ledger = ledger
+        self.error = error
+    }
+
     static let empty = Snapshot(days: [], todos: [], ledger: nil, error: nil)
+}
+
+extension Snapshot {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        days = try c.decodeIfPresent([Day].self, forKey: .days) ?? []
+        todos = try c.decodeIfPresent([Item].self, forKey: .todos) ?? []
+        todosTotal = try c.decodeIfPresent(Int.self, forKey: .todosTotal) ?? todos.count
+        ledger = try c.decodeIfPresent(LedgerView.self, forKey: .ledger)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+    }
+}
+
+/// 一条条目的详情，点开才取。字段跟 mobile.DetailOutput 对应。
+struct DetailData: Codable {
+    var scheduled = ""
+    var deadline = ""
+    var effort = ""
+    var clocked = 0
+    var notes = ""
+    var boxes: [Checkbox] = []
+    var error: String?
+
+    static let empty = DetailData()
 }
 
 // MARK: - 对话

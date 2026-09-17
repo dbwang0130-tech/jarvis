@@ -33,6 +33,24 @@ enum Bridge {
         }
     }
 
+    /// 取一条条目的详情。列表里只有轻量字段，正文和勾选项点开才要。
+    static func detail(files: [String: String], ref: String) -> DetailData {
+        let input: [String: Any] = [
+            "files": files,
+            "ref": ref,
+            "tz": TimeZone.current.identifier,
+        ]
+        guard let json = encode(input) else {
+            return DetailData(error: "入参编码失败")
+        }
+        let out = callDetail(json)
+        do {
+            return try JSONDecoder().decode(DetailData.self, from: Data(out.utf8))
+        } catch {
+            return DetailData(error: "出参解不开：\(error.localizedDescription)")
+        }
+    }
+
     /// 把一句话交给秘书，返回答复和要写回的文件。
     static func ask(_ input: AskInput) -> AskOutput {
         guard let data = try? JSONEncoder().encode(input),
@@ -49,7 +67,7 @@ enum Bridge {
         }
     }
 
-    // MARK: - 跟 Go 打交道的那两下
+    // MARK: - 跟 Go 打交道的那几下
 
     // gomobile 生成的符号是「包名首字母大写 + 函数名」：mobile.Snapshot → MobileSnapshot。
     // 没连上 framework 时（比如在 macOS 上做语法检查）走下面的桩，好歹能编过。
@@ -59,6 +77,14 @@ enum Bridge {
         return MobileSnapshot(json)
         #else
         return #"{"days":[],"todos":[],"error":"Mobile framework 没连上"}"#
+        #endif
+    }
+
+    private static func callDetail(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileDetail(json)
+        #else
+        return #"{"error":"Mobile framework 没连上"}"#
         #endif
     }
 

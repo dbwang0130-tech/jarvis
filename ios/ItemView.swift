@@ -73,19 +73,14 @@ func priorityColor(_ p: String) -> Color {
 
 // MARK: - 列表里的一行
 
+/// 行只管画。点开谁由列表统一管——每行各挂一个 .sheet 的话，
+/// 列表有多少行就建多少套呈现状态，滚起来明显发涩。
 struct ItemRow: View {
     let item: Item
-    @State private var showDetail = false
 
     private var look: ItemLook { ItemLook(item) }
 
     var body: some View {
-        Button { showDetail = true } label: { content }
-            .buttonStyle(.plain)
-            .sheet(isPresented: $showDetail) { ItemDetail(item: item) }
-    }
-
-    private var content: some View {
         HStack(alignment: .top, spacing: 10) {
             leadingIcon
                 .frame(width: 22)
@@ -181,7 +176,7 @@ struct ItemRow: View {
     @ViewBuilder
     private var bottomLine: some View {
         if item.total > 0 || !item.repeatRule.isEmpty || !item.tags.isEmpty
-            || !item.notes.isEmpty {
+            || item.hasNotes {
             HStack(spacing: 8) {
                 if item.total > 0 {
                     HStack(spacing: 4) {
@@ -198,7 +193,7 @@ struct ItemRow: View {
                         .foregroundStyle(.blue)
                         .labelStyle(.tight)
                 }
-                if !item.notes.isEmpty {
+                if item.hasNotes {
                     Image(systemName: "text.alignleft")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -253,7 +248,10 @@ struct ProgressBar: View {
 
 struct ItemDetail: View {
     let item: Item
+    @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
+
+    @State private var data: DetailData?
 
     private var look: ItemLook { ItemLook(item) }
 
@@ -262,34 +260,45 @@ struct ItemDetail: View {
             List {
                 Section { header }
 
-                if !facts.isEmpty {
-                    Section {
-                        ForEach(facts, id: \.0) { fact in
-                            FactRow(icon: fact.1, name: fact.0, value: fact.2, tint: fact.3)
-                        }
-                    }
-                }
-
-                if !item.boxes.isEmpty {
-                    Section("清单") {
-                        ForEach(item.boxes) { box in
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: box.done ? "checkmark.square.fill" : "square")
-                                    .foregroundStyle(box.done ? Color.green : Color.secondary)
-                                Text(box.text)
-                                    .strikethrough(box.done, color: .secondary)
-                                    .foregroundStyle(box.done ? Color.secondary : Color.primary)
+                if let data {
+                    let facts = facts(data)
+                    if !facts.isEmpty {
+                        Section {
+                            ForEach(facts, id: \.0) { fact in
+                                FactRow(icon: fact.1, name: fact.0, value: fact.2, tint: fact.3)
                             }
-                            .font(.callout)
                         }
                     }
-                }
 
-                if !item.notes.isEmpty {
-                    Section("正文") {
-                        Text(item.notes)
-                            .font(.callout)
-                            .textSelection(.enabled)
+                    if !data.boxes.isEmpty {
+                        Section("清单") {
+                            ForEach(data.boxes) { box in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: box.done ? "checkmark.square.fill" : "square")
+                                        .foregroundStyle(box.done ? Color.green : Color.secondary)
+                                    Text(box.text)
+                                        .strikethrough(box.done, color: .secondary)
+                                        .foregroundStyle(box.done ? Color.secondary : Color.primary)
+                                }
+                                .font(.callout)
+                            }
+                        }
+                    }
+
+                    if !data.notes.isEmpty {
+                        Section("正文") {
+                            Text(data.notes).font(.callout).textSelection(.enabled)
+                        }
+                    }
+
+                    if let err = data.error, !err.isEmpty {
+                        Section { Text(err).font(.footnote).foregroundStyle(.red) }
+                    }
+                } else {
+                    Section {
+                        HStack { ProgressView().controlSize(.small); Text("读取中…") }
+                            .foregroundStyle(.secondary)
+                            .font(.footnote)
                     }
                 }
 
@@ -309,6 +318,8 @@ struct ItemDetail: View {
                 }
             }
         }
+        // 正文和勾选项不在列表里，点开才去 Go 那边取这一条。
+        .task(id: item.ref) { data = await store.detail(of: item.ref) }
     }
 
     private var header: some View {
@@ -365,22 +376,22 @@ struct ItemDetail: View {
     }
 
     /// 有值才摆出来，空行比没有更碍眼。
-    private var facts: [(String, String, String, Color)] {
+    private func facts(_ d: DetailData) -> [(String, String, String, Color)] {
         var out: [(String, String, String, Color)] = []
-        if !item.scheduled.isEmpty {
-            out.append(("计划", "clock", item.scheduled, .blue))
+        if !d.scheduled.isEmpty {
+            out.append(("计划", "clock", d.scheduled, .blue))
         }
-        if !item.deadline.isEmpty {
-            out.append(("截止", "flag", item.deadline, item.overdue ? .red : .orange))
+        if !d.deadline.isEmpty {
+            out.append(("截止", "flag", d.deadline, item.overdue ? .red : .orange))
         }
         if !item.repeatRule.isEmpty {
             out.append(("循环", "arrow.triangle.2.circlepath", item.repeatRule, .blue))
         }
-        if !item.effort.isEmpty {
-            out.append(("预估", "hourglass", item.effort, .secondary))
+        if !d.effort.isEmpty {
+            out.append(("预估", "hourglass", d.effort, .secondary))
         }
-        if item.clocked > 0 {
-            out.append(("已计时", "stopwatch", duration(item.clocked), .secondary))
+        if d.clocked > 0 {
+            out.append(("已计时", "stopwatch", duration(d.clocked), .secondary))
         }
         if !item.category.isEmpty {
             out.append(("分类", categoryIcon(item.category), item.category, .secondary))

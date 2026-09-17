@@ -78,6 +78,7 @@ struct MainTabs: View {
 
 struct AgendaView: View {
     @EnvironmentObject var store: Store
+    @State private var selected: Item?
 
     var body: some View {
         List {
@@ -86,7 +87,10 @@ struct AgendaView: View {
                     if day.items.isEmpty {
                         Text("空着").foregroundStyle(.tertiary).font(.footnote)
                     }
-                    ForEach(day.items) { ItemRow(item: $0) }
+                    ForEach(day.items) { item in
+                        Button { selected = item } label: { ItemRow(item: item) }
+                            .buttonStyle(.plain)
+                    }
                 } header: {
                     HStack {
                         Text("\(day.date.suffix(5)) \(day.weekday)")
@@ -105,6 +109,9 @@ struct AgendaView: View {
         .refreshable { await store.reload() }
         .overlay { EmptyHint(show: store.snapshot.days.isEmpty, text: "这几天没有安排") }
         .toolbar { SettingsLink() }
+        // 整个列表共用一个详情页。挂在每一行上的话，有多少行就建多少套
+        // 呈现状态，滚起来明显发涩。
+        .sheet(item: $selected) { ItemDetail(item: $0) }
     }
 }
 
@@ -113,23 +120,60 @@ struct AgendaView: View {
 struct TodosView: View {
     @EnvironmentObject var store: Store
     @State private var keyword = ""
+    @State private var shown: [Item] = []
+    @State private var selected: Item?
 
-    var shown: [Item] {
-        let k = keyword.trimmingCharacters(in: .whitespaces)
-        guard !k.isEmpty else { return store.snapshot.todos }
-        return store.snapshot.todos.filter {
-            $0.title.localizedCaseInsensitiveContains(k) ||
-            $0.tags.contains { $0.localizedCaseInsensitiveContains(k) }
+    var body: some View {
+        List(shown) { item in
+            Button { selected = item } label: { ItemRow(item: item) }
+                .buttonStyle(.plain)
+        }
+        .searchable(text: $keyword, prompt: "找点什么")
+        .navigationTitle("待办")
+        .refreshable { await store.reload() }
+        .overlay { EmptyHint(show: shown.isEmpty, text: "没有待办") }
+        .safeAreaInset(edge: .bottom) { truncatedHint }
+        .toolbar { SettingsLink() }
+        .sheet(item: $selected) { ItemDetail(item: $0) }
+        // 过滤放进 task：写成计算属性的话，每次 body 重算都要把整份待办
+        // 再过一遍。id 变了旧任务会被取消，顺带就是输入防抖。
+        .task(id: FilterKey(keyword: keyword, count: store.snapshot.todos.count)) {
+            await refilter()
         }
     }
 
-    var body: some View {
-        List(shown) { ItemRow(item: $0) }
-            .searchable(text: $keyword, prompt: "找点什么")
-            .navigationTitle("待办")
-            .refreshable { await store.reload() }
-            .overlay { EmptyHint(show: shown.isEmpty, text: "没有待办") }
-            .toolbar { SettingsLink() }
+    private struct FilterKey: Equatable {
+        var keyword: String
+        var count: Int
+    }
+
+    private func refilter() async {
+        let k = keyword.trimmingCharacters(in: .whitespaces)
+        if !k.isEmpty {
+            // 打字没停就别急着过滤；被取消了就什么都不做。
+            try? await Task.sleep(for: .milliseconds(180))
+            if Task.isCancelled { return }
+        }
+        let all = store.snapshot.todos
+        guard !k.isEmpty else { shown = all; return }
+        shown = all.filter {
+            $0.title.localizedCaseInsensitiveContains(k)
+                || $0.tags.contains { $0.localizedCaseInsensitiveContains(k) }
+        }
+    }
+
+    /// 待办被截断时说清楚，否则找不到某一条会以为是丢了。
+    @ViewBuilder
+    private var truncatedHint: some View {
+        let s = store.snapshot
+        if s.todosTotal > s.todos.count {
+            Text("共 \(s.todosTotal) 条，只显示前 \(s.todos.count) 条")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .background(.bar)
+        }
     }
 }
 
