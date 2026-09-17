@@ -133,61 +133,6 @@ struct TodosView: View {
     }
 }
 
-// MARK: - 条目行
-
-struct ItemRow: View {
-    let item: Item
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                if !item.time.isEmpty {
-                    Text(item.time)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(item.overdue ? Color.red : Color.secondary)
-                } else if item.kind != "待办" {
-                    Text(item.kind).font(.caption)
-                        .foregroundStyle(item.overdue ? Color.red : Color.secondary)
-                }
-                if !item.state.isEmpty {
-                    Text(item.state)
-                        .font(.caption2.bold())
-                        .foregroundStyle(item.state == "DONE" ? Color.secondary : Color.orange)
-                }
-                if !item.priority.isEmpty {
-                    Text("[#\(item.priority)]").font(.caption2).foregroundStyle(.pink)
-                }
-            }
-
-            HStack(spacing: 4) {
-                if !item.parents.isEmpty {
-                    Text(item.parents + " /")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-                Text(item.title).lineLimit(2)
-            }
-
-            HStack(spacing: 8) {
-                if let p = item.progressText {
-                    Text(p).font(.caption2).foregroundStyle(.secondary)
-                }
-                if !item.repeatRule.isEmpty {
-                    Text("↻\(item.repeatRule)").font(.caption2).foregroundStyle(.blue)
-                }
-                ForEach(item.tags, id: \.self) { tag in
-                    Text(tag)
-                        .font(.caption2)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(.quaternary, in: Capsule())
-                }
-            }
-        }
-        .padding(.vertical, 2)
-    }
-}
-
 // MARK: - 财务
 
 struct LedgerTab: View {

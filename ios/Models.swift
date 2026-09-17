@@ -18,17 +18,63 @@ struct Item: Codable, Identifiable, Hashable {
     var overdue: Bool
     var category: String
 
+    // 详情里才用的
+    var scheduled = ""
+    var deadline = ""
+    var effort = ""
+    var clocked = 0        // 已计时分钟
+    var notes = ""
+    var boxes: [Checkbox] = []
+    var file = ""
+
     var id: String { ref + kind + time }
 
     enum CodingKeys: String, CodingKey {
         case ref, kind, time, state, priority, title, parents, tags, done, total
         case repeatRule = "repeat"
         case overdue, category
+        case scheduled, deadline, effort, clocked, notes, boxes, file
     }
 
     /// 勾选项有几个才显示进度。
     var progressText: String? {
         total > 0 ? "\(done)/\(total)" : nil
+    }
+
+    var isDone: Bool { state == "DONE" }
+}
+
+struct Checkbox: Codable, Hashable, Identifiable {
+    var done: Bool
+    var text: String
+    var id: String { (done ? "1" : "0") + text }
+}
+
+// 逐个字段 decodeIfPresent：手机上装的 framework 可能比 Swift 这头旧，
+// 少一个键就整屏空白的教训今天吃过两次了。缺了就用默认值，别整个作废。
+extension Item {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ref = try c.decodeIfPresent(String.self, forKey: .ref) ?? ""
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        time = try c.decodeIfPresent(String.self, forKey: .time) ?? ""
+        state = try c.decodeIfPresent(String.self, forKey: .state) ?? ""
+        priority = try c.decodeIfPresent(String.self, forKey: .priority) ?? ""
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        parents = try c.decodeIfPresent(String.self, forKey: .parents) ?? ""
+        tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        done = try c.decodeIfPresent(Int.self, forKey: .done) ?? 0
+        total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
+        repeatRule = try c.decodeIfPresent(String.self, forKey: .repeatRule) ?? ""
+        overdue = try c.decodeIfPresent(Bool.self, forKey: .overdue) ?? false
+        category = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
+        scheduled = try c.decodeIfPresent(String.self, forKey: .scheduled) ?? ""
+        deadline = try c.decodeIfPresent(String.self, forKey: .deadline) ?? ""
+        effort = try c.decodeIfPresent(String.self, forKey: .effort) ?? ""
+        clocked = try c.decodeIfPresent(Int.self, forKey: .clocked) ?? 0
+        notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        boxes = try c.decodeIfPresent([Checkbox].self, forKey: .boxes) ?? []
+        file = try c.decodeIfPresent(String.self, forKey: .file) ?? ""
     }
 }
 

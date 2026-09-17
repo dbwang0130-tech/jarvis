@@ -94,6 +94,21 @@ type Item struct {
 	Repeat   string   `json:"repeat"`
 	Overdue  bool     `json:"overdue"`
 	Category string   `json:"category"`
+
+	// 下面这些只在详情里用，列表不显示。
+	Scheduled string     `json:"scheduled"` // 2026-09-17 14:00-16:00
+	Deadline  string     `json:"deadline"`
+	Effort    string     `json:"effort"`  // :EFFORT: 属性，如 2:00
+	Clocked   int        `json:"clocked"` // 已计时分钟数
+	Notes     string     `json:"notes"`   // 条目正文
+	Boxes     []Checkbox `json:"boxes"`   // 正文里的勾选项
+	File      string     `json:"file"`    // 来自哪个文件
+}
+
+// Checkbox 是正文里的一个勾选项。
+type Checkbox struct {
+	Done bool   `json:"done"`
+	Text string `json:"text"`
 }
 
 // LedgerView 是账本概览。
@@ -244,7 +259,33 @@ func toItem(it agenda.Item) Item {
 	}
 	out.Overdue = it.Kind == agenda.KindOverdue ||
 		(it.Kind == agenda.KindDeadline && it.DaysLeft <= 0)
+
+	out.File = it.Doc.Path
+	out.Scheduled = stampText(n.Scheduled)
+	out.Deadline = stampText(n.Deadline)
+	out.Effort = n.Props["EFFORT"]
+	out.Clocked = int(n.ClockedTotal().Minutes())
+	out.Notes = strings.TrimSpace(strings.Join(n.Notes(), "\n"))
+	out.Boxes = make([]Checkbox, 0, len(n.Boxes))
+	for _, b := range n.Boxes {
+		out.Boxes = append(out.Boxes, Checkbox{Done: b.Done, Text: b.Text})
+	}
 	return out
+}
+
+// stampText 把时间戳写成人能读的样子。没有就返回空串。
+func stampText(ts *org.Timestamp) string {
+	if ts == nil {
+		return ""
+	}
+	s := ts.Start.Format("2006-01-02")
+	if ts.HasTime {
+		s += " " + ts.Start.Format("15:04")
+		if ts.HasEnd() {
+			s += "-" + ts.End.Format("15:04")
+		}
+	}
+	return s
 }
 
 func buildLedger(b *ledger.Book) *LedgerView {
