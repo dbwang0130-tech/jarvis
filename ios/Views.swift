@@ -93,8 +93,34 @@ struct AgendaView: View {
     @EnvironmentObject var store: Store
     @State private var selected: Item?
 
+    /// 所有逾期的条目，按 ref 去重——一个截止日期会连着好几天出现在日程里，
+    /// 不去重的话同一件事在这块里要列三四遍。
+    private var overdue: [Item] {
+        var seen = Set<String>()
+        return store.snapshot.days.flatMap(\.items).filter { item in
+            guard item.overdue, !item.isDone, !seen.contains(item.ref) else { return false }
+            seen.insert(item.ref)
+            return true
+        }
+    }
+
     var body: some View {
         List {
+            // 逾期的东西原来散在各天里，翻过去就忘了。聚到最上面一块，
+            // 每条只出现一次（一个截止会在好几天上重复出现）。
+            if !overdue.isEmpty {
+                Section {
+                    ForEach(overdue) { item in
+                        Button { selected = item } label: { ItemRow(item: item) }
+                            .buttonStyle(.plain)
+                            .itemSwipeActions(item)
+                    }
+                } header: {
+                    Label("逾期 \(overdue.count) 条", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                }
+            }
+
             ForEach(store.snapshot.days) { day in
                 Section {
                     if day.items.isEmpty {
@@ -556,6 +582,7 @@ struct Starters: View {
 }
 
 struct Bubble: View {
+    @EnvironmentObject var store: Store
     let message: Message
 
     var isUser: Bool { message.role == "user" }
@@ -579,6 +606,24 @@ struct Bubble: View {
                             in: RoundedRectangle(cornerRadius: 14))
                 .foregroundStyle(isUser ? Color.white : Brand.onSoft)
                 .textSelection(.enabled)
+                // 长按：抄走，或者换个说法再问一遍。重发对用户自己那句
+                // 尤其有用——秘书会错意时，改一个词比重打一整句快得多。
+                .contextMenu {
+                    Button {
+                        UIPasteboard.general.string = message.content
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Label("复制", systemImage: "doc.on.doc")
+                    }
+                    if isUser {
+                        Button {
+                            Task { await store.send(message.content) }
+                        } label: {
+                            Label("再问一遍", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(store.thinking)
+                    }
+                }
             if !isUser { Spacer(minLength: 40) }
         }
     }

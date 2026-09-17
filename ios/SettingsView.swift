@@ -11,6 +11,8 @@ struct SettingsView: View {
     @State private var apiKey = ""
     @State private var profile = ""
     @State private var picking = false
+    @State private var checking = false
+    @State private var check: ModelCheck?
 
     /// 跟桌面端那份预设表一致。
     private let providers = ["deepseek", "qwen", "kimi", "minimax", "zhipu",
@@ -46,10 +48,35 @@ struct SettingsView: View {
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
+                    Button {
+                        runCheck()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if checking {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "bolt.horizontal.circle")
+                            }
+                            Text(checking ? "连着看看…" : "测试连接")
+                            Spacer()
+                            if let c = check, !checking {
+                                Label(c.message,
+                                      systemImage: c.ok ? "checkmark.circle.fill"
+                                                        : "exclamationmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(c.ok ? Color.green : Color.orange)
+                                    .labelStyle(.tight)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+                    }
+                    .disabled(checking || apiKey.isEmpty)
                 } header: {
                     Text("模型")
                 } footer: {
-                    Text("密钥存在本机钥匙串里，不会跟着 iCloud 走。")
+                    Text("密钥存在本机钥匙串里，不会跟着 iCloud 走。\n"
+                         + "填完点一下「测试连接」，别等到第一次提问才发现填错了。")
                 }
 
                 Section("关于你") {
@@ -136,6 +163,25 @@ struct SettingsView: View {
             }
         }
         .onAppear(perform: load)
+    }
+
+    /// 拿界面上当前填的值去试，不是存过的那份——填到一半就能验。
+    private func runCheck() {
+        var m = store.settings.model
+        m.provider = provider
+        m.model = model.trimmed
+        m.baseURL = baseURL.trimmed
+        m.apiKey = apiKey.trimmed
+        checking = true
+        check = nil
+        Task {
+            let r = await Task.detached(priority: .userInitiated) {
+                Bridge.checkModel(m)
+            }.value
+            check = r
+            checking = false
+            UINotificationFeedbackGenerator().notificationOccurred(r.ok ? .success : .warning)
+        }
     }
 
     private func load() {

@@ -89,6 +89,21 @@ enum Bridge {
         }
     }
 
+    /// 拿当前配置真发一次请求，看通不通。密钥填错不该等到第一次认真提问
+    /// 才暴露——那会儿人已经打完一整句话、等了十几秒。
+    static func checkModel(_ model: ModelConfig) -> ModelCheck {
+        guard let data = try? JSONEncoder().encode(["model": model]),
+              let json = String(data: data, encoding: .utf8) else {
+            return ModelCheck(message: "入参编码失败")
+        }
+        let out = callTestModel(json)
+        do {
+            return try JSONDecoder().decode(ModelCheck.self, from: Data(out.utf8))
+        } catch {
+            return ModelCheck(message: "出参解不开：\(error.localizedDescription)")
+        }
+    }
+
     /// 叫停正在跑的那一轮。已经做完的改动会照常交回来。
     static func cancel() {
         #if canImport(Mobile)
@@ -106,6 +121,14 @@ enum Bridge {
         return MobileSnapshot(json)
         #else
         return #"{"days":[],"todos":[],"error":"Mobile framework 没连上"}"#
+        #endif
+    }
+
+    private static func callTestModel(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileTestModel(json)
+        #else
+        return #"{"ok":false,"message":"Mobile framework 没连上"}"#
         #endif
     }
 

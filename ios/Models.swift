@@ -151,6 +151,16 @@ extension Snapshot {
     }
 }
 
+/// 模型连通性自检的结果。
+struct ModelCheck: Codable {
+    var ok = false
+    var model = ""
+    var reply = ""
+    var millis = 0
+    var message = ""
+    var error: String?
+}
+
 /// 直接操作的结果。files 里只有真变过的那几个。
 struct ActResult: Codable {
     var message = ""
