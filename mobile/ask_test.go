@@ -259,3 +259,47 @@ func TestAskWithoutModel(t *testing.T) {
 		t.Fatalf("该说清楚缺什么：%q", out.Error)
 	}
 }
+
+// 被叫停时**不能当成失败**：工具已经改过的文件就在临时目录里，
+// 直接返回错误那些改动就丢了，用户看到「什么都没发生」，实际上一半的事
+// 已经做完。这条钉住取消开关本身的行为——没跑起来时喊停不该炸。
+func TestCancelIsSafe(t *testing.T) {
+	Cancel() // 什么都没跑的时候喊停
+	Cancel() // 连喊两次
+
+	ctx := startCancelable()
+	Cancel()
+	select {
+	case <-ctx.Done():
+	default:
+		t.Fatal("喊停了但 ctx 没结束")
+	}
+	endCancelable()
+
+	// 收工之后再喊停，不该影响下一轮。
+	Cancel()
+	next := startCancelable()
+	select {
+	case <-next.Done():
+		t.Fatal("上一轮的喊停波及了下一轮")
+	default:
+	}
+	endCancelable()
+}
+
+// 新一轮开始时要把上一轮还挂着的取消函数收掉，不然越积越多。
+func TestStartCancelsPrevious(t *testing.T) {
+	first := startCancelable()
+	second := startCancelable()
+	select {
+	case <-first.Done():
+	default:
+		t.Error("开新一轮时没把上一轮收掉")
+	}
+	select {
+	case <-second.Done():
+		t.Error("新一轮不该一开始就是结束的")
+	default:
+	}
+	endCancelable()
+}

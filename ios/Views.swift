@@ -222,18 +222,11 @@ struct LedgerTab: View {
                                                   bottom: 8, trailing: 8))
                         .listRowBackground(Color.clear)
                     }
-                    Section("账户") {
-                        ForEach(l.accounts) { a in
-                            HStack {
-                                Text(a.name)
-                                    .font(.callout).lineLimit(1)
-                                    .truncationMode(.head)  // 账户名前缀重复，砍前面
-                                Spacer(minLength: 8)
-                                Text(money(a.balance))
-                                    .font(.callout.monospacedDigit())
-                                    .lineLimit(1).minimumScaleFactor(0.7)
-                                    .foregroundStyle(a.balance < 0 ? Color.red : Color.primary)
-                            }
+                    // 按科目分组。原来把 Income:Salary 跟银行卡并排列在「账户」
+                    // 里，看着像是有这么个账户——那是记账科目，不是钱放在哪儿。
+                    ForEach(accountGroups(l.accounts), id: \.title) { group in
+                        Section(group.title) {
+                            ForEach(group.items) { AccountRow(account: $0) }
                         }
                     }
                     Section("最近流水") {
@@ -260,6 +253,41 @@ struct LedgerTab: View {
         .overlay { LoadingHint(isEmpty: store.snapshot.ledger == nil) }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .toolbar { SettingsLink() }
+    }
+}
+
+/// 账户按科目归类。顺序是「钱在哪儿 → 欠多少 → 花在哪儿 → 挣多少」，
+/// 最常看的排前面；权益和认不出来的放最后。
+func accountGroups(_ accounts: [Account]) -> [(title: String, items: [Account])] {
+    let order: [(String, String)] = [
+        ("asset", "账户"), ("debt", "负债"),
+        ("expense", "支出"), ("income", "收入"),
+        ("equity", "权益"), ("other", "其他"),
+    ]
+    return order.compactMap { kind, title in
+        let items = accounts.filter { $0.kind == kind }
+        return items.isEmpty ? nil : (title, items)
+    }
+}
+
+struct AccountRow: View {
+    let account: Account
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(account.leaf).font(.callout).lineLimit(1)
+                if !account.parentPath.isEmpty {
+                    Text(account.parentPath)
+                        .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            Text(money(account.balance))
+                .font(.callout.monospacedDigit())
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .foregroundStyle(account.balance < 0 ? Color.red : Color.primary)
+        }
     }
 }
 
@@ -556,26 +584,106 @@ struct Bubble: View {
     }
 }
 
+/// 干活过程。原来只显示最后一步，清理邮件那种「一口气动了好几封」的事
+/// 结束后完全看不出它到底动了什么。现在整条轨迹都留着，点一下展开。
 struct ThinkingRow: View {
+    @EnvironmentObject var store: Store
     let steps: [Step]
+    @State private var expanded = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Avatar(size: 26)
-            ProgressView().controlSize(.small)
-            VStack(alignment: .leading, spacing: 2) {
-                if let last = steps.last {
-                    Text(label(for: last)).font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("想想…").font(.caption).foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Button { expanded.toggle() } label: {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text(headline).font(.caption).foregroundStyle(.secondary)
+                        if steps.count > 1 {
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if expanded {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(steps) { StepLine(step: $0) }
+                    }
+                    .padding(.leading, 2)
                 }
             }
-            Spacer()
+
+            Spacer(minLength: 8)
+
+            // 一轮可能要跑一分钟。中途改主意总得能喊停——桌面端按 esc。
+            Button { store.stopThinking() } label: {
+                Image(systemName: "stop.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel("停下")
         }
+    }
+
+    private var headline: String {
+        guard let last = steps.last else { return "想想…" }
+        let n = steps.count > 1 ? "（第 \(steps.count) 步）" : ""
+        return label(for: last) + n
     }
 
     func label(for step: Step) -> String {
         step.kind == "result" ? step.text : toolLabel(step.name)
+    }
+}
+
+/// 过程里的一行。做了什么用主色，做完的结果用次要色，出错标红，
+/// 自动做掉的（清理邮件那类可逆动作）单独标出来——那些没问过你。
+struct StepLine: View {
+    let step: Step
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9))
+                .foregroundStyle(color)
+                .padding(.top, 3)
+            Text(text)
+                .font(.caption2)
+                .foregroundStyle(step.kind == "error" ? Color.red : .secondary)
+                .lineLimit(2)
+        }
+    }
+
+    private var text: String {
+        switch step.kind {
+        case "tool":  return toolLabel(step.name)
+        case "auto":  return toolLabel(step.name) + "：" + step.text + "（没问你，可逆）"
+        default:      return step.text.isEmpty ? toolLabel(step.name) : step.text
+        }
+    }
+
+    private var icon: String {
+        switch step.kind {
+        case "tool":   return "circle.fill"
+        case "auto":   return "bolt.fill"
+        case "error":  return "exclamationmark.triangle.fill"
+        default:       return "checkmark"
+        }
+    }
+
+    private var color: Color {
+        switch step.kind {
+        case "tool":  return Brand.primary
+        case "auto":  return .orange
+        case "error": return .red
+        default:      return .green
+        }
     }
 }
 

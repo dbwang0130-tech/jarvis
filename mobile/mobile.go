@@ -240,6 +240,33 @@ type LedgerView struct {
 type Account struct {
 	Name    string  `json:"name"`
 	Balance float64 `json:"balance"`
+	// Kind 是科目大类：asset / debt / income / expense / equity / other。
+	// 界面据此分组——把 Income:Salary 跟银行卡并排列在「账户」里，
+	// 看着像是有这么个账户，其实那是记账科目，不是钱放在哪儿。
+	Kind string `json:"kind"`
+}
+
+// accountKind 按 ledger 的顶层科目名分类。这套前缀是 ledger-cli 的约定，
+// 判断逻辑只该有一份，所以放在 Go 这边，界面只管照着分组。
+func accountKind(name string) string {
+	top := name
+	if i := strings.Index(name, ":"); i > 0 {
+		top = name[:i]
+	}
+	switch top {
+	case "Assets":
+		return "asset"
+	case "Liabilities":
+		return "debt"
+	case "Income":
+		return "income"
+	case "Expenses":
+		return "expense"
+	case "Equity":
+		return "equity"
+	default:
+		return "other"
+	}
 }
 
 // TxnBrief 是流水里的一笔。
@@ -417,7 +444,8 @@ func buildLedger(b *ledger.Book) *LedgerView {
 		if bal[name] == 0 {
 			continue // 结平的账户不占地方
 		}
-		v.Accounts = append(v.Accounts, Account{Name: name, Balance: bal[name]})
+		v.Accounts = append(v.Accounts, Account{
+			Name: name, Balance: bal[name], Kind: accountKind(name)})
 	}
 	for i := len(b.Transactions) - 1; i >= 0 && i > len(b.Transactions)-21; i-- {
 		tx := b.Transactions[i]

@@ -3,11 +3,13 @@ package mobile
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dabao/jarvis/internal/agent"
@@ -75,6 +77,8 @@ type AskOutput struct {
 	Steps []Step `json:"steps,omitempty"`
 	// Memory 只在秘书改过记忆时才有，界面拿去写回 iCloud。
 	Memory string `json:"memory,omitempty"`
+	// Stopped 表示这一轮是被叫停的，不是自己跑完的。
+	Stopped bool `json:"stopped,omitempty"`
 	// Error 非空表示这一轮没办成。
 	Error string `json:"error,omitempty"`
 }
@@ -97,6 +101,40 @@ func Ask(inputJSON string) string { return askWith(inputJSON, nil) }
 // AskLive 带界面回调：干活过程实时报上去，要拿主意的事回头问。
 // host 那边 Confirm 会一直阻塞到用户点了为止，所以别在主线程上调这个。
 func AskLive(inputJSON string, host Host) string { return askWith(inputJSON, host) }
+
+// 正在跑的那一轮的取消开关。手机上一轮可能要跑一分钟，中途改主意了
+// 总得有地方喊停——桌面端按 esc，这边只能从界面喊进来。
+var (
+	cancelMu sync.Mutex
+	cancelFn context.CancelFunc
+)
+
+// Cancel 叫停正在跑的那一轮。已经做完的改动会照常交回来，不会白干。
+func Cancel() {
+	cancelMu.Lock()
+	fn := cancelFn
+	cancelMu.Unlock()
+	if fn != nil {
+		fn()
+	}
+}
+
+func startCancelable() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelMu.Lock()
+	if cancelFn != nil {
+		cancelFn() // 上一轮还挂着就先收掉，免得越积越多
+	}
+	cancelFn = cancel
+	cancelMu.Unlock()
+	return ctx
+}
+
+func endCancelable() {
+	cancelMu.Lock()
+	cancelFn = nil
+	cancelMu.Unlock()
+}
 
 func askWith(inputJSON string, host Host) string {
 	var in AskInput
@@ -192,12 +230,22 @@ func askWith(inputJSON string, host Host) string {
 	ag.History = in.History
 
 	var steps []Step
-	reply, err := ag.Ask(context.Background(), in.Question, hostEmit(host, &steps))
-	if err != nil {
+	ctx := startCancelable()
+	reply, err := ag.Ask(ctx, in.Question, hostEmit(host, &steps))
+	endCancelable()
+
+	// 被叫停时**不能当成失败**：工具已经改过的文件就在临时目录里，
+	// 直接返回错误的话那些改动就丢了，用户看到的是「什么都没发生」，
+	// 而实际上一半的事已经做完了。
+	stopped := errors.Is(err, context.Canceled)
+	if err != nil && !stopped {
 		return askError("%v", err)
 	}
+	if stopped && strings.TrimSpace(reply) == "" {
+		reply = "停下了。已经做完的那部分保留着。"
+	}
 
-	out := AskOutput{Reply: reply, History: ag.History, Steps: steps}
+	out := AskOutput{Reply: reply, History: ag.History, Steps: steps, Stopped: stopped}
 	out.Files, err = changedFiles(orgDir, in.Files)
 	if err != nil {
 		return askError("读回改动失败：%v", err)

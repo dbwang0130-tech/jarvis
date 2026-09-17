@@ -89,6 +89,13 @@ enum Bridge {
         }
     }
 
+    /// 叫停正在跑的那一轮。已经做完的改动会照常交回来。
+    static func cancel() {
+        #if canImport(Mobile)
+        MobileCancel()
+        #endif
+    }
+
     // MARK: - 跟 Go 打交道的那几下
 
     // gomobile 生成的符号是「包名首字母大写 + 函数名」：mobile.Snapshot → MobileSnapshot。

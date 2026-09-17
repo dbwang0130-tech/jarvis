@@ -218,6 +218,12 @@ final class Store: ObservableObject, AskEvents {
         }.value
     }
 
+    /// 叫停正在跑的那一轮。已经做完的改动会照常写回来，不会白干。
+    func stopThinking() {
+        guard thinking else { return }
+        Task.detached(priority: .userInitiated) { Bridge.cancel() }
+    }
+
     /// 对一个条目直接做一件事（完成/开始/停止/推迟/取消），不经过模型。
     ///
     /// 走的是跟秘书同一套 orgtools 工具，所以改动的语义、撤销点、循环任务

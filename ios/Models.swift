@@ -82,7 +82,23 @@ struct Day: Codable, Identifiable {
 struct Account: Codable, Identifiable {
     var name: String
     var balance: Double
+    /// asset / debt / income / expense / equity / other，Go 那边按 ledger
+    /// 的顶层科目名判的。
+    var kind: String = ""
+
     var id: String { name }
+
+    /// 末一段。`Assets:Bank:招商银行储蓄卡` 在手机上宽度不够，从头截断会
+    /// 变成「...sets:RealEstate:朝阳区某小区」，等于把最有用的那段留下、
+    /// 最该看的开头砍掉。改成叶子名当主角，上级路径小字跟在后面。
+    var leaf: String {
+        name.split(separator: ":").last.map(String.init) ?? name
+    }
+
+    var parentPath: String {
+        let parts = name.split(separator: ":").dropLast()
+        return parts.joined(separator: " / ")
+    }
 }
 
 struct TxnBrief: Codable, Identifiable {
@@ -289,5 +305,7 @@ struct AskOutput: Codable {
     var steps: [Step]?
     /// 只在秘书改过记忆时才有。
     var memory: String?
+    /// 这一轮是被叫停的，不是自己跑完的。
+    var stopped: Bool?
     var error: String?
 }
