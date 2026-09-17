@@ -3,6 +3,8 @@ package mobile
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -538,5 +540,29 @@ func TestRecentTransactions(t *testing.T) {
 	move := byPayee["转去余额宝"]
 	if move.Kind != "transfer" {
 		t.Errorf("转账被当成了 %q", move.Kind)
+	}
+}
+
+// 数据目录必须落在能写的地方。iOS 上容器根目录不可写，Go 默认算出来的
+// ~/.config 一写就是 operation not permitted，而且是静默失败——
+// 同步进度存不下来，表现为「每次收信都像第一次」。
+func TestSetDataDirRedirects(t *testing.T) {
+	t.Setenv("JARVIS_CONFIG", "")
+	dir := t.TempDir()
+	SetDataDir(dir)
+
+	got := os.Getenv("JARVIS_CONFIG")
+	if filepath.Dir(got) != dir {
+		t.Fatalf("配置没指到给定目录：%q", got)
+	}
+	// 真的能写进去才算数。
+	if err := os.MkdirAll(filepath.Dir(got), 0o700); err != nil {
+		t.Fatalf("给定目录写不了：%v", err)
+	}
+
+	// 空的不该把已经设好的弄坏。
+	SetDataDir("")
+	if os.Getenv("JARVIS_CONFIG") != got {
+		t.Error("空路径把设好的冲掉了")
 	}
 }

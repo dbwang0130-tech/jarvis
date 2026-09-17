@@ -12,6 +12,27 @@ import Mobile
 /// Go 那边所有函数都保证不 panic、出错填在返回值的 error 字段里——
 /// 手机上崩一次就是整个 app 挂掉。
 enum Bridge {
+    /// 告诉 Go 这台设备在哪个时区。**必须在任何别的调用之前调一次。**
+    ///
+    /// Go 那边改的是 time.Local 这个全局变量，只认第一次。放在别处调的话，
+    /// 第一次改写会跟已经在跑的 Snapshot/Detail 撞上——那是数据竞争。
+    static func setTimeZone() {
+        #if canImport(Mobile)
+        MobileSetTimeZone(TimeZone.current.identifier)
+        #endif
+    }
+
+    /// 告诉 Go 能往哪儿写自己的东西（邮件同步进度这类）。
+    ///
+    /// 不设的话它按 ~/.config 算路径，而 iOS 上容器根目录不可写——
+    /// 报的就是 operation not permitted，而且是静默的：写失败只返回个错误，
+    /// 没人看，表现为「每次收信都像第一次」。
+    static func setDataDir(_ path: String) {
+        #if canImport(Mobile)
+        MobileSetDataDir(path)
+        #endif
+    }
+
     /// 把 org 文件和账本解析成界面要显示的内容。
     static func snapshot(files: [String: String], ledger: String, days: Int = 7) -> Snapshot {
         let input: [String: Any] = [

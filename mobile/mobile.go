@@ -26,6 +26,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/dabao/jarvis/internal/agenda"
+	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/ledger"
 	"github.com/dabao/jarvis/internal/org"
 	"os"
@@ -118,6 +119,20 @@ func SetDataDir(dir string) {
 	}
 	// config.Path() 认这个环境变量，设了它整条链路（进度、配置）都跟着走。
 	_ = os.Setenv("JARVIS_CONFIG", filepath.Join(dir, "config.json"))
+}
+
+// 兜底：界面万一忘了调 SetDataDir，也别去写 ~/.config——那儿写不了，
+// 而失败是静默的（只返回个错误，没人看），表现为「每次收信都像第一次」。
+// 临时目录至少这一轮能用，比彻底不能写强。
+func init() {
+	if os.Getenv("JARVIS_CONFIG") != "" {
+		return
+	}
+	probe := filepath.Join(config.ConfigDir(), "jarvis")
+	if err := os.MkdirAll(probe, 0o700); err != nil {
+		_ = os.Setenv("JARVIS_CONFIG",
+			filepath.Join(os.TempDir(), "jarvis", "config.json"))
+	}
 }
 
 func SetTimeZone(name string) {
