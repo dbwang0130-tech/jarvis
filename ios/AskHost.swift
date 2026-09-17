@@ -13,11 +13,15 @@ protocol AskEvents: AnyObject {
 }
 
 #if canImport(Mobile)
-/// 把 Go 那头的 MobileHost 协议接到 Swift 的 AskEvents 上。
+/// 把 Go 那头的 Host 协议接到 Swift 的 AskEvents 上。
+///
+/// 协议在 Swift 里叫 `MobileHostProtocol` 而不是 `MobileHost`——gomobile
+/// 同时生成了同名的 class 和 protocol，Swift 碰到重名会给协议加后缀。
+/// 写成 MobileHost 会被当成那个 class，报「多重继承」。
 ///
 /// 单独隔一层是为了让界面代码不用碰 gomobile 生成的类型——macOS 上做语法
 /// 检查时没有 Mobile 这个模块，碰了就编不过。
-final class MobileHostAdapter: NSObject, MobileHost {
+final class MobileHostAdapter: NSObject, MobileHostProtocol {
     private weak var events: AskEvents?
 
     init(_ events: AskEvents) {
