@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		F485BAF143B9CC993287EEF9 /* JarvisApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7F8AC7997F46B9A22C269E /* JarvisApp.swift */; };
 		9A53982984734FDED06A13D5 /* AskHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2EC0FABF5C40602546BB919 /* AskHost.swift */; };
+		D57DA02D9B9F2425733C793D /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0F86B84455EAED7A993462 /* Brand.swift */; };
 		939EF22E8168702EA6A3BD9B /* Bridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D07C43188251FCFF33B98AC2 /* Bridge.swift */; };
 		0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F1B6CBE154F3A41E575653 /* ItemView.swift */; };
 		FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED29F84A2C8136AC729D9F6 /* Keychain.swift */; };
@@ -42,6 +43,7 @@
 /* Begin PBXFileReference section */
 		7F7F8AC7997F46B9A22C269E /* JarvisApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisApp.swift; sourceTree = "<group>"; };
 		B2EC0FABF5C40602546BB919 /* AskHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHost.swift; sourceTree = "<group>"; };
+		FB0F86B84455EAED7A993462 /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
 		D07C43188251FCFF33B98AC2 /* Bridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bridge.swift; sourceTree = "<group>"; };
 		E8F1B6CBE154F3A41E575653 /* ItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemView.swift; sourceTree = "<group>"; };
 		EED29F84A2C8136AC729D9F6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
@@ -75,6 +77,7 @@
 			children = (
 				7F7F8AC7997F46B9A22C269E /* JarvisApp.swift */,
 				B2EC0FABF5C40602546BB919 /* AskHost.swift */,
+				FB0F86B84455EAED7A993462 /* Brand.swift */,
 				D07C43188251FCFF33B98AC2 /* Bridge.swift */,
 				E8F1B6CBE154F3A41E575653 /* ItemView.swift */,
 				EED29F84A2C8136AC729D9F6 /* Keychain.swift */,
@@ -172,6 +175,7 @@
 			files = (
 				F485BAF143B9CC993287EEF9 /* JarvisApp.swift in Sources */,
 				9A53982984734FDED06A13D5 /* AskHost.swift in Sources */,
+				D57DA02D9B9F2425733C793D /* Brand.swift in Sources */,
 				939EF22E8168702EA6A3BD9B /* Bridge.swift in Sources */,
 				0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */,
 				FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */,

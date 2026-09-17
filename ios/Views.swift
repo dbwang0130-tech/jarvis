@@ -17,6 +17,7 @@ struct RootView: View {
             }
         }
         .environmentObject(store)
+        .tint(Brand.primary)
         .task {
             if store.isConfigured { await store.reload() }
         }
@@ -39,6 +40,8 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
+            Avatar(size: 140)
+                .shadow(color: Brand.primary.opacity(0.25), radius: 18, y: 8)
             Text("Jarvis").font(.largeTitle.bold())
             Text("日程和账本都放在 iCloud 里，\n跟电脑上那份是同一份。")
                 .multilineTextAlignment(.center)
@@ -106,7 +109,7 @@ struct AgendaView: View {
                             Text("今天")
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(.tint, in: Capsule())
+                                .background(Brand.primary, in: Capsule())
                                 .foregroundStyle(.white)
                         }
                     }
@@ -298,8 +301,18 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     if shownMessages.isEmpty && !store.thinking {
-                        Starters(pick: startWith)
-                            .padding(.top, 24)
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack(spacing: 10) {
+                                Avatar(size: 44)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Jarvis").font(.headline)
+                                    Text("日程、账本、邮件，说一句就办")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Starters(pick: startWith)
+                        }
+                        .padding(.top, 20)
                     }
                     ForEach(Array(shownMessages.enumerated()), id: \.offset) { _, m in
                         Bubble(message: m)
@@ -360,7 +373,7 @@ struct ChatView: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
-                        .background(canSend ? AnyShapeStyle(.tint)
+                        .background(canSend ? AnyShapeStyle(Brand.primary)
                                             : AnyShapeStyle(.quaternary), in: Circle())
                 }
                 .disabled(!canSend)
@@ -422,8 +435,9 @@ struct Starters: View {
                 Button { pick(e) } label: {
                     Text(e)
                         .font(.callout)
+                        .foregroundStyle(Brand.onSoft)
                         .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(.quaternary, in: Capsule())
+                        .background(Brand.soft, in: Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -438,8 +452,12 @@ struct Bubble: View {
     var isUser: Bool { message.role == "user" }
 
     var body: some View {
-        HStack {
-            if isUser { Spacer(minLength: 40) }
+        HStack(alignment: .top, spacing: 8) {
+            if isUser {
+                Spacer(minLength: 40)
+            } else {
+                Avatar(size: 26).padding(.top, 2)
+            }
             Group {
                 if isUser {
                     Text(message.content)
@@ -448,9 +466,9 @@ struct Bubble: View {
                 }
             }
                 .padding(10)
-                .background(isUser ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary),
-                            in: RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(isUser ? Color.white : Color.primary)
+                .background(isUser ? Brand.primary : Brand.soft,
+                            in: RoundedRectangle(cornerRadius: 14))
+                .foregroundStyle(isUser ? Color.white : Brand.onSoft)
                 .textSelection(.enabled)
             if !isUser { Spacer(minLength: 40) }
         }
@@ -462,6 +480,7 @@ struct ThinkingRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
+            Avatar(size: 26)
             ProgressView().controlSize(.small)
             VStack(alignment: .leading, spacing: 2) {
                 if let last = steps.last {
@@ -516,7 +535,7 @@ struct ConfirmSheet: View {
                     Image(systemName: ask.irreversible
                           ? "exclamationmark.triangle.fill" : "questionmark.circle.fill")
                         .font(.title2)
-                        .foregroundStyle(ask.irreversible ? Color.orange : Color.blue)
+                        .foregroundStyle(ask.irreversible ? Color.orange : Brand.primary)
                     Text(ask.title).font(.headline)
                 }
 
@@ -545,7 +564,7 @@ struct ConfirmSheet: View {
                         store.answerPending(true)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(ask.irreversible ? .orange : .accentColor)
+                    .tint(ask.irreversible ? .orange : Brand.primary)
                     .frame(maxWidth: .infinity)
                 }
             }

@@ -20,6 +20,19 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    HStack(spacing: 12) {
+                        Avatar(size: 52)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Jarvis").font(.headline)
+                            Text("日程、账本、邮件都跟电脑上是同一份")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .listRowBackground(Brand.soft)
+                }
+
+                Section {
                     Picker("服务商", selection: $provider) {
                         ForEach(providers, id: \.self) { Text($0).tag($0) }
                     }
