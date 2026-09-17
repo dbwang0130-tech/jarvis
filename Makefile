@@ -34,17 +34,21 @@ test:
 fmt:
 	gofmt -l -w .
 
-# 把 Go 侧编译成 iOS 用的 framework。需要完整 Xcode，第一次还要
-#   go install golang.org/x/mobile/cmd/gomobile@latest && gomobile init
-# gobind 的 tool 指令已经记在 go.mod 里了，不用再 go get。
-ios-framework:
-	@command -v gomobile >/dev/null || { \
+# Go 源码变了就重新生成 framework。做成文件依赖而不是一个手动目标——
+# 忘了跑的表现是「改了 Go 代码，装到手机上还是老样子」，一点提示都没有。
+GO_SRC := $(shell find . -name '*.go' -not -path './ios/*' -not -name '*_test.go')
+GOBIN  := $(shell go env GOPATH)/bin
+
+ios/Mobile.xcframework: $(GO_SRC) go.mod
+	@command -v gomobile >/dev/null 2>&1 || test -x $(GOBIN)/gomobile || { \
 		echo "先装 gomobile："; \
 		echo "  go install golang.org/x/mobile/cmd/gomobile@latest"; \
 		echo "  gomobile init"; \
 		exit 1; }
-	gomobile bind -target=ios -o ios/Mobile.xcframework ./mobile
-	@echo "生成好了：ios/Mobile.xcframework，拖进 Xcode 项目即可"
+	PATH="$(GOBIN):$$PATH" gomobile bind -target=ios -o ios/Mobile.xcframework ./mobile
+	@echo "framework 已更新"
+
+ios-framework: ios/Mobile.xcframework
 
 # 重新生成 Xcode 工程。加了 .swift 就跑一下——工程里的文件清单是生成的，
 # 忘了跑的表现是 cannot find 'X' in scope，看着像代码错其实是文件没进工程。
@@ -52,7 +56,7 @@ ios-project:
 	@python3 ios/genproject.py
 
 # 装到插着的 iPhone 上。条件不齐会说明白差什么。
-ios-install:
+ios-install: ios/Mobile.xcframework
 	@sh ios/install-device.sh
 
 # 拿真正的 iOS SDK 类型检查 Swift 代码。macOS 上编能过不代表 iOS 上能过——
