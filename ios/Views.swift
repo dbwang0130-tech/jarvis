@@ -63,7 +63,7 @@ struct MainTabs: View {
         // TabView 默认选第一个，不用另外记选中状态。
         TabView {
             NavigationStack { ChatView() }
-                .tabItem { Label("秘书", systemImage: "bubble.left.and.text.bubble.right") }
+                .tabItem { Label("Jarvis", systemImage: "bubble.left.and.text.bubble.right") }
             NavigationStack { AgendaView() }
                 .tabItem { Label("日程", systemImage: "calendar") }
             NavigationStack { TodosView() }
@@ -272,7 +272,7 @@ struct ChatView: View {
             transcript
             inputBar
         }
-        .navigationTitle("秘书")
+        .navigationTitle("Jarvis")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -303,8 +303,9 @@ struct ChatView: View {
                 }
                 .padding()
             }
-            // 往回翻的时候顺手把键盘收掉，不用专门去点空白。
-            .scrollDismissesKeyboard(.interactively)
+            // 一开始滚就收键盘。.interactively 要手指往下拖着才收，
+            // 而这里想要的是「去看上面说了什么」，滚动本身就是意思。
+            .scrollDismissesKeyboard(.immediately)
             .onChange(of: store.messages.count) { _, _ in toBottom(proxy) }
             .onChange(of: store.steps.count) { _, _ in toBottom(proxy) }
             .onChange(of: store.thinking) { _, _ in toBottom(proxy) }
@@ -377,10 +378,12 @@ struct ChatView: View {
         focused = true
     }
 
-    // 工具调用那些中间消息不用给人看。
+    // 工具调用和系统提示那些中间消息不用给人看。
+    // __local 是我们自己插的提示（比如出错说明），显示但不喂回给模型。
     var shownMessages: [Message] {
-        store.messages.filter { ($0.role == "user" || $0.role == "assistant")
-            && !$0.content.isEmpty }
+        store.messages.filter {
+            ["user", "assistant", "__local"].contains($0.role) && !$0.content.isEmpty
+        }
     }
 }
 

@@ -64,6 +64,9 @@ final class Store: ObservableObject {
             return
         }
 
+        // 这条只为让界面立刻有反应。传给 Go 的 history 必须是**这轮之前**的——
+        // agent.Ask 自己会把提问追加进去，把它一起传过去就成了两条。
+        let history = messages.filter { $0.role != "__local" }
         messages.append(Message(role: "user", content: text))
         steps = []
         thinking = true
@@ -73,14 +76,13 @@ final class Store: ObservableObject {
         model.apiKey = settings.apiKey
 
         let input = AskInput(files: files, ledger: ledger, question: text,
-                             history: messages.filter { $0.role != "__local" },
-                             model: model, profile: settings.profile)
+                             history: history, model: model, profile: settings.profile)
 
         let out = await Task.detached(priority: .userInitiated) { Bridge.ask(input) }.value
 
         if let err = out.error, !err.isEmpty {
             lastError = err
-            messages.append(Message(role: "assistant", content: "没办成：\(err)"))
+            messages.append(Message(role: "__local", content: "没办成：\(err)"))
             return
         }
 
