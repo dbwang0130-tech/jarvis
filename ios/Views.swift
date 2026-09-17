@@ -356,17 +356,20 @@ struct LedgerTab: View {
                             ForEach(group.items) { AccountRow(account: $0) }
                         }
                     }
-                    Section("最近流水") {
-                        ForEach(l.recent) { t in
+                    // 按天分组。一条一条平铺的话，日期在每行重复一遍，
+                    // 而「今天花了多少」这个最常问的问题反而得自己加。
+                    ForEach(dayGroups(l.recent), id: \.date) { day in
+                        Section {
+                            ForEach(day.items) { TxnRow(txn: $0) }
+                        } header: {
                             HStack {
-                                Text(t.date.suffix(5))
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                Text(t.payee).lineLimit(1)
-                                Spacer(minLength: 8)
-                                Text(money(t.amount))
-                                    .font(.callout.monospacedDigit())
-                                    .lineLimit(1).minimumScaleFactor(0.7)
+                                Text(dayTitle(day.date))
+                                Spacer()
+                                if day.spent > 0 {
+                                    Text("支出 " + moneyRound(day.spent))
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
@@ -394,6 +397,87 @@ func accountGroups(_ accounts: [Account]) -> [(title: String, items: [Account])]
     return order.compactMap { kind, title in
         let items = accounts.filter { $0.kind == kind }
         return items.isEmpty ? nil : (title, items)
+    }
+}
+
+/// 把流水按天归拢，顺带算出当天花了多少。
+///
+/// 转账不计入支出——钱从招行挪到余额宝不是花掉了，混进去会把当天的账
+/// 撑得莫名其妙。
+func dayGroups(_ txns: [TxnBrief]) -> [(date: String, items: [TxnBrief], spent: Double)] {
+    var order: [String] = []
+    var byDay: [String: [TxnBrief]] = [:]
+    for t in txns {
+        if byDay[t.date] == nil { order.append(t.date) }
+        byDay[t.date, default: []].append(t)
+    }
+    return order.map { d in
+        let items = byDay[d] ?? []
+        let spent = items.filter { !$0.isTransfer && $0.amount < 0 }
+            .reduce(0) { $0 - $1.amount }
+        return (d, items, spent)
+    }
+}
+
+/// 日期写成人话。今天昨天用字，再往前用月日——「2026-09-12」要在脑子里
+/// 算一下才知道是几天前。
+func dayTitle(_ date: String) -> String {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "yyyy-MM-dd"
+    guard let d = f.date(from: date) else { return date }
+    let cal = Calendar.current
+    if cal.isDateInToday(d) { return "今天" }
+    if cal.isDateInYesterday(d) { return "昨天" }
+    let days = cal.dateComponents([.day], from: d, to: Date()).day ?? 0
+    if days < 7 {
+        let names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+        return names[cal.component(.weekday, from: d) - 1]
+    }
+    return String(date.suffix(5).replacingOccurrences(of: "-", with: "/"))
+}
+
+struct TxnRow: View {
+    let txn: TxnBrief
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.footnote)
+                .foregroundStyle(tint)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(txn.payee).font(.callout).lineLimit(1)
+                if !txn.category.isEmpty {
+                    Text(txn.category)
+                        .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            // 收入带正号，支出带负号——光看数字分不出方向。
+            Text(signed)
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(tint)
+                .lineLimit(1).minimumScaleFactor(0.7)
+        }
+    }
+
+    private var signed: String {
+        txn.isTransfer ? money(abs(txn.amount))
+                       : (txn.amount > 0 ? "+" : "") + money(txn.amount)
+    }
+
+    private var icon: String {
+        if txn.isTransfer { return "arrow.left.arrow.right" }
+        return txn.isIncome ? "arrow.down.circle.fill" : "arrow.up.circle.fill"
+    }
+
+    private var tint: Color {
+        if txn.isTransfer { return .secondary }
+        return txn.isIncome ? .green : Brand.onSoft
     }
 }
 

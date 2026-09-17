@@ -396,9 +396,66 @@ func accountKind(name string) string {
 
 // TxnBrief 是流水里的一笔。
 type TxnBrief struct {
-	Date   string  `json:"date"`
-	Payee  string  `json:"payee"`
+	Date  string `json:"date"`
+	Payee string `json:"payee"`
+	// Amount 带符号：花出去是负的，收进来是正的。
+	// 原来取「最大的那笔分录」，收入支出都是正数，一眼分不出方向。
 	Amount float64 `json:"amount"`
+	// Kind 是 expense / income / transfer。转账是钱在自己账户间挪，
+	// 既不是花也不是挣，混在一起算会把当天的支出撑得很难看。
+	Kind string `json:"kind"`
+	// Category 是花在哪儿 / 哪来的，取科目的末一段（餐饮、工资）。
+	Category string `json:"category"`
+}
+
+// briefOf 把一笔交易压成流水里的一行。
+//
+// 判断方向看它碰了哪些科目：动了 Expenses 就是花钱，动了 Income 就是进账，
+// 两样都没动就是在自己账户之间挪。金额取那一类科目的合计，而不是最大的
+// 单笔分录——一笔账拆成好几项（午饭 35 + 饮料 8）时，只报 35 是错的。
+func briefOf(tx ledger.Transaction) TxnBrief {
+	b := TxnBrief{Date: tx.Date.Format("2006-01-02"), Payee: tx.Payee}
+
+	var expense, income, moved float64
+	var expAcct, incAcct string
+	// 用 Resolved 而不是 Postings：ledger 允许留一行不写金额由其余倒推，
+	// 直接读 Postings 的话那一行是 0，收入这类常写成省略的就全看不见了。
+	for _, p := range tx.Resolved() {
+		switch accountKind(p.Account) {
+		case "expense":
+			expense += p.Amount
+			if p.Amount > 0 && (expAcct == "" || p.Amount > 0) {
+				expAcct = p.Account
+			}
+		case "income":
+			income += p.Amount // 收入在账本里记成负数
+			if p.Amount < 0 {
+				incAcct = p.Account
+			}
+		}
+		if p.Amount > moved {
+			moved = p.Amount
+		}
+	}
+
+	switch {
+	case expense > 0:
+		b.Kind, b.Amount, b.Category = "expense", -expense, leafOf(expAcct)
+	case income < 0:
+		b.Kind, b.Amount, b.Category = "income", -income, leafOf(incAcct)
+	default:
+		b.Kind, b.Amount = "transfer", moved
+	}
+	return b
+}
+
+// leafOf 取科目的末一段：Expenses:Food:午饭 → 午饭。
+// 整串太长，手机上一行摆不下，而前缀对人没信息量。
+func leafOf(account string) string {
+	if i := strings.LastIndex(account, ":"); i >= 0 {
+		return account[i+1:]
+	}
+	return account
 }
 
 // Snapshot 把一批 org 文件和账本解析成界面要显示的内容。
@@ -583,19 +640,9 @@ func buildLedger(b *ledger.Book) *LedgerView {
 		v.Accounts = append(v.Accounts, Account{
 			Name: name, Balance: bal[name], Kind: accountKind(name)})
 	}
-	for i := len(b.Transactions) - 1; i >= 0 && i > len(b.Transactions)-21; i-- {
-		tx := b.Transactions[i]
-		var amt float64
-		for _, p := range tx.Postings {
-			if p.Amount > amt {
-				amt = p.Amount
-			}
-		}
-		v.Recent = append(v.Recent, TxnBrief{
-			Date:   tx.Date.Format("2006-01-02"),
-			Payee:  tx.Payee,
-			Amount: amt,
-		})
+	// 给多一点，界面按天分组之后二十条也就三四天。
+	for i := len(b.Transactions) - 1; i >= 0 && i > len(b.Transactions)-61; i-- {
+		v.Recent = append(v.Recent, briefOf(b.Transactions[i]))
 	}
 	return v
 }

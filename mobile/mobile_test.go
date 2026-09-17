@@ -493,3 +493,50 @@ func TestTodosCarryDue(t *testing.T) {
 		t.Errorf("过期的剩余天数该是负的，实际 %d", got.DueIn)
 	}
 }
+
+// 流水原来只报「最大的那笔分录」，收入支出都是正数，一眼分不出方向；
+// 一笔账拆成好几项（午饭 35 + 饮料 8）时只报 35 也是错的。
+func TestRecentTransactions(t *testing.T) {
+	book := `2026/09/10 发工资
+    Assets:Bank:招行            18000.00
+    Income:Salary
+
+2026/09/12 午饭
+    Expenses:Food:餐饮             35.00
+    Expenses:Food:饮料              8.00
+    Assets:Bank:招行
+
+2026/09/13 转去余额宝
+    Assets:Fund:余额宝           5000.00
+    Assets:Bank:招行
+`
+	out := snapshot(t, SnapshotInput{Ledger: book, Now: "2026-09-17T09:00:00+08:00"})
+	if out.Ledger == nil {
+		t.Fatal("账本没解析出来")
+	}
+
+	byPayee := map[string]TxnBrief{}
+	for _, tx := range out.Ledger.Recent {
+		byPayee[tx.Payee] = tx
+	}
+
+	pay := byPayee["发工资"]
+	if pay.Kind != "income" || pay.Amount != 18000 {
+		t.Errorf("进账那笔不对：kind=%q amount=%.2f", pay.Kind, pay.Amount)
+	}
+	if pay.Category != "Salary" {
+		t.Errorf("没说清楚哪来的：%q", pay.Category)
+	}
+
+	// 拆成两项的要合计，而且是负的。
+	lunch := byPayee["午饭"]
+	if lunch.Kind != "expense" || lunch.Amount != -43 {
+		t.Errorf("花钱那笔不对：kind=%q amount=%.2f（该是 -43）", lunch.Kind, lunch.Amount)
+	}
+
+	// 钱在自己账户间挪，既不是花也不是挣——混进支出会把当天的账撑得很难看。
+	move := byPayee["转去余额宝"]
+	if move.Kind != "transfer" {
+		t.Errorf("转账被当成了 %q", move.Kind)
+	}
+}

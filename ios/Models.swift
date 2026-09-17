@@ -134,8 +134,17 @@ struct Account: Codable, Identifiable {
 struct TxnBrief: Codable, Identifiable {
     var date: String
     var payee: String
+    /// 带符号：花出去是负的，收进来是正的。
     var amount: Double
-    var id: String { date + payee + String(amount) }
+    /// expense / income / transfer
+    var kind: String = ""
+    /// 花在哪儿 / 哪来的，科目的末一段。
+    var category: String = ""
+
+    var id: String { date + payee + String(amount) + category }
+
+    var isTransfer: Bool { kind == "transfer" }
+    var isIncome: Bool { kind == "income" }
 }
 
 struct LedgerView: Codable {

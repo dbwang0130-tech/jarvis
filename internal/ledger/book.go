@@ -181,26 +181,45 @@ func parsePosting(s string) Posting {
 func (b *Book) Balances() map[string]float64 {
 	out := map[string]float64{}
 	for _, tx := range b.Transactions {
-		var net float64
-		nullIdx := -1
-		for i, p := range tx.Postings {
-			if p.HasAmount {
-				net += p.Amount
-			} else if nullIdx == -1 {
-				nullIdx = i
-			}
+		for _, p := range tx.Resolved() {
+			out[p.Account] += p.Amount
 		}
-		for i, p := range tx.Postings {
-			amt := p.Amount
-			if !p.HasAmount {
-				if i == nullIdx {
-					amt = -net
-				} else {
-					amt = 0
-				}
-			}
-			out[p.Account] += amt
+	}
+	return out
+}
+
+// Resolved 返回补齐了金额的分录。
+//
+// ledger 允许留一行不写金额，由其余各行倒推——这是这个格式最常见的写法：
+//
+//	2026/09/12 午饭
+//	    Expenses:Food     35.00
+//	    Assets:Bank                 ← 这行是 -35.00
+//
+// 补齐的规则只该有一份定义。算余额、看流水、将来做报表都要用它，
+// 各自照着推一遍的话，迟早在「两行都没写金额」这类边角上走散。
+// 多于一行没写金额时，只补第一行，其余按 0 算——ledger 本身也不接受
+// 两个空缺，硬猜出来的数更容易骗人。
+func (t Transaction) Resolved() []Posting {
+	var net float64
+	blank := -1
+	for i, p := range t.Postings {
+		if p.HasAmount {
+			net += p.Amount
+		} else if blank == -1 {
+			blank = i
 		}
+	}
+	out := make([]Posting, len(t.Postings))
+	for i, p := range t.Postings {
+		if !p.HasAmount {
+			p.Amount = 0
+			if i == blank {
+				p.Amount = -net
+			}
+			p.HasAmount = true
+		}
+		out[i] = p
 	}
 	return out
 }
