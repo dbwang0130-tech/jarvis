@@ -45,6 +45,22 @@ struct SettingsView: View {
                         .lineLimit(2...6)
                 }
 
+                Section {
+                    NavigationLink {
+                        MailAccountsView()
+                    } label: {
+                        HStack {
+                            Label("邮箱", systemImage: "envelope")
+                            Spacer()
+                            Text(store.settings.mail.isEmpty
+                                 ? "没配" : "\(store.settings.mail.count) 个")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } footer: {
+                    Text("手机上没有单独的邮件界面，收发都在跟 Jarvis 的对话里。")
+                }
+
                 Section("数据") {
                     HStack {
                         Text("iCloud 目录")

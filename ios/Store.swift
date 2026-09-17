@@ -6,7 +6,10 @@ import SwiftUI
 ///
 /// 文件读写和 Go 的解析都不轻，全放到后台线程；界面只读 @Published。
 @MainActor
-final class Store: ObservableObject {
+final class Store: ObservableObject, AskEvents {
+    /// 正等着用户拿主意的那件事。发信这类收不回来的动作会走到这儿。
+    @Published var pending: PendingAsk?
+
     @Published var snapshot = Snapshot.empty
     @Published var loading = false
     @Published var lastError: String?
@@ -111,9 +114,11 @@ final class Store: ObservableObject {
 
         let input = AskInput(files: files, ledger: ledger, question: text,
                              history: history, model: model, profile: settings.profile,
-                             memory: memory)
+                             memory: memory, accounts: settings.mailAccounts())
 
-        let out = await Task.detached(priority: .userInitiated) { Bridge.ask(input) }.value
+        let out = await Task.detached(priority: .userInitiated) { [weak self] in
+            Bridge.ask(input, events: self)
+        }.value
 
         if let err = out.error, !err.isEmpty {
             lastError = err
@@ -157,6 +162,40 @@ final class Store: ObservableObject {
         refreshWanted = false
         thinking = false
         await reload()
+    }
+
+    /// 干完一步就报上来，不用等整轮结束。
+    nonisolated func onStep(kind: String, name: String, text: String) {
+        let step = Step(kind: kind, name: name, text: text)
+        Task { @MainActor [weak self] in self?.steps.append(step) }
+    }
+
+    /// 秘书要做一件收不回来的事，问用户。
+    ///
+    /// **这个方法在后台线程上跑，而且会一直等**——Go 那边 emit 返回后立刻
+    /// 就阻塞着收答复，这里不给答案就是整轮卡死。所以无论如何都要 signal：
+    /// 弹窗挂了、Store 没了，都算不批。
+    nonisolated func onConfirm(tool: String, title: String, detail: String,
+                               irreversible: Bool) -> Bool {
+        let sem = DispatchSemaphore(value: 0)
+        let box = AnswerBox()
+        Task { @MainActor [weak self] in
+            guard let self else { box.set(false); sem.signal(); return }
+            self.pending = PendingAsk(tool: tool, title: title, detail: detail,
+                                      irreversible: irreversible) { ok in
+                box.set(ok)
+                sem.signal()
+            }
+        }
+        sem.wait()
+        return box.get()
+    }
+
+    /// 用户点了。收起弹窗，把答复送回还在等着的那个后台线程。
+    func answerPending(_ ok: Bool) {
+        guard let p = pending else { return }
+        pending = nil
+        p.answer(ok)
     }
 
     func clearChat() {
@@ -203,6 +242,8 @@ final class Store: ObservableObject {
 struct Settings: Codable {
     var model = ModelConfig()
     var profile = ""
+    /// 邮箱账号。密码不在这儿，单独进钥匙串。
+    var mail: [MailAccount] = []
 
     var apiKey: String {
         get { Keychain.read(key: "jarvis.apiKey") ?? "" }
@@ -212,7 +253,29 @@ struct Settings: Codable {
     private static let storeKey = "jarvis.settings"
 
     enum CodingKeys: String, CodingKey {
-        case model, profile
+        case model, profile, mail
+    }
+
+    /// 传给 Go 的那份：现从钥匙串取密码填上，只带配全了的账号。
+    func mailAccounts() -> [MailAccountInput] {
+        mail.compactMap { a in
+            let pw = a.password
+            guard !a.host.isEmpty, !a.user.isEmpty, !pw.isEmpty else { return nil }
+            return MailAccountInput(
+                name: a.name.isEmpty ? a.user : a.name,
+                host: a.host, port: a.port, user: a.user, password: pw,
+                smtpHost: a.smtpHost, smtpPort: a.smtpPort, from: a.from)
+        }
+    }
+
+    init() {}
+
+    // 老存档里没有 mail 这一项，缺了就当没配，别让整份设置解不开。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        model = try c.decodeIfPresent(ModelConfig.self, forKey: .model) ?? ModelConfig()
+        profile = try c.decodeIfPresent(String.self, forKey: .profile) ?? ""
+        mail = try c.decodeIfPresent([MailAccount].self, forKey: .mail) ?? []
     }
 
     static func load() -> Settings {

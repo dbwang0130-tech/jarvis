@@ -232,6 +232,46 @@ struct AskInput: Codable {
     var tz: String = TimeZone.current.identifier
     /// 长期记忆全文，跟电脑上共用 iCloud 里那一份。
     var memory: String = ""
+    /// 邮箱账号。空的话这一轮就没有邮件能力。
+    var accounts: [MailAccountInput] = []
+}
+
+/// 传给 Go 的邮箱账号。密码从 iOS 钥匙串取出来现填，不进 UserDefaults。
+struct MailAccountInput: Codable {
+    var name: String
+    var host: String
+    var port: Int
+    var user: String
+    var password: String
+    var smtpHost: String
+    var smtpPort: Int
+    var from: String
+
+    enum CodingKeys: String, CodingKey {
+        case name, host, port, user, password, from
+        case smtpHost = "smtp_host"
+        case smtpPort = "smtp_port"
+    }
+}
+
+/// 存在本机的邮箱设置。**密码不在这儿**——它单独进钥匙串。
+struct MailAccount: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var name = ""
+    var host = ""
+    var port = 993
+    var user = ""
+    var smtpHost = ""
+    var smtpPort = 0
+    var from = ""
+
+    /// 钥匙串里这条密码的键。跟着 id 走，改名字不会把密码弄丢。
+    var secretKey: String { "jarvis.mail.\(id.uuidString)" }
+
+    var password: String {
+        get { Keychain.read(key: secretKey) ?? "" }
+        nonmutating set { Keychain.write(key: secretKey, value: newValue) }
+    }
 }
 
 struct AskOutput: Codable {

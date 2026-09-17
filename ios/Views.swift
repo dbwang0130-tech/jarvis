@@ -277,6 +277,8 @@ struct ChatView: View {
         }
         .navigationTitle("Jarvis")
         .navigationBarTitleDisplayMode(.inline)
+        // 秘书要做收不回来的事（比如发信）会停在这儿等。
+        .sheet(item: $store.pending) { ConfirmSheet(ask: $0) }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { store.clearChat() } label: {
@@ -487,12 +489,74 @@ func toolLabel(_ name: String) -> String {
         "move_item": "移动条目", "demote_item": "降级", "promote_item": "升级",
         "clock_in": "开始计时", "clock_out": "结束计时",
         "list_accounts": "查余额", "list_transactions": "看流水", "add_transaction": "记账",
+        "fetch_mail": "收邮件", "list_mail": "看邮件", "read_mail": "读邮件",
+        "search_mail": "找邮件", "clean_mail": "清理邮件", "triage_mail": "分拣邮件",
+        "draft_reply": "起草回信", "draft_mail": "起草邮件", "send_draft": "发出邮件",
+        "list_drafts": "看草稿", "mark_read": "标为已读",
+        "remember": "记下来", "forget": "忘掉",
         "plan": "制定计划", "step_done": "标记完成",
     ]
     return labels[name] ?? name
 }
 
 // MARK: - 零碎
+
+/// 收不回来的动作停在这儿等用户点头。
+///
+/// 可逆的动作（清理邮件之类）走不到这里——自动整理档下它们直接就做了，
+/// 只会在过程里留一条记录。
+struct ConfirmSheet: View {
+    @EnvironmentObject var store: Store
+    let ask: PendingAsk
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 10) {
+                    Image(systemName: ask.irreversible
+                          ? "exclamationmark.triangle.fill" : "questionmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(ask.irreversible ? Color.orange : Color.blue)
+                    Text(ask.title).font(.headline)
+                }
+
+                if !ask.detail.isEmpty {
+                    ScrollView {
+                        Text(ask.detail)
+                            .font(.callout)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                if ask.irreversible {
+                    Label("这一步做了收不回来", systemImage: "arrow.uturn.backward.slash")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 12) {
+                    Button("算了") { store.answerPending(false) }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+                    Button(ask.irreversible ? "确认发出" : "去吧") {
+                        store.answerPending(true)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(ask.irreversible ? .orange : .accentColor)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding()
+            .navigationTitle(toolLabel(ask.tool))
+            .navigationBarTitleDisplayMode(.inline)
+            .interactiveDismissDisabled()
+        }
+        .presentationDetents([.medium])
+    }
+}
 
 struct EmptyHint: View {
     let show: Bool

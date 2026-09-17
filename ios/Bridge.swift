@@ -52,13 +52,16 @@ enum Bridge {
     }
 
     /// 把一句话交给秘书，返回答复和要写回的文件。
-    static func ask(_ input: AskInput) -> AskOutput {
+    ///
+    /// events 不为空时，干活过程会实时报上去，碰到要拿主意的事会回头问——
+    /// 那个回调**会阻塞调用它的线程**，所以这个方法别在主线程上调。
+    static func ask(_ input: AskInput, events: AskEvents? = nil) -> AskOutput {
         guard let data = try? JSONEncoder().encode(input),
               let json = String(data: data, encoding: .utf8) else {
             return AskOutput(reply: "", files: nil, ledger: nil, history: input.history,
                              steps: nil, error: "入参编码失败")
         }
-        let out = callAsk(json)
+        let out = callAsk(json, events)
         do {
             return try JSONDecoder().decode(AskOutput.self, from: Data(out.utf8))
         } catch {
@@ -88,9 +91,10 @@ enum Bridge {
         #endif
     }
 
-    private static func callAsk(_ json: String) -> String {
+    private static func callAsk(_ json: String, _ events: AskEvents?) -> String {
         #if canImport(Mobile)
-        return MobileAsk(json)
+        guard let events else { return MobileAsk(json) }
+        return MobileAskLive(json, MobileHostAdapter(events))
         #else
         return #"{"reply":"","history":[],"error":"Mobile framework 没连上"}"#
         #endif

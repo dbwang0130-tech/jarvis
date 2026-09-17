@@ -13,6 +13,7 @@ import (
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/ledger"
+	"github.com/dabao/jarvis/internal/mail"
 	"github.com/dabao/jarvis/internal/memory"
 	"github.com/dabao/jarvis/internal/org"
 	"github.com/dabao/jarvis/internal/orgtools"
@@ -37,6 +38,8 @@ type AskInput struct {
 	TZ string `json:"tz"`
 	// Memory 是长期记忆全文（iCloud 里的 memory.md），没有就留空。
 	Memory string `json:"memory"`
+	// Accounts 是邮箱账号，空的话这一轮就没有邮件能力。
+	Accounts []MailAccount `json:"accounts"`
 	// Model 是模型接入参数。
 	Model ModelConfig `json:"model"`
 	// Profile 是用户自述，交给模型判断什么算要紧。
@@ -88,7 +91,14 @@ type Step struct {
 // 文件仍然不由 Go 直接碰 iCloud：内容从入参进来，落到一个临时目录里
 // 让现成的工具去改，改完读回来对比，只把动过的那几个交出去。临时目录
 // 在 app 自己的沙箱里，没有权限问题。
-func Ask(inputJSON string) string {
+// Ask 不带回调：进度攒到最后一起给，要确认的一律不批。
+func Ask(inputJSON string) string { return askWith(inputJSON, nil) }
+
+// AskLive 带界面回调：干活过程实时报上去，要拿主意的事回头问。
+// host 那边 Confirm 会一直阻塞到用户点了为止，所以别在主线程上调这个。
+func AskLive(inputJSON string, host Host) string { return askWith(inputJSON, host) }
+
+func askWith(inputJSON string, host Host) string {
 	var in AskInput
 	if err := json.Unmarshal([]byte(inputJSON), &in); err != nil {
 		return askError("入参不是合法 JSON：%v", err)
@@ -162,8 +172,17 @@ func Ask(inputJSON string) string {
 
 	// 记忆跟着一起带上——两端共用 iCloud 里那一份，电脑上记住的事手机上
 	// 也该记得，反过来也是。
-	ag, err := agent.Build(cfg, orgtools.NewSkill(ws), ledger.NewSkill(ledgerPath),
-		memory.New(memoryPath))
+	skills := []agent.Skill{
+		orgtools.NewSkill(ws),
+		ledger.NewSkill(ledgerPath),
+		memory.New(memoryPath),
+	}
+	// 配了邮箱才带上邮件能力。会话跨轮次留着，不然上一轮的编号和草稿全没了。
+	// 发信这类收不回来的动作靠 Host.Confirm 问用户，不用把工具摘掉。
+	if ms := mailSessionFor(in.Accounts); ms != nil {
+		skills = append(skills, mail.NewSkill(ms))
+	}
+	ag, err := agent.Build(cfg, skills...)
 	if err != nil {
 		return askError("%v", err)
 	}
@@ -173,16 +192,7 @@ func Ask(inputJSON string) string {
 	ag.History = in.History
 
 	var steps []Step
-	reply, err := ag.Ask(context.Background(), in.Question, func(e agent.Event) {
-		switch e.Kind {
-		case agent.EventToolCall:
-			steps = append(steps, Step{Kind: "tool", Name: e.Tool, Text: e.Text})
-		case agent.EventToolResult:
-			steps = append(steps, Step{Kind: "result", Name: e.Tool, Text: e.Text})
-		case agent.EventError:
-			steps = append(steps, Step{Kind: "error", Name: e.Tool, Text: e.Text})
-		}
-	})
+	reply, err := ag.Ask(context.Background(), in.Question, hostEmit(host, &steps))
 	if err != nil {
 		return askError("%v", err)
 	}

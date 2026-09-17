@@ -79,7 +79,8 @@ ios-contract:
 	@command -v swiftc >/dev/null || { echo "没有 swiftc，先 xcode-select --install"; exit 1; }
 	@tmp=$$(mktemp -d) && \
 	go run ./ios/contract $$tmp && \
-	swiftc -swift-version 5 ios/Models.swift ios/contract/main.swift -o $$tmp/check && \
+	swiftc -swift-version 5 ios/Models.swift ios/Keychain.swift \
+	       ios/contract/main.swift -o $$tmp/check && \
 	$$tmp/check $$tmp; rc=$$?; rm -rf $$tmp; exit $$rc
 
 clean:

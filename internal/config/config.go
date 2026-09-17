@@ -69,9 +69,13 @@ type MailAccount struct {
 	Port        int    `json:"port"`
 	User        string `json:"user"`
 	PasswordCmd string `json:"password_cmd,omitempty"`
-	Junk        string `json:"junk,omitempty"`  // 垃圾箱路径；留空则按 \Junk 标记自动探测
-	Limit       int    `json:"limit,omitempty"` // 单次最多拉取多少封
-	Days        int    `json:"days,omitempty"`  // 只看最近几天
+	// Password 是直接给定的密码，只有 iOS 端会用——那边没有 macOS 钥匙串，
+	// 密码存在 iOS 自己的钥匙串里，由界面取出来传进来。
+	// `json:"-"` 保证它永远不会被写进配置文件。
+	Password string `json:"-"`
+	Junk     string `json:"junk,omitempty"`  // 垃圾箱路径；留空则按 \Junk 标记自动探测
+	Limit    int    `json:"limit,omitempty"` // 单次最多拉取多少封
+	Days     int    `json:"days,omitempty"`  // 只看最近几天
 	// FirstSyncLimit 是首次同步（没有进度记录时）最多拉多少封，0 表示不限。
 	FirstSyncLimit *int `json:"first_sync_limit,omitempty"`
 	Disabled       bool `json:"disabled,omitempty"`
@@ -428,8 +432,11 @@ func (a MailAccount) FirstSync() int {
 	return *a.FirstSyncLimit
 }
 
-// Secret 按优先级取邮箱密码：password_cmd > macOS 钥匙串。
+// Secret 按优先级取邮箱密码：直接给定 > password_cmd > macOS 钥匙串。
 func (a MailAccount) Secret() (string, error) {
+	if a.Password != "" {
+		return a.Password, nil
+	}
 	if a.PasswordCmd != "" {
 		return RunCmd(a.PasswordCmd)
 	}
