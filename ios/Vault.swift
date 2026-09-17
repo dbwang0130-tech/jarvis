@@ -86,11 +86,21 @@ final class Vault {
         }
     }
 
+    /// 读长期记忆。跟电脑上是同一份——那边记住的事这边也该记得。
+    func readMemory() throws -> String {
+        guard let root else { throw VaultError.notConfigured }
+        return try withAccess(to: root) {
+            let url = root.appendingPathComponent("memory.md")
+            guard exists(url) else { return "" }
+            return try readCoordinated(url)
+        }
+    }
+
     // MARK: - 写
 
     /// 把改动写回去。只写真的变过的那几个文件——多写一次就多一次
     /// iCloud 同步，也多一次跟 Mac 那头撞车的机会。
-    func write(orgFiles: [String: String], ledger: String?) throws {
+    func write(orgFiles: [String: String], ledger: String?, memory: String? = nil) throws {
         guard let root else { throw VaultError.notConfigured }
         try withAccess(to: root) {
             let orgDir = root.appendingPathComponent("org", isDirectory: true)
@@ -103,6 +113,9 @@ final class Vault {
             }
             if let ledger {
                 try writeCoordinated(root.appendingPathComponent("ledger.dat"), ledger)
+            }
+            if let memory {
+                try writeCoordinated(root.appendingPathComponent("memory.md"), memory)
             }
         }
     }

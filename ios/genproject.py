@@ -14,6 +14,7 @@ import pathlib
 
 IOS = pathlib.Path(__file__).resolve().parent
 FRAMEWORK = "Mobile.xcframework"
+ASSETS = "Assets.xcassets"
 BUNDLE_ID = "com.dabao.jarvis"
 DEPLOY_TARGET = "17.0"
 
@@ -42,6 +43,19 @@ def main() -> None:
         sources.append(f'\t\t\t\t{bf} /* {name} in Sources */,')
         children.append(f'\t\t\t\t{fr} /* {name} */,')
 
+    # 资源目录：有就带上，没有就当没这回事——图标是可选的。
+    assets_ref, assets_build = uid("fr:assets"), uid("bf:assets")
+    has_assets = (IOS / ASSETS).is_dir()
+    resources = []
+    if has_assets:
+        refs.append(f'\t\t{assets_ref} /* {ASSETS} */ = {{isa = PBXFileReference; '
+                    f'lastKnownFileType = folder.assetcatalog; path = {ASSETS}; '
+                    f'sourceTree = "<group>"; }};')
+        builds.append(f'\t\t{assets_build} /* {ASSETS} in Resources */ = '
+                      f'{{isa = PBXBuildFile; fileRef = {assets_ref} /* {ASSETS} */; }};')
+        resources.append(f'\t\t\t\t{assets_build} /* {ASSETS} in Resources */,')
+        children.append(f'\t\t\t\t{assets_ref} /* {ASSETS} */,')
+
     fw_ref, fw_build, fw_embed = uid("fr:fw"), uid("bf:fw"), uid("bf:fwembed")
     refs.append(f'\t\t{fw_ref} /* {FRAMEWORK} */ = {{isa = PBXFileReference; '
                 f'lastKnownFileType = wrapper.xcframework; path = {FRAMEWORK}; '
@@ -66,7 +80,9 @@ def main() -> None:
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;'''
 
-    target_common = f'''				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+    appicon = ("\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;"
+               if has_assets else "")
+    target_common = f'''				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";{appicon}
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -212,6 +228,7 @@ def main() -> None:
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+{nl.join(resources)}
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		}};
@@ -357,7 +374,8 @@ def main() -> None:
    <ArchiveAction buildConfiguration = "Release" revealArchiveInOrganizer = "YES"></ArchiveAction>
 </Scheme>
 ''')
-    print(f"工程已生成，{len(swift)} 个源文件：{' '.join(swift)}")
+    print(f"工程已生成，{len(swift)} 个源文件"
+          f"{'，带资源目录' if has_assets else ''}：{' '.join(swift)}")
 
 
 if __name__ == "__main__":

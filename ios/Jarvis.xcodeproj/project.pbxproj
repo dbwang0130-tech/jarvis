@@ -18,6 +18,7 @@
 		621910C5F045309EAEBB1B6A /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090A09C1465CE23ABD827A8F /* Store.swift */; };
 		7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5464F1D332FD60C84FF7555B /* Vault.swift */; };
 		484365F4C183DDFCE32CCAA6 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11FD182F6BBEFF87A5F395CA /* Views.swift */; };
+		1228440DDBCFF603473E79E6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 164C0316A3825EF4C698B340 /* Assets.xcassets */; };
 		527DBBB620101CD45838B4C5 /* Mobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F72C3D408040F7EF956AD77D /* Mobile.xcframework */; };
 		5141E406C9BDE2AAC9E6F7A1 /* Mobile.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = F72C3D408040F7EF956AD77D /* Mobile.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -48,6 +49,7 @@
 		090A09C1465CE23ABD827A8F /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		5464F1D332FD60C84FF7555B /* Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vault.swift; sourceTree = "<group>"; };
 		11FD182F6BBEFF87A5F395CA /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		164C0316A3825EF4C698B340 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F72C3D408040F7EF956AD77D /* Mobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Mobile.xcframework; sourceTree = "<group>"; };
 		38A007151ABE87CC01A5B6E9 /* Jarvis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jarvis.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -78,6 +80,7 @@
 				090A09C1465CE23ABD827A8F /* Store.swift */,
 				5464F1D332FD60C84FF7555B /* Vault.swift */,
 				11FD182F6BBEFF87A5F395CA /* Views.swift */,
+				164C0316A3825EF4C698B340 /* Assets.xcassets */,
 				F72C3D408040F7EF956AD77D /* Mobile.xcframework */,
 				328EC33DF3954DC9B83FA285 /* Products */,
 			);
@@ -150,6 +153,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1228440DDBCFF603473E79E6 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -225,6 +229,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -257,6 +262,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";

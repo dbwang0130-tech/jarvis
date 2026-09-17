@@ -13,6 +13,7 @@ import (
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/ledger"
+	"github.com/dabao/jarvis/internal/memory"
 	"github.com/dabao/jarvis/internal/org"
 	"github.com/dabao/jarvis/internal/orgtools"
 )
@@ -34,6 +35,8 @@ type AskInput struct {
 	History []agent.Message `json:"history"`
 	// TZ 是设备的时区名，见 applyTimeZone。
 	TZ string `json:"tz"`
+	// Memory 是长期记忆全文（iCloud 里的 memory.md），没有就留空。
+	Memory string `json:"memory"`
 	// Model 是模型接入参数。
 	Model ModelConfig `json:"model"`
 	// Profile 是用户自述，交给模型判断什么算要紧。
@@ -67,6 +70,8 @@ type AskOutput struct {
 	History []agent.Message `json:"history"`
 	// Steps 是干活过程（调了什么工具、结果如何），界面可以显示出来。
 	Steps []Step `json:"steps,omitempty"`
+	// Memory 只在秘书改过记忆时才有，界面拿去写回 iCloud。
+	Memory string `json:"memory,omitempty"`
 	// Error 非空表示这一轮没办成。
 	Error string `json:"error,omitempty"`
 }
@@ -118,6 +123,10 @@ func Ask(inputJSON string) string {
 	if err := os.WriteFile(ledgerPath, []byte(in.Ledger), 0o600); err != nil {
 		return askError("写临时账本失败：%v", err)
 	}
+	memoryPath := filepath.Join(dir, "memory.md")
+	if err := os.WriteFile(memoryPath, []byte(in.Memory), 0o600); err != nil {
+		return askError("写临时记忆失败：%v", err)
+	}
 
 	cfg := config.Config{
 		Files:      []string{orgDir},
@@ -151,7 +160,10 @@ func Ask(inputJSON string) string {
 		ws.Now = func() time.Time { return t }
 	}
 
-	ag, err := agent.Build(cfg, orgtools.NewSkill(ws), ledger.NewSkill(ledgerPath))
+	// 记忆跟着一起带上——两端共用 iCloud 里那一份，电脑上记住的事手机上
+	// 也该记得，反过来也是。
+	ag, err := agent.Build(cfg, orgtools.NewSkill(ws), ledger.NewSkill(ledgerPath),
+		memory.New(memoryPath))
 	if err != nil {
 		return askError("%v", err)
 	}
@@ -182,6 +194,9 @@ func Ask(inputJSON string) string {
 	}
 	if raw, err := os.ReadFile(ledgerPath); err == nil && string(raw) != in.Ledger {
 		out.Ledger = string(raw)
+	}
+	if raw, err := os.ReadFile(memoryPath); err == nil && string(raw) != in.Memory {
+		out.Memory = string(raw)
 	}
 	return marshal(&out)
 }

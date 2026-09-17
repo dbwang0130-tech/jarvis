@@ -153,7 +153,14 @@ func (s *Session) setup() error {
 	s.orgWS = orgtools.NewWorkspace(coll, s.cfg)
 	s.mailS = mail.NewSession(s.cfg)
 	s.ledgerSkill = ledger.NewSkill(s.cfg.LedgerFile)
-	s.memSkill = memory.New(filepath.Join(config.Dir(), "memory.md"))
+	if moved, err := config.MigrateMemory(s.cfg); err != nil {
+		s.startupWarn = append(s.startupWarn,
+			fmt.Sprintf("记忆没能挪到 %s：%v", s.cfg.MemoryPath(), err))
+	} else if moved {
+		s.startupWarn = append(s.startupWarn,
+			fmt.Sprintf("记忆已挪到 %s（原件留在配置目录里没动）", s.cfg.MemoryPath()))
+	}
+	s.memSkill = memory.New(s.cfg.MemoryPath())
 	s.browserSkill = browser.New(s.cfg)
 
 	s.skills = s.buildSkills()

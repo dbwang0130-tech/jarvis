@@ -230,6 +230,8 @@ struct AskInput: Codable {
     var profile: String
     /// Go 在 iOS 上读不到系统时区库，不带过去就按 UTC 算日期。
     var tz: String = TimeZone.current.identifier
+    /// 长期记忆全文，跟电脑上共用 iCloud 里那一份。
+    var memory: String = ""
 }
 
 struct AskOutput: Codable {
@@ -238,5 +240,7 @@ struct AskOutput: Codable {
     var ledger: String?
     var history: [Message]
     var steps: [Step]?
+    /// 只在秘书改过记忆时才有。
+    var memory: String?
     var error: String?
 }

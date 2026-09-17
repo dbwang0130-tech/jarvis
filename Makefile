@@ -56,7 +56,9 @@ ios-project:
 	@python3 ios/genproject.py
 
 # 装到插着的 iPhone 上。条件不齐会说明白差什么。
-ios-install: ios/Mobile.xcframework
+# 装之前先验两端契约。这道检查抓的是「装上去一片空白」那一类，
+# 几秒钟的事，不值得为了省它去手机上调试。
+ios-install: ios/Mobile.xcframework ios-contract
 	@sh ios/install-device.sh
 
 # 拿真正的 iOS SDK 类型检查 Swift 代码。macOS 上编能过不代表 iOS 上能过——

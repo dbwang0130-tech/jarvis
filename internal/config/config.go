@@ -96,8 +96,10 @@ type Browser struct {
 // Config 是 jarvis 的全部配置。
 type Config struct {
 	// 日程（org-mode）
-	Files            []string  `json:"files"`
-	Inbox            string    `json:"inbox,omitempty"`
+	Files []string `json:"files"`
+	Inbox string   `json:"inbox,omitempty"`
+	// MemoryFile 是长期记忆放哪儿。空的话放配置目录，见 MemoryPath。
+	MemoryFile       string    `json:"memory_file,omitempty"`
 	DeadlineWarnDays int       `json:"deadline_warn_days"`
 	AgendaDays       int       `json:"agenda_days"`
 	LogStateChanges  bool      `json:"log_state_changes"`
@@ -127,7 +129,37 @@ type Config struct {
 }
 
 // Default 返回默认配置。
+// ICloudDir 返回 iCloud Drive 里的 Jarvis 目录，没有 iCloud Drive 就返回空串。
+//
+// 这是 macOS 上 iCloud Drive 的固定位置。手机端那份由用户亲手选目录拿到
+// （沙箱不让猜），两边指的是同一个文件夹。
+func ICloudDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	root := filepath.Join(home, "Library", "Mobile Documents", "com~apple~CloudDocs")
+	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+		return "" // 没开 iCloud Drive
+	}
+	return filepath.Join(root, "Jarvis")
+}
+
+// Default 是没有配置文件时的那份配置。
+//
+// 有 iCloud Drive 就默认放在里面——日程、账本、记忆都该跟手机上是同一份，
+// 这是默认值该有的样子，不该逼人先去设置一遍。没有就退回本地目录。
 func Default() Config {
+	c := defaultLocal()
+	if icloud := ICloudDir(); icloud != "" {
+		c.Files = []string{filepath.Join(icloud, "org")}
+		c.LedgerFile = filepath.Join(icloud, "ledger.dat")
+		c.MemoryFile = filepath.Join(icloud, "memory.md")
+	}
+	return c
+}
+
+func defaultLocal() Config {
 	return Config{
 		Files:            []string{"~/org"},
 		DeadlineWarnDays: 14,
@@ -142,6 +174,7 @@ func Default() Config {
 			TimeoutSec:  120,
 		},
 		LedgerFile: "~/finance/ledger.dat",
+		MemoryFile: "", // 空表示放配置目录，见 MemoryPath
 		Theme:      "auto",
 		Browser:    Browser{Endpoint: "ws://127.0.0.1:9222"},
 		Behavior:   Behavior{AutoConfirm: "clean"},
@@ -212,6 +245,7 @@ func (c *Config) normalize() {
 		c.Files[i] = Expand(f)
 	}
 	c.Inbox = Expand(c.Inbox)
+	c.MemoryFile = Expand(c.MemoryFile)
 	c.LedgerFile = Expand(c.LedgerFile)
 }
 
@@ -300,6 +334,50 @@ func (c Config) Save(path string) error {
 
 // MouseOn 报告要不要收鼠标上报，没配过就是开着。
 func (c Config) MouseOn() bool { return c.Mouse == nil || *c.Mouse }
+
+// MemoryPath 返回长期记忆文件的路径。
+//
+// 没配就跟着日程走——日程在 iCloud 里，记忆也该在，否则手机上那位秘书
+// 记不得电脑上这位刚记住的事。日程也没配才退回配置目录。
+func (c Config) MemoryPath() string {
+	if c.MemoryFile != "" {
+		return c.MemoryFile
+	}
+	if icloud := ICloudDir(); icloud != "" {
+		return filepath.Join(icloud, "memory.md")
+	}
+	return filepath.Join(Dir(), "memory.md")
+}
+
+// MigrateMemory 把老位置（配置目录）的记忆挪到现在该在的地方。
+//
+// 记忆本来只在电脑上，放配置目录没问题；现在两端共用，得放 iCloud。
+// 老用户升上来时那份记忆还在旧地方，不搬的话秘书就把之前记住的全忘了。
+//
+// **复制，不删原件**：原件留着当备份，出岔子还能翻回去。
+// 目标已经有了就什么都不做——这条要能重复跑而不出事。
+// 返回搬没搬、出没出错。
+func MigrateMemory(c Config) (moved bool, err error) {
+	dst := c.MemoryPath()
+	legacy := filepath.Join(Dir(), "memory.md")
+	if dst == legacy {
+		return false, nil
+	}
+	if _, err := os.Stat(dst); err == nil {
+		return false, nil // 已经有了，别覆盖
+	}
+	raw, err := os.ReadFile(legacy)
+	if err != nil {
+		return false, nil // 老位置没有，那就是新用户
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(dst, raw, 0o600); err != nil {
+		return false, err
+	}
+	return true, nil
+}
 
 // InboxFile 返回新建条目应写入的文件路径。
 func (c Config) InboxFile() string {

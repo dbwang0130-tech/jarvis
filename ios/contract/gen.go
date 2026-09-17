@@ -76,7 +76,8 @@ func main() {
 			{Role: "tool", ToolCallID: "call_1", Name: "schedule_item", Content: "已安排"},
 			{Role: "assistant", Content: "挪好了。"},
 		},
-		Steps: []mobile.Step{{Kind: "tool", Name: "schedule_item", Text: "ref=work.org:9"}},
+		Steps:  []mobile.Step{{Kind: "tool", Name: "schedule_item", Text: "ref=work.org:9"}},
+		Memory: "记着：他讨厌开会",
 	})
 	if err != nil {
 		panic(err)

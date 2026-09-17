@@ -105,3 +105,43 @@ func TestLoadPartialJSONFallsBackClean(t *testing.T) {
 		t.Fatal("坏文件里的值不该漏进来，该整份退回默认")
 	}
 }
+
+// 记忆本来只在电脑上，放配置目录没问题；现在两端共用得放 iCloud。
+// 老用户升上来那份记忆还在旧地方，不搬的话秘书就把之前记住的全忘了。
+func TestMigrateMemory(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("JARVIS_CONFIG", filepath.Join(dir, "cfg", "config.json"))
+	if err := os.MkdirAll(filepath.Join(dir, "cfg"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(dir, "cfg", "memory.md")
+	if err := os.WriteFile(legacy, []byte("记着：他讨厌开会"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Config{MemoryFile: filepath.Join(dir, "icloud", "memory.md")}
+	moved, err := MigrateMemory(cfg)
+	if err != nil || !moved {
+		t.Fatalf("该搬过去：moved=%v err=%v", moved, err)
+	}
+	raw, err := os.ReadFile(cfg.MemoryPath())
+	if err != nil || string(raw) != "记着：他讨厌开会" {
+		t.Fatalf("内容不对：%q %v", raw, err)
+	}
+	// 原件留着当备份。
+	if _, err := os.Stat(legacy); err != nil {
+		t.Error("原件不该删")
+	}
+
+	// 再跑一次不该出事，也不该覆盖已经改过的目标。
+	if err := os.WriteFile(cfg.MemoryPath(), []byte("后来改过的"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if moved, err := MigrateMemory(cfg); moved || err != nil {
+		t.Fatalf("目标已存在就该什么都不做：moved=%v err=%v", moved, err)
+	}
+	raw, _ = os.ReadFile(cfg.MemoryPath())
+	if string(raw) != "后来改过的" {
+		t.Errorf("把已有的覆盖了：%q", raw)
+	}
+}

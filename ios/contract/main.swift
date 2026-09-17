@@ -63,7 +63,8 @@ check("AskInput 编码") {
                        model: ModelConfig(), profile: "学生")
     let obj = try JSONSerialization.jsonObject(
         with: try JSONEncoder().encode(inp)) as! [String: Any]
-    let want = ["files", "history", "ledger", "model", "profile", "question", "tz"]
+    let want = ["files", "history", "ledger", "memory", "model", "profile",
+                "question", "tz"]
     guard obj.keys.sorted() == want else {
         throw Err("字段对不上：\(obj.keys.sorted()) 应该是 \(want)")
     }

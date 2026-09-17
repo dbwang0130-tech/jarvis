@@ -30,6 +30,7 @@ final class Store: ObservableObject {
     // 手上这份文件内容。对话要用它做入参，也用来判断哪些真的变了。
     private var files: [String: String] = [:]
     private var ledger = ""
+    private var memory = ""
 
     /// 正在跑的那次刷新。下拉、切回前台、首次打开三条路会撞上，
     /// 撞上就跟着等前一个，而不是各读各的文件最后谁写谁赢。
@@ -67,11 +68,12 @@ final class Store: ObservableObject {
         defer { loading = false }
 
         do {
-            let (f, l) = try await Task.detached(priority: .userInitiated) { [vault] in
-                (try vault.readOrgFiles(), try vault.readLedger())
+            let (f, l, m) = try await Task.detached(priority: .userInitiated) { [vault] in
+                (try vault.readOrgFiles(), try vault.readLedger(), try vault.readMemory())
             }.value
             files = f
             ledger = l
+            memory = m
 
             let snap = await Task.detached(priority: .userInitiated) { [f, l] in
                 Bridge.snapshot(files: f, ledger: l)
@@ -108,7 +110,8 @@ final class Store: ObservableObject {
         model.apiKey = settings.apiKey
 
         let input = AskInput(files: files, ledger: ledger, question: text,
-                             history: history, model: model, profile: settings.profile)
+                             history: history, model: model, profile: settings.profile,
+                             memory: memory)
 
         let out = await Task.detached(priority: .userInitiated) { Bridge.ask(input) }.value
 
@@ -125,16 +128,19 @@ final class Store: ObservableObject {
         persist()
 
         // 秘书改了东西就写回 iCloud，然后重新解析一遍。
-        if (out.files?.isEmpty == false) || (out.ledger?.isEmpty == false) {
+        if (out.files?.isEmpty == false) || (out.ledger?.isEmpty == false)
+            || (out.memory?.isEmpty == false) {
             do {
                 let changed = out.files ?? [:]
                 let newLedger = out.ledger
+                let newMemory = out.memory
                 try await Task.detached(priority: .userInitiated) { [vault] in
-                    try vault.write(orgFiles: changed, ledger: newLedger)
+                    try vault.write(orgFiles: changed, ledger: newLedger, memory: newMemory)
                 }.value
 
                 for (name, content) in changed { files[name] = content }
                 if let newLedger { ledger = newLedger }
+                if let newMemory { memory = newMemory }
                 await reparse()
             } catch {
                 lastError = "改动没写回去：\(error.localizedDescription)"
