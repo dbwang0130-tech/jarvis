@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract ios-check ios-install ios-project
+.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract ios-check ios-install ios-project ios-assets
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -49,6 +49,10 @@ ios/Mobile.xcframework: $(GO_SRC) go.mod
 	@echo "framework 已更新"
 
 ios-framework: ios/Mobile.xcframework
+
+# 从 ios/brand 下的原图重新生成图标和头像。换图之后跑一下。
+ios-assets:
+	@sh ios/brand/make-assets.sh
 
 # 重新生成 Xcode 工程。加了 .swift 就跑一下——工程里的文件清单是生成的，
 # 忘了跑的表现是 cannot find 'X' in scope，看着像代码错其实是文件没进工程。
