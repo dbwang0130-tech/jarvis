@@ -166,6 +166,13 @@ func (s *Store) Merge(account string, incoming []Record) ([]Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 一封新的都没有就别写盘了。调用方每个账号都会来合一次（哪怕这次
+	// 什么都没拉到），照写的话每次同步都要把整份索引重新序列化一遍。
+	if len(incoming) == 0 {
+		sortByDate(old)
+		return old, nil
+	}
+
 	byKey := make(map[string]int, len(old))
 	for i, r := range old {
 		byKey[r.Key()] = i

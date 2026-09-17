@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/dabao/jarvis/internal/mailstore"
 )
 
 func mailCall(t *testing.T, in MailInput) MailOutput {
@@ -87,5 +90,38 @@ func TestMailActionsDoNotNeedFreshFetch(t *testing.T) {
 		if strings.Contains(got.Error, "先同步") {
 			t.Errorf("%s 还在要求先同步：%q", op, got.Error)
 		}
+	}
+}
+
+// 同步没拉到新邮件（一封新的都没有，或者干脆连不上服务器）的时候，
+// 本地存着的那些照样得给出来。
+//
+// 之前是按「这次拉到的邮件」分组再合并的，一次空手而归就等于谁都没合过，
+// 出参里一封都没有——用户看到的是列表整个清空了，还以为邮件没了。
+func TestMailSyncKeepsLocalWhenNothingNew(t *testing.T) {
+	dir := t.TempDir()
+	bodies := t.TempDir()
+	store, err := mailstore.New(dir, bodies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Merge("工作", []mailstore.Record{
+		{UID: 7, From: "老板", Subject: "季度汇报", Date: time.Now()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 端口 1 没人听，这次必然一封也拉不到。
+	out := mailCall(t, MailInput{
+		Op: "sync", IndexDir: dir, BodyDir: bodies,
+		Accounts: []MailAccount{{
+			Name: "工作", Host: "127.0.0.1", Port: 1, User: "me", Password: "x",
+		}},
+	})
+	if len(out.Items) != 1 {
+		t.Fatalf("本地那封该还在，实际 %d 条：%+v", len(out.Items), out.Items)
+	}
+	if out.Items[0].Subject != "季度汇报" {
+		t.Errorf("给回来的不是本地那封：%+v", out.Items[0])
 	}
 }

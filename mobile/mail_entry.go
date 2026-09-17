@@ -152,14 +152,23 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 		})
 	}
 
-	// 接住 Merge 的返回值。它给的就是合并之后的全部记录，丢掉的话下面
-	// 每一步都要再读一次盘——一次同步能读上三四遍同一个文件。
+	// **每个配好的账号都要过一遍**，不是只过这次拉到东西的那几个。
+	// 只认 byAccount 的话，一次空手而归就等于谁都没合过，出参里一封都
+	// 没有——界面上原来那一列直接清空，用户以为邮件全没了。
+	// 连不上服务器的账号同理，本地存着的照样该给出来。
+	//
+	// 顺手接住 Merge 的返回值：它给的就是合并之后的全部记录，丢掉的话
+	// 下面每一步都要再读一次盘——一次同步能读上三四遍同一个文件。
+	var saveFail []string
 	merged := map[string][]mailstore.Record{}
 	known := map[string]mailstore.Triage{}
-	for acct, recs := range byAccount {
-		after, err := store.Merge(acct, recs)
+	for _, a := range in.Accounts {
+		acct := a.Name
+		after, err := store.Merge(acct, byAccount[acct])
 		if err != nil {
-			return marshal(&MailOutput{Error: "存不下来：" + err.Error()})
+			// 一个账号的索引坏了，不该把另一个账号的邮件也一起憋回去。
+			saveFail = append(saveFail, acct+" 存不下来："+err.Error())
+			continue
 		}
 		merged[acct] = after
 		for _, r := range after {
@@ -185,7 +194,6 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 	}
 
 	triaged := 0
-	var saveFail []string
 	// 一封没判过的都没有就别调模型了——白花一次钱换一句「都判过了」。
 	if need > 0 && in.Model.Provider != "" && in.Model.APIKey != "" {
 		var terr error
@@ -229,9 +237,11 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 
 	msg := fmt.Sprintf("拉到 %d 封新的", len(items))
 	switch {
+	case len(items) == 0:
+		msg = "没有新邮件"
 	case triaged > 0:
 		msg += fmt.Sprintf("，分拣了 %d 封", triaged)
-	case need == 0 && len(items) > 0:
+	case need == 0:
 		msg += "，都是判过的，没再麻烦模型"
 	}
 	if len(saveFail) > 0 {
