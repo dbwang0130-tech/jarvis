@@ -166,7 +166,7 @@ struct AgendaView: View {
                     if day.items.isEmpty {
                         Text("空着").foregroundStyle(.tertiary).font(.footnote)
                     }
-                    ForEach(day.items) { item in
+                    ForEach(Array(day.items.enumerated()), id: \.offset) { _, item in
                         Button { selected = item } label: { ItemRow(item: item) }
                             .buttonStyle(.plain)
                             .itemSwipeActions(item)
@@ -257,7 +257,7 @@ struct TodosView: View {
         List {
             ForEach(groups, id: \.bucket) { group in
                 Section {
-                    ForEach(group.items) { item in
+                    ForEach(Array(group.items.enumerated()), id: \.offset) { _, item in
                         Button { selected = item } label: { ItemRow(item: item) }
                             .buttonStyle(.plain)
                             .itemSwipeActions(item)
@@ -375,7 +375,7 @@ struct LedgerTab: View {
                     // 里，看着像是有这么个账户——那是记账科目，不是钱放在哪儿。
                     ForEach(accountGroups(l.accounts), id: \.title) { group in
                         Section(group.title) {
-                            ForEach(group.items) { AccountRow(account: $0) }
+                            ForEach(Array(group.items.enumerated()), id: \.offset) { AccountRow(account: $1) }
                         }
                     }
                     // 流水默认收起来。打开财务页多半是想看「还剩多少」，
@@ -402,7 +402,7 @@ struct LedgerTab: View {
                         // 而「今天花了多少」这个最常问的问题反而得自己加。
                         ForEach(dayGroups(l.recent), id: \.date) { day in
                             Section {
-                                ForEach(day.items) { TxnRow(txn: $0) }
+                                ForEach(Array(day.items.enumerated()), id: \.offset) { TxnRow(txn: $1) }
                             } header: {
                                 HStack {
                                     Text(dayTitle(day.date))
@@ -883,7 +883,7 @@ struct ThinkingRow: View {
 
                 if expanded {
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(steps) { StepLine(step: $0) }
+                        ForEach(Array(steps.enumerated()), id: \.offset) { StepLine(step: $1) }
                     }
                     .padding(.leading, 2)
                 }

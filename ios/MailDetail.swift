@@ -51,7 +51,11 @@ struct MailDetail: View {
 
                 if let atts = content?.attachments, !atts.isEmpty {
                     Section("附件") {
-                        ForEach(atts) { a in
+                        // 按下标，不按内容算 id。两个同名同大小的附件
+                        // （比如两张都叫「未命名.png」的图）会撞出同一个 id，
+                        // List 的差分就会算错行数，直接崩：
+                        // _Bug_Detected_In_Client_Of_UICollectionView_Invalid_Number_Of_Items
+                        ForEach(Array(atts.enumerated()), id: \.offset) { _, a in
                             HStack {
                                 Image(systemName: "paperclip").foregroundStyle(.secondary)
                                 Text(a.name).lineLimit(1)

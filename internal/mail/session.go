@@ -64,6 +64,12 @@ type Item struct {
 type Session struct {
 	cfg config.Config
 
+	// UnreadOnly 让 Sync 只拉未读的。
+	//
+	// 手机上开着它：已读的多半是在别处处理过了，再拉回来只会让清单变长、
+	// 分拣多花钱。桌面端默认关着——那边有完整的邮件视图，读过的也要能翻。
+	UnreadOnly bool
+
 	mu      sync.Mutex
 	clients map[string]*mailbox.Client
 	items   []*Item
@@ -236,7 +242,7 @@ func (s *Session) Sync() FetchResult {
 				limit = acct.FirstSync()
 			}
 
-			msgs, info, err := c.FetchNew(lastUID, limit)
+			msgs, info, err := c.FetchNew(lastUID, limit, s.UnreadOnly)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -506,17 +512,16 @@ func render(items []*Item, compact bool) string {
 		if m.Unread {
 			b.WriteString("    状态: 未读\n")
 		}
-		if m.Snippet != "" {
-			fmt.Fprintf(&b, "    正文: %s\n", strings.ReplaceAll(snip(m.Snippet, 400), "\n", " "))
-		} else if m.Size > 0 {
-			b.WriteString("    正文: （无法提取，可能是纯图片邮件）\n")
-		}
 		detailed++
 	}
-	if brief > 0 {
-		fmt.Fprintf(&b, "\n（上面后 %d 封只给了发件人和主题，没附正文——数量太多，正文会撑爆上下文。"+
-			"就按发件人和主题判断；个别拿不准的用 read_mail 单独看。）\n", brief)
-	}
+	// **正文不往外发**。分拣靠发件人、主题和群发头（List-Unsubscribe、
+	// Precedence 这些）就够判了——推广和垃圾的信号全在头里。而正文是私人
+	// 内容，为了给一封信打个标签就把它整段发给模型，代价和收益不成比例。
+	//
+	// 真拿不准的那几封，让模型显式调 read_mail 单独看——那是一次明确的、
+	// 看得见的动作，不是默默把整个收件箱都送出去。
+	b.WriteString("\n（只给发件人、主题和群发标记，正文不外发。" +
+		"按这些判断；个别实在拿不准的用 read_mail 单独看那一封。）\n")
 	return b.String()
 }
 
@@ -531,14 +536,6 @@ func humanTime(t time.Time) string {
 		return fmt.Sprintf("%d天前", int(d.Hours()/24))
 	}
 	return t.Format("01-02")
-}
-
-func snip(s string, n int) string {
-	s = strings.TrimSpace(s)
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
 }
 
 // Clean 把这些编号的邮件移进垃圾箱，返回成功的封数和失败说明。

@@ -21,7 +21,10 @@ type Message struct {
 	Size     int64
 	Unread   bool
 
-	Snippet string // 正文开头的纯文本，交给模型判断
+	// Snippet 是正文开头的纯文本，给界面显示用。
+	// **不再随分拣清单发给模型**——正文是私人内容，为了打个标签
+	// 就整段送出去，代价和收益不成比例。
+	Snippet string
 
 	// 群发信号：这些头几乎只出现在营销/通知类邮件上。
 	ListUnsubscribe bool

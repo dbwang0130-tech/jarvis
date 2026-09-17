@@ -197,7 +197,9 @@ struct MarkdownText: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Markdown.blocks(text)) { block in
+            // 按下标。Block 的 id 是拿内容拼的，一条消息里出现两个一模一样的
+            // 段落（列表里重复的行很常见）就会撞，List 差分算错行数直接崩。
+            ForEach(Array(Markdown.blocks(text).enumerated()), id: \.offset) { _, block in
                 view(for: block)
             }
         }

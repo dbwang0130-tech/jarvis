@@ -2,6 +2,14 @@ import Foundation
 
 // 这些结构跟 Go 那边 mobile 包的 JSON 一一对应。
 // 改动时两边要一起改——字段名就是契约。
+//
+// **下面这些 id 只够用来做 Identifiable，不保证唯一**：它们是拿内容拼出来的，
+// 两笔同日同金额同收款方的账、两次一模一样的工具调用、两个同名的附件，
+// 都会撞成同一个 id。撞了之后 SwiftUI 的 List 差分会算错行数，直接崩在
+// _Bug_Detected_In_Client_Of_UICollectionView_Invalid_Number_Of_Items。
+//
+// 所以**列表里一律用 ForEach(Array(xs.enumerated()), id: \.offset)**，
+// 别直接 ForEach(xs)。真要按 id 做动画和状态保持，先确保那个 id 真的唯一。
 
 struct Item: Codable, Identifiable, Hashable {
     var ref: String        // 形如 work.org:12，改动时要原样传回去

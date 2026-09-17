@@ -173,14 +173,14 @@ func (cl *Client) FetchBefore(before time.Time, unreadOnly bool) ([]*Message, er
 //
 // 用 UID 而不是时间划界：IMAP 的 SINCE 只比较日期不比时间，
 // 按时间增量会把上次同步当天的邮件重新拉一遍。
-func (cl *Client) FetchNew(sinceUID uint32, limit int) ([]*Message, SyncInfo, error) {
+func (cl *Client) FetchNew(sinceUID uint32, limit int, unreadOnly bool) ([]*Message, SyncInfo, error) {
 	criteria := &imap.SearchCriteria{}
 	if sinceUID > 0 {
 		var set imap.UIDSet
 		set.AddRange(imap.UID(sinceUID+1), 0) // Stop 为 0 即 *，没有上界
 		criteria.UID = []imap.UIDSet{set}
 	}
-	return cl.search(criteria, false, limit)
+	return cl.search(criteria, unreadOnly, limit)
 }
 
 func (cl *Client) search(criteria *imap.SearchCriteria, unreadOnly bool, limit int) ([]*Message, SyncInfo, error) {

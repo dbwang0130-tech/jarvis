@@ -269,7 +269,7 @@ struct ItemRow: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
-                ForEach(item.tags.prefix(3), id: \.self) { tag in
+                ForEach(Array(item.tags.prefix(3).enumerated()), id: \.offset) { _, tag in
                     Text(tag)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -356,7 +356,7 @@ struct ItemDetail: View {
 
                     if !data.boxes.isEmpty {
                         Section("清单") {
-                            ForEach(data.boxes) { box in
+                            ForEach(Array(data.boxes.enumerated()), id: \.offset) { _, box in
                                 HStack(alignment: .top, spacing: 8) {
                                     Image(systemName: box.done ? "checkmark.square.fill" : "square")
                                         .foregroundStyle(box.done ? Color.green : Color.secondary)
@@ -377,7 +377,7 @@ struct ItemDetail: View {
 
                     if !data.log.isEmpty {
                         Section("做过什么") {
-                            ForEach(data.log) { LogRow(entry: $0) }
+                            ForEach(Array(data.log.enumerated()), id: \.offset) { LogRow(entry: $1) }
                         }
                     }
 
@@ -469,7 +469,8 @@ struct ItemDetail: View {
             if !item.tags.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "tag").font(.caption2).foregroundStyle(.tertiary)
-                    ForEach(item.tags, id: \.self) { tag in
+                    // 同一个条目上重复的标签会撞 id，按下标来。
+                    ForEach(Array(item.tags.enumerated()), id: \.offset) { _, tag in
                         Text(tag)
                             .font(.caption2)
                             .padding(.horizontal, 6).padding(.vertical, 2)

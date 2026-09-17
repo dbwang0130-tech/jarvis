@@ -66,6 +66,9 @@ func mailSessionFor(accounts []MailAccount) *mail.Session {
 		cfg.Accounts = append(cfg.Accounts, a.toConfig())
 	}
 	mailSession = mail.NewSession(cfg)
+	// 手机上只拉未读。已读的多半在别处处理过了，再拉回来只会让清单变长、
+	// 分拣多花一次钱。
+	mailSession.UnreadOnly = true
 	mailKey = key
 	return mailSession
 }

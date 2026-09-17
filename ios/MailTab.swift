@@ -63,7 +63,9 @@ struct MailTab: View {
         List {
             ForEach(groups, id: \.0) { verdict, mails in
                 Section {
-                    ForEach(mails) { mail in
+                    // 同上：key 理论上唯一（账号:UID），但万一解出空串，
+                    // 所有行的 id 就全一样，List 差分一样会崩。按下标稳当。
+                    ForEach(Array(mails.enumerated()), id: \.offset) { _, mail in
                         Button { selected = mail } label: { MailRow(mail: mail) }
                             .buttonStyle(.plain)
                             .swipeActions(edge: .trailing) {
