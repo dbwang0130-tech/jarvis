@@ -91,6 +91,33 @@ enum Bridge {
         }
     }
 
+    /// 邮件。list 只读本地不连网，sync 才去拉。
+    static func mail(op: String, dir: String, accounts: [MailAccountInput],
+                     model: ModelConfig? = nil, profile: String = "",
+                     key: String = "", keys: [String] = []) -> MailResult {
+        var input: [String: Any] = [
+            "op": op, "dir": dir, "key": key, "keys": keys,
+            "profile": profile, "tz": TimeZone.current.identifier,
+        ]
+        if let data = try? JSONEncoder().encode(accounts),
+           let arr = try? JSONSerialization.jsonObject(with: data) {
+            input["accounts"] = arr
+        }
+        if let model, let data = try? JSONEncoder().encode(model),
+           let obj = try? JSONSerialization.jsonObject(with: data) {
+            input["model"] = obj
+        }
+        guard let json = encode(input) else {
+            return MailResult(error: "入参编码失败")
+        }
+        let out = callMail(json)
+        do {
+            return try JSONDecoder().decode(MailResult.self, from: Data(out.utf8))
+        } catch {
+            return MailResult(error: "出参解不开：\(error.localizedDescription)")
+        }
+    }
+
     /// 拿当前配置真发一次请求，看通不通。密钥填错不该等到第一次认真提问
     /// 才暴露——那会儿人已经打完一整句话、等了十几秒。
     static func checkModel(_ model: ModelConfig) -> ModelCheck {
@@ -123,6 +150,14 @@ enum Bridge {
         return MobileSnapshot(json)
         #else
         return #"{"days":[],"todos":[],"error":"Mobile framework 没连上"}"#
+        #endif
+    }
+
+    private static func callMail(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileMail(json)
+        #else
+        return #"{"items":[],"error":"Mobile framework 没连上"}"#
         #endif
     }
 

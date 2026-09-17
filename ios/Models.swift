@@ -190,6 +190,54 @@ extension Snapshot {
     }
 }
 
+/// 一封邮件。主角是 reason（为什么归到这一类），不是 subject——
+/// 「Re: Re: FW:」这种主题本身没什么信息量。
+struct MailItem: Codable, Identifiable, Hashable {
+    var key = ""
+    var account = ""
+    var from = ""
+    var addr = ""
+    var subject = ""
+    var date = ""
+    var unread = false
+    var snippet = ""
+    var verdict = ""
+    var reason = ""
+    var hasBody = false
+
+    var id: String { key }
+
+    enum CodingKeys: String, CodingKey {
+        case key, account, from, addr, subject, date, unread, snippet
+        case verdict, reason
+        case hasBody = "has_body"
+    }
+}
+
+extension MailItem {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decodeIfPresent(String.self, forKey: .key) ?? ""
+        account = try c.decodeIfPresent(String.self, forKey: .account) ?? ""
+        from = try c.decodeIfPresent(String.self, forKey: .from) ?? ""
+        addr = try c.decodeIfPresent(String.self, forKey: .addr) ?? ""
+        subject = try c.decodeIfPresent(String.self, forKey: .subject) ?? ""
+        date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        unread = try c.decodeIfPresent(Bool.self, forKey: .unread) ?? false
+        snippet = try c.decodeIfPresent(String.self, forKey: .snippet) ?? ""
+        verdict = try c.decodeIfPresent(String.self, forKey: .verdict) ?? ""
+        reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        hasBody = try c.decodeIfPresent(Bool.self, forKey: .hasBody) ?? false
+    }
+}
+
+struct MailResult: Codable {
+    var items: [MailItem] = []
+    var body: String?
+    var message = ""
+    var error: String?
+}
+
 /// 模型连通性自检的结果。
 struct ModelCheck: Codable {
     var ok = false

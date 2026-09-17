@@ -164,24 +164,10 @@ func askWith(inputJSON string, host Host) string {
 		return askError("%v", err)
 	}
 
-	cfg := config.Config{
-		Files:      []string{orgDir},
-		Inbox:      wd.inboxPath(),
-		LedgerFile: ledgerPath,
-		WorkHours:  config.WorkHours{Start: 9, End: 22},
-		AgendaDays: 7,
-		Profile:    config.Profile{Interests: in.Profile},
-		Agent: config.Agent{
-			Provider:    in.Model.Provider,
-			Model:       in.Model.Model,
-			BaseURL:     in.Model.BaseURL,
-			APIKey:      in.Model.APIKey,
-			Temperature: in.Model.Temperature,
-			MaxSteps:    orDefault(in.Model.MaxSteps, 12),
-			TimeoutSec:  orDefault(in.Model.TimeoutSec, 60),
-			Proxy:       "none", // 手机上别去读环境变量里的代理
-		},
-	}
+	cfg := mobileAgentConfig(in.Model, in.Profile)
+	cfg.Files = []string{orgDir}
+	cfg.Inbox = wd.inboxPath()
+	cfg.LedgerFile = ledgerPath
 
 	coll, err := org.Load(orgDir)
 	if err != nil {
@@ -262,4 +248,26 @@ func orDefault(v, def int) int {
 
 func askError(format string, args ...any) string {
 	return marshal(&AskOutput{Error: fmt.Sprintf(format, args...)})
+}
+
+// mobileAgentConfig 拼出手机上跑 agent 要的那份配置。
+//
+// 提出来是因为对话、邮件分拣、模型自检都要同一份——各写一遍的话，
+// 「手机上别读环境变量代理」这类决定迟早只在其中一处生效。
+func mobileAgentConfig(m ModelConfig, profile string) config.Config {
+	return config.Config{
+		WorkHours:  config.WorkHours{Start: 9, End: 22},
+		AgendaDays: 7,
+		Profile:    config.Profile{Interests: profile},
+		Agent: config.Agent{
+			Provider:    m.Provider,
+			Model:       m.Model,
+			BaseURL:     m.BaseURL,
+			APIKey:      m.APIKey,
+			Temperature: m.Temperature,
+			MaxSteps:    orDefault(m.MaxSteps, 12),
+			TimeoutSec:  orDefault(m.TimeoutSec, 60),
+			Proxy:       "none", // 手机上别去读环境变量里的代理
+		},
+	}
 }

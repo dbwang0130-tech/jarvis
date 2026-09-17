@@ -266,6 +266,42 @@ final class Store: ObservableObject, AskEvents {
         }
     }
 
+    /// 邮件库放这台设备上，不进 iCloud——体积大、变化频繁，塞进去只会
+    /// 拖慢同步还容易撞车。
+    nonisolated var mailDir: String {
+        let base = (try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true))
+        return (base ?? URL(fileURLWithPath: NSTemporaryDirectory()))
+            .appendingPathComponent("mail").path
+    }
+
+    /// 只读本地那一下，不连网，所以可以同步调——打开页面要秒开。
+    func mail(op: String, key: String = "", keys: [String] = []) -> MailResult {
+        Bridge.mail(op: op, dir: mailDir, accounts: settings.mailAccounts(),
+                    model: modelWithKey, profile: settings.profile,
+                    key: key, keys: keys)
+    }
+
+    /// 要连服务器的那几下，挪到后台。
+    func mailAsync(op: String, key: String = "", keys: [String] = []) async -> MailResult {
+        let dir = mailDir
+        let accounts = settings.mailAccounts()
+        let model = modelWithKey
+        let profile = settings.profile
+        return await Task.detached(priority: .userInitiated) {
+            Bridge.mail(op: op, dir: dir, accounts: accounts, model: model,
+                        profile: profile, key: key, keys: keys)
+        }.value
+    }
+
+    /// 配置里的模型，密钥现从钥匙串取。
+    private var modelWithKey: ModelConfig {
+        var m = settings.model
+        m.apiKey = settings.apiKey
+        return m
+    }
+
     /// 取一条条目的详情。列表里没有正文，点开才去问 Go。
     func detail(of ref: String) async -> DetailData {
         let f = files

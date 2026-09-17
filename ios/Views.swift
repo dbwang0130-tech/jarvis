@@ -97,6 +97,8 @@ struct MainTabs: View {
                 .tabItem { Label("Jarvis", systemImage: "ellipsis.bubble") }
             NavigationStack { PlannerView() }
                 .tabItem { Label("日程", systemImage: "calendar") }
+            NavigationStack { MailTab() }
+                .tabItem { Label("邮件", systemImage: "envelope") }
             NavigationStack { LedgerTab() }
                 .tabItem { Label("财务", systemImage: "yensign.circle") }
         }

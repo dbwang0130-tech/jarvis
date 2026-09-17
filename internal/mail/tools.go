@@ -9,7 +9,6 @@ import (
 
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/mailbox"
-	"github.com/emersion/go-imap/v2"
 )
 
 // Tool 是秘书能对邮箱执行的一个动作，实现 agent.Tool 接口。
@@ -288,39 +287,8 @@ func toolCleanMail() *Tool {
 			if err != nil {
 				return "", err
 			}
-			group := map[string][]imap.UID{}
-			nosOf := map[string][]int{}
-			for _, no := range nos {
-				it, err := s.Item(no)
-				if err != nil {
-					return "", err
-				}
-				acct := it.Msg.Account
-				group[acct] = append(group[acct], it.Msg.UID)
-				nosOf[acct] = append(nosOf[acct], no)
-			}
-			var done []int
-			var fails []string
-			for acct, uids := range group {
-				c, err := s.client(acct)
-				if err != nil {
-					fails = append(fails, acct+": "+err.Error())
-					continue
-				}
-				junk, err := c.JunkMailbox()
-				if err != nil {
-					fails = append(fails, err.Error())
-					continue
-				}
-				if err := c.MoveTo(uids, junk); err != nil {
-					fails = append(fails, acct+": "+err.Error())
-					continue
-				}
-				done = append(done, nosOf[acct]...)
-			}
-			s.Remove(done)
-
-			msg := fmt.Sprintf("已移入垃圾箱 %d 封，它们已从清单中移除。", len(done))
+			done, fails := s.Clean(nos)
+			msg := fmt.Sprintf("已移入垃圾箱 %d 封，它们已从清单中移除。", done)
 			if len(fails) > 0 {
 				msg += " 失败：" + strings.Join(fails, "；")
 			}

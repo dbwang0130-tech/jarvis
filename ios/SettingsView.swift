@@ -124,7 +124,7 @@ struct SettingsView: View {
                         }
                     }
                 } footer: {
-                    Text("手机上没有单独的邮件界面，收发都在跟 Jarvis 的对话里。")
+                    Text("配好之后邮件页就能收信，也能直接跟 Jarvis 说「看看新邮件」。")
                 }
 
                 Section("数据") {

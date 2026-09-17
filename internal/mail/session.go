@@ -540,3 +540,63 @@ func snip(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
+
+// Clean 把这些编号的邮件移进垃圾箱，返回成功的封数和失败说明。
+//
+// 提成方法是为了让手机那边也能用——原来这段埋在 clean_mail 工具的闭包里，
+// 而它要用到 s.client 这个不导出的方法，包外够不着。两处各写一遍的话，
+// 「移到哪个垃圾箱」「失败了要不要从清单里摘掉」这类判断迟早走散。
+func (s *Session) Clean(nos []int) (done int, fails []string) {
+	group := map[string][]imap.UID{}
+	nosOf := map[string][]int{}
+	for _, no := range nos {
+		it, err := s.Item(no)
+		if err != nil {
+			fails = append(fails, err.Error())
+			continue
+		}
+		acct := it.Msg.Account
+		group[acct] = append(group[acct], it.Msg.UID)
+		nosOf[acct] = append(nosOf[acct], no)
+	}
+
+	var removed []int
+	for acct, uids := range group {
+		c, err := s.client(acct)
+		if err != nil {
+			fails = append(fails, acct+": "+err.Error())
+			continue
+		}
+		junk, err := c.JunkMailbox()
+		if err != nil {
+			fails = append(fails, err.Error())
+			continue
+		}
+		if err := c.MoveTo(uids, junk); err != nil {
+			fails = append(fails, acct+": "+err.Error())
+			continue
+		}
+		removed = append(removed, nosOf[acct]...)
+	}
+	s.Remove(removed)
+	return len(removed), fails
+}
+
+// Body 拉一封邮件的完整正文。ReadFull 把整封正文放在 Snippet 里
+// （名字有点误导，它平时只装开头几句，读全文时装的是全部）。
+func (s *Session) Body(no int) (string, error) {
+	it, err := s.Item(no)
+	if err != nil {
+		return "", err
+	}
+	c, err := s.client(it.Msg.Account)
+	if err != nil {
+		return "", err
+	}
+	full, err := c.ReadFull(it.Msg.UID)
+	if err != nil {
+		return "", err
+	}
+	it.Msg.Snippet = full.Snippet
+	return full.Snippet, nil
+}
