@@ -563,3 +563,55 @@ func TestSetDataDirRedirects(t *testing.T) {
 		t.Errorf("空路径把设好的冲掉了：%q", got)
 	}
 }
+
+// 同一条目一天只占一行。一件事既排在今天做、又在几天内截止，投影出来就是
+// 「计划」和「截止」两条，标题一模一样——手机上一屏就那么几行，同一句话
+// 写两遍纯属占地方。
+//
+// 这条是补的真实观察：一段 9/21 出发、9/24 返程的行程被写成了
+// SCHEDULED 9/21 + DEADLINE 9/24，于是 9/21 那天冒出两行一样的。
+func TestOneRowPerItemPerDay(t *testing.T) {
+	org := "* TODO 澳门出差\n" +
+		"  DEADLINE: <2026-09-24 四 12:10> SCHEDULED: <2026-09-21 一 12:35>\n"
+	out := snapshot(t, SnapshotInput{
+		Files: map[string]string{"a.org": org},
+		Days:  8, Now: "2026-09-21T08:00:00+08:00", TZ: "Asia/Shanghai",
+	})
+
+	for _, d := range out.Days {
+		n := 0
+		for _, it := range d.Items {
+			if strings.Contains(it.Title, "澳门出差") {
+				n++
+			}
+		}
+		if n > 1 {
+			t.Errorf("%s 那天同一条出现了 %d 次", d.Date, n)
+		}
+	}
+
+	// 出发那天留的该是「计划」——它说的是你什么时候动身。
+	for _, d := range out.Days {
+		if d.Date != "2026-09-21" {
+			continue
+		}
+		for _, it := range d.Items {
+			if strings.Contains(it.Title, "澳门出差") && it.Kind != "计划" {
+				t.Errorf("出发那天留的是「%s」，该留「计划」", it.Kind)
+			}
+		}
+	}
+}
+
+// 不同条目撞在同一天不该被误伤。
+func TestDedupeKeepsDifferentItems(t *testing.T) {
+	org := "* TODO 甲\n  SCHEDULED: <2026-09-21 一 09:00>\n" +
+		"* TODO 乙\n  SCHEDULED: <2026-09-21 一 10:00>\n"
+	out := snapshot(t, SnapshotInput{
+		Files: map[string]string{"a.org": org},
+		Days:  1, Now: "2026-09-21T08:00:00+08:00", TZ: "Asia/Shanghai",
+	})
+	if n := len(out.Days[0].Items); n != 2 {
+		t.Fatalf("两条不同的事该都在，实际 %d", n)
+	}
+}

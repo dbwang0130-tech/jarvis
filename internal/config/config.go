@@ -349,7 +349,7 @@ func (c Config) Save(path string) error {
 		return err
 	}
 	// 配置里可能存有 API 密钥，只允许本人读写。
-	return os.WriteFile(path, append(data, '\n'), 0o600)
+	return WriteAtomic(path, append(data, '\n'), 0o600)
 }
 
 // MouseOn 报告要不要收鼠标上报，没配过就是开着。

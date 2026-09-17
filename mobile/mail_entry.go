@@ -175,6 +175,8 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 	need := 0
 	for _, it := range items {
 		if t, ok := known[mailstore.Key(it.Msg.Account, uint32(it.Msg.UID))]; ok {
+			// 编号是刚从 items 里取的，填不进去只可能是会话被换过——
+			// 那样最多重判一次，不值得打断整次同步。
 			_ = sess.SetTriage(it.No, mail.Triage{
 				Verdict: mail.Verdict(t.Verdict), Reason: t.Reason})
 			continue
@@ -183,9 +185,14 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 	}
 
 	triaged := 0
+	var saveFail []string
 	// 一封没判过的都没有就别调模型了——白花一次钱换一句「都判过了」。
 	if need > 0 && in.Model.Provider != "" && in.Model.APIKey != "" {
-		triaged = runTriage(sess, in)
+		var terr error
+		triaged, terr = runTriage(sess, in)
+		if terr != nil {
+			saveFail = append(saveFail, "分拣没做成："+terr.Error())
+		}
 
 		// 新判出来的**按账号攒起来一次写完**。一封一次的话，每封都要
 		// 「读整份索引 → 解析 → 排序 → 序列化 → 写 → rename」，
@@ -206,7 +213,11 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 				Verdict: string(it.Verdict), Reason: it.Reason}
 		}
 		for acct, vs := range fresh {
-			_ = store.SetTriages(acct, vs)
+			if err := store.SetTriages(acct, vs); err != nil {
+				// 分拣是花过一次模型调用换来的。存不下来就等于白花，
+				// 而且下次同步还会再花一次——不能不吭声。
+				saveFail = append(saveFail, acct+"："+err.Error())
+			}
 			// 手上这份也跟着更新，结尾就不用再读一次盘。
 			for i := range merged[acct] {
 				if t, ok := vs[merged[acct][i].UID]; ok {
@@ -223,6 +234,9 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 	case need == 0 && len(items) > 0:
 		msg += "，都是判过的，没再麻烦模型"
 	}
+	if len(saveFail) > 0 {
+		msg += "。" + strings.Join(saveFail, "；")
+	}
 	if len(res.Errors) > 0 {
 		var parts []string
 		for acct, err := range res.Errors {
@@ -237,19 +251,19 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 	return marshal(&MailOutput{Items: out, Message: msg})
 }
 
-// runTriage 让模型把还没判过的分拣一遍，返回判了几封。
+// runTriage 让模型把还没判过的分拣一遍，返回判了几封和出了什么岔子。
 //
 // 走的是跟秘书同一套工具（list_mail + triage），不是另写一遍判断规则——
 // 两处各判各的，手机上和电脑上对同一封信会给出不同结论。
-func runTriage(sess *mail.Session, in MailInput) int {
+func runTriage(sess *mail.Session, in MailInput) (int, error) {
 	cfg := mobileAgentConfig(in.Model, in.Profile)
 	ag, err := agent.Build(cfg, mail.NewSkill(sess))
 	if err != nil {
-		return 0
+		return 0, err
 	}
 	ag.Stream = false
 	ag.Auto = agent.AutoClean
-	_, _ = ag.Ask(context.Background(),
+	_, err = ag.Ask(context.Background(),
 		"把清单里**还没有处置标签**的邮件分拣一遍。已经有标签的跳过，"+
 			"别重判。只调工具，不用写汇报。", nil)
 
@@ -259,7 +273,7 @@ func runTriage(sess *mail.Session, in MailInput) int {
 			n++
 		}
 	}
-	return n
+	return n, err
 }
 
 func mailRead(store *mailstore.Store, in MailInput) string {
@@ -284,6 +298,7 @@ func mailRead(store *mailstore.Store, in MailInput) string {
 	if err != nil {
 		return marshal(&MailOutput{Error: "读不出来：" + err.Error()})
 	}
+	// 正文只是缓存，存不下来下次重新去服务器拉一遍就是了，不用报给用户。
 	_ = store.SetBody(acct, uid, string(raw))
 	return marshal(&MailOutput{Body: parseMailBody(raw)})
 }
@@ -327,7 +342,11 @@ func mailClean(store *mailstore.Store, in MailInput) string {
 		for i, u := range uids {
 			plain[i] = uint32(u)
 		}
-		_ = store.MarkDeleted(acct, plain)
+		if err := store.MarkDeleted(acct, plain); err != nil {
+			// 服务器上已经移走了，本地墓碑没打上——下次同步这几封又会
+			// 冒出来。说清楚，别让人以为 app 有毛病。
+			fails = append(fails, acct+"：清掉了但本地没记下（"+err.Error()+"）")
+		}
 		done += len(uids)
 	}
 

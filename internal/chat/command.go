@@ -91,7 +91,7 @@ func (s *Session) runCommand(input string) bool {
 			s.cfg.Agent.Provider = "deepseek"
 		}
 		s.cfg.Agent.APIKey = arg
-		_ = s.cfg.Save(s.cfgPath)
+		s.saveCfg()
 		s.reloadAgent("已保存密钥")
 	case "/provider":
 		if arg == "" {
@@ -101,7 +101,7 @@ func (s *Session) runCommand(input string) bool {
 		s.cfg.Agent.Provider = arg
 		s.cfg.Agent.Model = ""
 		s.cfg.Agent.APIKey = ""
-		_ = s.cfg.Save(s.cfgPath)
+		s.saveCfg()
 		s.reloadAgent("已切换服务商 " + arg)
 	case "/model":
 		if arg == "" {
@@ -109,7 +109,7 @@ func (s *Session) runCommand(input string) bool {
 			return false
 		}
 		s.cfg.Agent.Model = arg
-		_ = s.cfg.Save(s.cfgPath)
+		s.saveCfg()
 		s.reloadAgent("已切换模型 " + arg)
 	case "/theme":
 		if arg == "" {
@@ -121,7 +121,7 @@ func (s *Session) runCommand(input string) bool {
 			return false
 		}
 		s.cfg.Theme = arg
-		_ = s.cfg.Save(s.cfgPath)
+		s.saveCfg()
 		note("已切换主题 %s", arg)
 	case "/clear":
 		if s.ag != nil {
@@ -149,7 +149,7 @@ func (s *Session) runCommand(input string) bool {
 		}
 		s.cfg.LedgerFile = config.Expand(arg)
 		s.ledgerSkill = ledger.NewSkill(s.cfg.LedgerFile)
-		_ = s.cfg.Save(s.cfgPath)
+		s.saveCfg()
 		s.reloadAgent("账本已设为 " + s.cfg.LedgerFile)
 	case "/accounts":
 		if len(s.cfg.Enabled()) == 0 {
@@ -179,7 +179,7 @@ func (s *Session) runCommand(input string) bool {
 		}
 		s.cfg.Accounts = kept
 		s.mailS.SetConfig(s.cfg)
-		_ = s.cfg.Save(s.cfgPath)
+		s.saveCfg()
 		s.reloadAgent("已删除邮箱 " + arg)
 	case "/mail":
 		s.addMail()
@@ -189,7 +189,7 @@ func (s *Session) runCommand(input string) bool {
 			return false
 		}
 		s.cfg.Files = fields[1:]
-		_ = s.cfg.Save(s.cfgPath)
+		s.saveCfg()
 		coll, err := LoadOrg(s.cfg)
 		if err != nil {
 			fail("%s", err.Error())
@@ -233,7 +233,7 @@ func (s *Session) setMouse(arg string) {
 
 	scr.SetMouse(on)
 	s.cfg.Mouse = &on
-	_ = s.cfg.Save(s.cfgPath)
+	s.saveCfg()
 	if on {
 		note("滚轮可以翻历史了；要拖选的话按住 option 拖，或者 /mouse off")
 		return
@@ -257,7 +257,7 @@ func (s *Session) setAuto(arg string) {
 		s.ag.SetAuto(lv)
 	}
 	s.cfg.Behavior.AutoConfirm = arg
-	_ = s.cfg.Save(s.cfgPath)
+	s.saveCfg()
 	note("档位已切到「%s」", lv.Label())
 }
 
@@ -322,7 +322,10 @@ func (s *Session) dream() {
 		return
 	}
 	text := strings.TrimSpace(reply.Content)
-	_ = s.memSkill.Save(text)
+	if err := s.memSkill.Save(text); err != nil {
+		fail("整理出来了但没存下：%v", err)
+		return
+	}
 	s.memSkill.Content = strings.TrimSpace(text) + "\n"
 	note("记忆已整理：%s\n%s", reset, text)
 }
@@ -361,6 +364,6 @@ func (s *Session) addMail() {
 	}
 	s.cfg.Accounts = append(s.cfg.Accounts, acc)
 	s.mailS.SetConfig(s.cfg)
-	_ = s.cfg.Save(s.cfgPath)
+	s.saveCfg()
 	s.reloadAgent("已添加邮箱 " + name)
 }

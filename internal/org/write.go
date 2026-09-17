@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dabao/jarvis/internal/config"
 	"time"
 )
 
@@ -54,7 +56,9 @@ func (d *Document) Save() error {
 	if len(d.Lines) > 0 {
 		text += "\n"
 	}
-	if err := os.WriteFile(d.Path, []byte(text), 0o644); err != nil {
+	// 整文件覆盖必须原子写：org 文件是用户唯一那份日程，写到一半被杀掉
+	// 留下的是半截文件，等于把这些年的安排截断了。
+	if err := config.WriteAtomic(d.Path, []byte(text), 0o644); err != nil {
 		return err
 	}
 	if fi, err := os.Stat(d.Path); err == nil {

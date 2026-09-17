@@ -132,11 +132,20 @@ final class Vault {
                 }
                 try writeCoordinated(url, content)
             }
-            if let ledger {
-                try writeCoordinated(root.appendingPathComponent("ledger.dat"), ledger)
-            }
-            if let memory {
-                try writeCoordinated(root.appendingPathComponent("memory.md"), memory)
+            // 账本和记忆同样要对。电脑那头记一笔账是**追加**写的，
+            // 手机这边却是整文件写回——拿着旧内容一覆盖，那笔就没了。
+            // 记忆两端都是整文件写，更是直接互相吃。
+            for (name, content, before) in [
+                ("ledger.dat", ledger, expecting["ledger.dat"]),
+                ("memory.md", memory, expecting["memory.md"]),
+            ] {
+                guard let content else { continue }
+                let url = root.appendingPathComponent(name)
+                if let before, changedUnderneath(url, since: before) {
+                    conflicts.append(name)
+                    continue
+                }
+                try writeCoordinated(url, content)
             }
             return conflicts
         }
@@ -144,10 +153,15 @@ final class Vault {
 
     /// 盘上的内容跟我们动手前读到的那份是不是已经不一样了。
     ///
-    /// 读不出来（文件被删了、还没下载下来）**不算冲突**——那种情况下
-    /// 写回去是对的，拦着反而把改动卡死在手机里。
+    /// 分两种「读不出来」，结论正好相反：
+    ///
+    /// - **文件真的不在了**（被删了、一次都没建过）：不算冲突，照写。
+    ///   拦着只会把改动卡死在手机里。
+    /// - **文件在（哪怕只是个 `.icloud` 占位符）却读不出来**：算冲突。
+    ///   这正是出差那条行程的处境——iCloud 还没把内容同步下来，我们手里
+    ///   那份是空的，一覆盖就把整个文件抹成空。宁可让人重做一次改动。
     private func changedUnderneath(_ url: URL, since before: String) -> Bool {
-        guard let now = try? readCoordinated(url) else { return false }
+        guard let now = try? readCoordinated(url) else { return exists(url) }
         return now != before
     }
 

@@ -551,8 +551,25 @@ func buildDays(c *org.Collection, now time.Time, days int, opts agenda.Options) 
 			continue // 空日子不占地方，今天除外
 		}
 		items := make([]Item, 0, len(d.Items))
+		kinds := make([]agenda.Kind, 0, len(d.Items)) // 跟 items 一一对应
+		seen := map[*org.Node]int{}
 		for _, it := range d.Items {
+			// 同一条目一天只占一行。一件事既排在今天做、又在几天内截止，
+			// 投影出来就是「计划」和「截止」两条，标题一模一样——桌面端
+			// 有空间摆开（「还有 2 天到期」是额外信息），手机上一屏就那么
+			// 几行，同一句话写两遍纯属占地方。
+			//
+			// 留计划那条：它说的是你什么时候动手。截止那天自己会单独出现，
+			// 详情页里两个时间也都在。
+			if i, ok := seen[it.Node]; ok {
+				if rankKind(it.Kind) < rankKind(kinds[i]) {
+					items[i], kinds[i] = toItem(it), it.Kind
+				}
+				continue
+			}
+			seen[it.Node] = len(items)
 			items = append(items, toItem(it))
+			kinds = append(kinds, it.Kind)
 		}
 		out = append(out, Day{
 			Date:    d.Date.Format("2006-01-02"),
@@ -562,6 +579,21 @@ func buildDays(c *org.Collection, now time.Time, days int, opts agenda.Options) 
 		})
 	}
 	return out
+}
+
+// rankKind 决定同一条目一天里留哪一条：逾期最要紧不能被盖掉，
+// 其次是「什么时候动手」，截止和事件排后面。
+func rankKind(k agenda.Kind) int {
+	switch k {
+	case agenda.KindOverdue:
+		return 0
+	case agenda.KindScheduled:
+		return 1
+	case agenda.KindDeadline:
+		return 2
+	default:
+		return 3
+	}
 }
 
 func sameDay(a, b time.Time) bool {

@@ -84,6 +84,9 @@ type Session struct {
 	// queued 是秘书干活时用户又打进来的话，等这一轮忙完接着办。
 	queueMu sync.Mutex
 	queued  []string
+	// sessWarned 记录「会话存不下来」是否已经说过——它每轮都要存一次，
+	// 真坏了的话不提醒就丢历史，每轮都提醒又会把屏幕刷满。
+	sessWarned bool
 }
 
 // Run 启动流式聊天。
@@ -191,8 +194,21 @@ func (s *Session) reloadAgent(msg string) {
 }
 
 func (s *Session) saveSession() {
-	if s.store != nil && s.ag != nil {
-		_ = s.store.Save(s.sessionID, s.ag.History)
+	if s.store == nil || s.ag == nil {
+		return
+	}
+	if err := s.store.Save(s.sessionID, s.ag.History); err != nil && !s.sessWarned {
+		// 说一次就够。不说的话，这一整轮对话在 `jarvis -c` 那边就是不存在的。
+		s.sessWarned = true
+		fail("这次对话存不下来，下次 -c 接不上：%v", err)
+	}
+}
+
+// saveCfg 存配置，存不下来要吭声——改了设置却悄悄没生效，
+// 下次启动又变回去，人只会以为自己记错了。
+func (s *Session) saveCfg() {
+	if err := s.cfg.Save(s.cfgPath); err != nil {
+		fail("设置没存下来：%v", err)
 	}
 }
 

@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/dabao/jarvis/internal/agent"
+
+	"github.com/dabao/jarvis/internal/config"
 )
 
 // Skill 是一份持久化记忆，内容来自用户明确要求记住的偏好。
@@ -120,5 +122,6 @@ func (s *Skill) Save(content string) error {
 	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(s.Path, []byte(strings.TrimSpace(content)+"\n"), 0o600)
+	// 原子写：整理记忆是整份覆盖，写到一半被杀掉就等于把记忆清空了。
+	return config.WriteAtomic(s.Path, []byte(strings.TrimSpace(content)+"\n"), 0o600)
 }

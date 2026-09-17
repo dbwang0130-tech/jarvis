@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dabao/jarvis/internal/agent"
+	"github.com/dabao/jarvis/internal/config"
 )
 
 // Store 管理一个会话目录。会话用时间戳做 id，天然可排序，最新即最后。
@@ -39,7 +40,7 @@ func (s *Store) Save(id string, history []agent.Message) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.Path(id), raw, 0o600)
+	return config.WriteAtomic(s.Path(id), raw, 0o600)
 }
 
 // Load 读取会话历史；文件不存在时返回空历史，不算错误。

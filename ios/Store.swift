@@ -142,10 +142,15 @@ final class Store: ObservableObject, AskEvents {
                 let newMemory = out.memory
                 // 把动手前那份一起交上去，写之前对一遍——盘上的要是已经变了，
                 // 说明电脑那头也改过，整文件覆盖会把人家的改动抹掉。
-                let before = files
+                // 账本和记忆也要带上动手前那份——它们跟 org 文件一样是
+                // 整文件写回，同样会把另一头的改动抹掉。
+                var before = files
+                before["ledger.dat"] = ledger
+                before["memory.md"] = memory
+                let snapshot = before
                 let conflicts = try await Task.detached(priority: .userInitiated) { [vault] in
                     try vault.write(orgFiles: changed, ledger: newLedger,
-                                    memory: newMemory, expecting: before)
+                                    memory: newMemory, expecting: snapshot)
                 }.value
                 if !conflicts.isEmpty {
                     lastError = conflictNote(conflicts)

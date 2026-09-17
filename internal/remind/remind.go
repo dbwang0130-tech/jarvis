@@ -12,6 +12,8 @@ import (
 
 	"github.com/dabao/jarvis/internal/agenda"
 	"github.com/dabao/jarvis/internal/org"
+
+	"github.com/dabao/jarvis/internal/config"
 )
 
 // Lead 是提前提醒的时间窗口（到点前 5 分钟）。
@@ -99,5 +101,5 @@ func (s *Store) Save(reminded map[string]int64) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.Path, raw, 0o600)
+	return config.WriteAtomic(s.Path, raw, 0o600)
 }

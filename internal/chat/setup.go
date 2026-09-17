@@ -121,7 +121,7 @@ func (s *Session) setupModel() (bool, bool) {
 		changed = true
 	}
 	if changed {
-		_ = s.cfg.Save(s.cfgPath)
+		s.saveCfg()
 	}
 	return changed, false
 }
@@ -153,7 +153,7 @@ func (s *Session) setupFiles() (bool, bool) {
 	}
 	coll.SetLogStates(s.cfg.LogStateChanges)
 	s.coll, s.orgWS.Coll, s.orgWS.Cfg = coll, coll, s.cfg
-	_ = s.cfg.Save(s.cfgPath)
+	s.saveCfg()
 	note("读到 %d 个文件。", len(coll.Docs))
 	return true, false
 }
@@ -199,7 +199,7 @@ func (s *Session) setupLedger() (bool, bool) {
 		s.cfg.LedgerFile = want
 	}
 	s.ledgerSkill = ledger.NewSkill(s.cfg.LedgerFile)
-	_ = s.cfg.Save(s.cfgPath)
+	s.saveCfg()
 	return true, false
 }
 
@@ -225,7 +225,7 @@ func (s *Session) setupAuto() (bool, bool) {
 	if s.ag != nil {
 		s.ag.SetAuto(lv)
 	}
-	_ = s.cfg.Save(s.cfgPath)
+	s.saveCfg()
 	return true, false
 }
 

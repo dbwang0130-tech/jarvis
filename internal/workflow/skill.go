@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/dabao/jarvis/internal/agent"
+
+	"github.com/dabao/jarvis/internal/config"
 )
 
 // Skill 是命名工作流的存储与执行技能。
@@ -99,7 +101,7 @@ func (s *Skill) save(m map[string][]string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.Path, raw, 0o600)
+	return config.WriteAtomic(s.Path, raw, 0o600)
 }
 
 func (s *Skill) toolList() agent.Tool {
