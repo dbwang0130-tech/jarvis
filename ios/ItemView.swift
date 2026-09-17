@@ -37,6 +37,30 @@ struct ItemLook {
     }
 }
 
+/// 分类的图标。org 的 CATEGORY 没设时取文件名，所以 work.org 就是 work。
+///
+/// 图标和颜色各管一件事：**图标说这是哪一摊事，颜色说急不急**。
+/// 两个维度都用颜色，一眼扫过去就分不清哪个是哪个了。
+func categoryIcon(_ category: String) -> String {
+    let c = category.lowercased()
+    let table: [(keys: [String], icon: String)] = [
+        (["work", "工作", "职", "公司", "项目"], "briefcase.fill"),
+        (["life", "生活", "日常", "家务"], "house.fill"),
+        (["inbox", "收件", "待整理"], "tray.fill"),
+        (["study", "learn", "学习", "读书", "thesis", "论文", "课"], "book.fill"),
+        (["health", "健康", "运动", "健身", "医"], "heart.fill"),
+        (["money", "财务", "账", "理财"], "creditcard.fill"),
+        (["family", "家人", "亲"], "person.2.fill"),
+        (["travel", "旅行", "出行"], "airplane"),
+        (["meeting", "会议", "会"], "person.3.fill"),
+        (["idea", "想法", "灵感"], "lightbulb.fill"),
+    ]
+    for row in table where row.keys.contains(where: { c.contains($0) }) {
+        return row.icon
+    }
+    return "folder.fill"
+}
+
 /// 优先级的颜色。A 最急，往下依次降温；没设的不显示。
 func priorityColor(_ p: String) -> Color {
     switch p {
@@ -63,10 +87,8 @@ struct ItemRow: View {
 
     private var content: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: look.icon)
-                .font(.system(size: 15))
-                .foregroundStyle(look.color)
-                .frame(width: 20)
+            leadingIcon
+                .frame(width: 22)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 5) {
@@ -82,6 +104,30 @@ struct ItemRow: View {
     }
 
     /// 时间、状态、优先级——「什么时候、什么状态、多急」。
+    /// 分类图标染上「急不急」的颜色。逾期另挂一个角标——那是最要紧的信息，
+    /// 光靠颜色不够响；做完了直接换成绿勾，不必再提它属于哪一摊。
+    @ViewBuilder
+    private var leadingIcon: some View {
+        if item.isDone {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 15))
+                .foregroundStyle(.green)
+        } else {
+            Image(systemName: categoryIcon(item.category))
+                .font(.system(size: 15))
+                .foregroundStyle(look.color)
+                .overlay(alignment: .topTrailing) {
+                    if item.overdue {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.red)
+                            .background(Circle().fill(Color(.systemBackground)))
+                            .offset(x: 5, y: -5)
+                    }
+                }
+        }
+    }
+
     private var topLine: some View {
         HStack(spacing: 6) {
             if !item.time.isEmpty {
@@ -90,6 +136,13 @@ struct ItemRow: View {
                     .foregroundStyle(look.color)
             } else {
                 Text(look.label).font(.caption).foregroundStyle(look.color)
+            }
+
+            // 图标是猜出来的，认不出就退回 folder——把分类名写出来兜底。
+            if !item.category.isEmpty {
+                Text(item.category)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
 
             if !item.state.isEmpty, !item.isDone {
@@ -330,7 +383,7 @@ struct ItemDetail: View {
             out.append(("已计时", "stopwatch", duration(item.clocked), .secondary))
         }
         if !item.category.isEmpty {
-            out.append(("分类", "folder", item.category, .secondary))
+            out.append(("分类", categoryIcon(item.category), item.category, .secondary))
         }
         return out
     }
