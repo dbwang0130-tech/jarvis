@@ -93,6 +93,12 @@ func TestActCancelFallsBack(t *testing.T) {
 	if !strings.Contains(body, "写周报") {
 		t.Error("条目被删掉了")
 	}
+	// 退回标完成时必须记一笔说明是取消的，否则事后跟真做完的分不出来。
+	// 之前 add_note 的参数名写错（note 而不是 text），错误又被吞了，
+	// 标成完成了但说明一直没写上。
+	if strings.Contains(body, "DONE") && !strings.Contains(body, "取消") {
+		t.Errorf("标成完成却没记下是取消的：\n%s", body)
+	}
 }
 
 // 烂输入要给话说，不能 panic、不能返回空壳。

@@ -156,7 +156,13 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		_, _ = call("add_note", map[string]any{"ref": in.Ref, "note": "取消，不做了"})
+		// 参数叫 text。写错名字的话工具会报「笔记内容不能为空」，而这里
+		// 又把错误吞了——标成完成了，说明却没记上，事后完全看不出区别。
+		if _, err := call("add_note",
+			map[string]any{"ref": in.Ref, "text": "取消，不做了"}); err != nil {
+			return msg + "（这个文件没有取消态，标成了完成；说明没记上：" +
+				err.Error() + "）", nil
+		}
 		return msg + "（这个文件没有取消态，标成了完成并记了一笔）", nil
 
 	case "postpone":
