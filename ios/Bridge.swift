@@ -51,6 +51,25 @@ enum Bridge {
         }
     }
 
+    /// 直接对一个条目做一件事，不经过模型。标完成这种事界面已经握着 ref 了，
+    /// 让模型跑一趟要好几秒和一次 API 调用。
+    static func act(files: [String: String], ref: String,
+                    op: String, days: Int = 0) -> ActResult {
+        let input: [String: Any] = [
+            "files": files, "ref": ref, "op": op, "days": days,
+            "tz": TimeZone.current.identifier,
+        ]
+        guard let json = encode(input) else {
+            return ActResult(error: "入参编码失败")
+        }
+        let out = callAct(json)
+        do {
+            return try JSONDecoder().decode(ActResult.self, from: Data(out.utf8))
+        } catch {
+            return ActResult(error: "出参解不开：\(error.localizedDescription)")
+        }
+    }
+
     /// 把一句话交给秘书，返回答复和要写回的文件。
     ///
     /// events 不为空时，干活过程会实时报上去，碰到要拿主意的事会回头问——
@@ -80,6 +99,14 @@ enum Bridge {
         return MobileSnapshot(json)
         #else
         return #"{"days":[],"todos":[],"error":"Mobile framework 没连上"}"#
+        #endif
+    }
+
+    private static func callAct(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileAct(json)
+        #else
+        return #"{"error":"Mobile framework 没连上"}"#
         #endif
     }
 

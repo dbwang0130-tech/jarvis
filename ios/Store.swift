@@ -218,6 +218,36 @@ final class Store: ObservableObject, AskEvents {
         }.value
     }
 
+    /// 对一个条目直接做一件事（完成/开始/停止/推迟/取消），不经过模型。
+    ///
+    /// 走的是跟秘书同一套 orgtools 工具，所以改动的语义、撤销点、循环任务
+    /// 的处理都跟对话里说一句完全一致，不会出现两套写回逻辑各走各的。
+    @discardableResult
+    func act(_ op: String, on ref: String, days: Int = 0) async -> Bool {
+        guard !thinking else { return false }   // 秘书正拿着旧内容干活，别插队
+        let f = files
+        let r = await Task.detached(priority: .userInitiated) {
+            Bridge.act(files: f, ref: ref, op: op, days: days)
+        }.value
+
+        if let err = r.error, !err.isEmpty {
+            lastError = err
+            return false
+        }
+        guard let changed = r.files, !changed.isEmpty else { return true }
+        do {
+            try await Task.detached(priority: .userInitiated) { [vault] in
+                try vault.write(orgFiles: changed, ledger: nil)
+            }.value
+            for (name, content) in changed { files[name] = content }
+            await reparse()
+            return true
+        } catch {
+            lastError = "改动没写回去：\(error.localizedDescription)"
+            return false
+        }
+    }
+
     /// 取一条条目的详情。列表里没有正文，点开才去问 Go。
     func detail(of ref: String) async -> DetailData {
         let f = files

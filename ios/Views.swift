@@ -103,6 +103,7 @@ struct AgendaView: View {
                     ForEach(day.items) { item in
                         Button { selected = item } label: { ItemRow(item: item) }
                             .buttonStyle(.plain)
+                            .itemSwipeActions(item)
                     }
                 } header: {
                     HStack {
@@ -142,6 +143,7 @@ struct TodosView: View {
         List(shown) { item in
             Button { selected = item } label: { ItemRow(item: item) }
                 .buttonStyle(.plain)
+                .itemSwipeActions(item)
         }
         .searchable(text: $keyword, prompt: "找点什么")
         .navigationTitle("待办")

@@ -73,6 +73,71 @@ func priorityColor(_ p: String) -> Color {
 
 // MARK: - 列表里的一行
 
+/// 一行上能直接做的事。放在这儿是因为列表和详情页要用同一套，
+/// 各写各的迟早出现「列表上叫推迟一天、详情页里叫明天」这种。
+enum ItemAction {
+    static func label(_ op: String) -> (String, String, Color) {
+        switch op {
+        case "done":     return ("完成", "checkmark", .green)
+        case "undone":   return ("没做完", "arrow.uturn.backward", .gray)
+        case "start":    return ("开始", "play.fill", .blue)
+        case "stop":     return ("停止", "stop.fill", .orange)
+        case "postpone": return ("推迟一天", "calendar.badge.plus", .indigo)
+        case "cancel":   return ("不做了", "xmark", .red)
+        default:         return (op, "questionmark", .gray)
+        }
+    }
+}
+
+/// 给一行挂上左右滑动的操作。列表和待办页共用，各写各的迟早走散。
+struct SwipeActions: ViewModifier {
+    @EnvironmentObject var store: Store
+    let item: Item
+
+    func body(content: Content) -> some View {
+        content
+            // 右滑（前缘）是「推进一步」：没做完就完成，做完了就退回来。
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                if item.isDone {
+                    button("undone")
+                } else {
+                    button("done")
+                }
+            }
+            // 左滑（后缘）是别的选择，全划不触发任何一个——这边都不是
+            // 「一划到底」该自动做的事。
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if !item.isDone {
+                    button("postpone", days: 1)
+                    button("start")
+                    button("cancel")
+                }
+            }
+    }
+
+    private func button(_ op: String, days: Int = 0) -> some View {
+        let (title, icon, color) = ItemAction.label(op)
+        return Button {
+            Task {
+                if await store.act(op, on: item.ref, days: days) {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+            }
+        } label: {
+            Label(title, systemImage: icon)
+        }
+        .tint(color)
+    }
+}
+
+extension View {
+    func itemSwipeActions(_ item: Item) -> some View {
+        modifier(SwipeActions(item: item))
+    }
+}
+
 /// 行只管画。点开谁由列表统一管——每行各挂一个 .sheet 的话，
 /// 列表有多少行就建多少套呈现状态，滚起来明显发涩。
 struct ItemRow: View {
@@ -258,6 +323,11 @@ struct ItemDetail: View {
     var body: some View {
         NavigationStack {
             List {
+                Section { actions }
+                    .listRowInsets(EdgeInsets(top: 6, leading: 12,
+                                              bottom: 6, trailing: 12))
+                    .listRowBackground(Color.clear)
+
                 Section {
                     header
                         .listRowInsets(EdgeInsets(top: 12, leading: 12,
@@ -328,6 +398,22 @@ struct ItemDetail: View {
         }
         // 正文和勾选项不在列表里，点开才去 Go 那边取这一条。
         .task(id: item.ref) { data = await store.detail(of: item.ref) }
+    }
+
+    /// 常用动作摆在最上面。这些都不经过模型——界面已经握着 ref 了，
+    /// 为「标完成」跑一趟模型是好几秒加一次 API 调用。
+    private var actions: some View {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 8) {
+                if item.isDone {
+                    ActionButton(op: "undone", item: item) { dismiss() }
+                } else {
+                    ActionButton(op: "done", item: item) { dismiss() }
+                    ActionButton(op: "start", item: item)
+                    ActionButton(op: "postpone", item: item)
+                }
+            }
+        }
     }
 
     private var header: some View {
@@ -410,6 +496,49 @@ struct ItemDetail: View {
     private func duration(_ minutes: Int) -> String {
         minutes < 60 ? "\(minutes) 分钟"
                      : "\(minutes / 60) 小时 \(minutes % 60) 分"
+    }
+}
+
+/// 一个动作按钮。做完了给个触感反馈——改的是文件，看不见摸不着，
+/// 不给点回应会让人不确定到底有没有生效。
+struct ActionButton: View {
+    @EnvironmentObject var store: Store
+    let op: String
+    let item: Item
+    var done: (() -> Void)?
+
+    @State private var working = false
+
+    var body: some View {
+        let (title, icon, color) = ItemAction.label(op)
+        Button {
+            working = true
+            Task {
+                let ok = await store.act(op, on: item.ref, days: 1)
+                working = false
+                if ok {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    done?()
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+            }
+        } label: {
+            VStack(spacing: 4) {
+                if working {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+                }
+                Text(title).font(.caption2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .foregroundStyle(color)
+        }
+        .buttonStyle(.plain)
+        .disabled(working || store.thinking)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: Brand.smallRadius))
     }
 }
 

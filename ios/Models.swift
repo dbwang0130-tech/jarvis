@@ -135,6 +135,13 @@ extension Snapshot {
     }
 }
 
+/// 直接操作的结果。files 里只有真变过的那几个。
+struct ActResult: Codable {
+    var message = ""
+    var files: [String: String]?
+    var error: String?
+}
+
 /// 一条条目的详情，点开才取。字段跟 mobile.DetailOutput 对应。
 struct DetailData: Codable {
     var scheduled = ""
