@@ -333,12 +333,7 @@ struct TodosView: View {
     private var truncatedHint: some View {
         let s = store.snapshot
         if s.todosTotal > s.todos.count {
-            Text("共 \(s.todosTotal) 条，只显示前 \(s.todos.count) 条")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14).padding(.vertical, 8)
-                .glassEffect(.regular, in: .capsule)
-                .padding(.bottom, 8)
+            HintPill(text: "共 \(s.todosTotal) 条，只显示前 \(s.todos.count) 条")
         }
     }
 }
@@ -1081,14 +1076,32 @@ struct ErrorBar: View {
 struct LoadingHint: View {
     @EnvironmentObject var store: Store
     let isEmpty: Bool
+    /// 不传就看 store.loading（读 iCloud 那条路）；邮件页有自己的忙碌状态。
+    var busy: Bool?
+    var text = "正在读 iCloud…"
 
     var body: some View {
-        if store.loading && isEmpty {
+        if (busy ?? store.loading) && isEmpty {
             VStack(spacing: 10) {
                 ProgressView()
-                Text("正在读 iCloud…").font(.footnote).foregroundStyle(.secondary)
+                Text(text).font(.footnote).foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+/// 底部那颗说明用的玻璃胶囊。待办的「还有多少没显示」和邮件的动作附注
+/// 长得一模一样，各写一遍只会让下次调样式时漏掉一处。
+struct HintPill: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .glassEffect(.regular, in: .capsule)
+            .padding(.bottom, 8)
     }
 }
 

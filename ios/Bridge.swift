@@ -113,29 +113,14 @@ enum Bridge {
     }
 
     /// 邮件。list 只读本地不连网，sync 才去拉。
-    static func mail(op: String, indexDir: String, bodyDir: String,
-                     accounts: [MailAccountInput],
-                     model: ModelConfig? = nil, profile: String = "",
-                     key: String = "", keys: [String] = []) -> MailResult {
-        var input: [String: Any] = [
-            "op": op, "index_dir": indexDir, "body_dir": bodyDir,
-            "key": key, "keys": keys,
-            "profile": profile, "tz": TimeZone.current.identifier,
-        ]
-        if let data = try? JSONEncoder().encode(accounts),
-           let arr = try? JSONSerialization.jsonObject(with: data) {
-            input["accounts"] = arr
-        }
-        if let model, let data = try? JSONEncoder().encode(model),
-           let obj = try? JSONSerialization.jsonObject(with: data) {
-            input["model"] = obj
-        }
-        guard let json = encode(input) else {
+    static func mail(_ input: MailInput) -> MailResult {
+        guard let data = try? JSONEncoder().encode(input),
+              let json = String(data: data, encoding: .utf8) else {
             return MailResult(error: "入参编码失败")
         }
-        let out = callMail(json)
         do {
-            return try JSONDecoder().decode(MailResult.self, from: Data(out.utf8))
+            return try JSONDecoder().decode(MailResult.self,
+                                            from: Data(callMail(json).utf8))
         } catch {
             return MailResult(error: "出参解不开：\(error.localizedDescription)")
         }

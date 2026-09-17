@@ -289,24 +289,23 @@ final class Store: ObservableObject, AskEvents {
 
     /// 只读本地那一下，不连网，所以可以同步调——打开页面要秒开。
     func mail(op: String, key: String = "", keys: [String] = []) -> MailResult {
-        Bridge.mail(op: op, indexDir: mailIndexDir, bodyDir: mailBodyDir,
-                    accounts: settings.mailAccounts(),
-                    model: modelWithKey, profile: settings.profile,
-                    key: key, keys: keys)
+        Bridge.mail(mailInput(op: op, key: key, keys: keys))
     }
 
     /// 要连服务器的那几下，挪到后台。
     func mailAsync(op: String, key: String = "", keys: [String] = []) async -> MailResult {
-        let indexDir = mailIndexDir
-        let bodyDir = mailBodyDir
-        let accounts = settings.mailAccounts()
-        let model = modelWithKey
-        let profile = settings.profile
+        let input = mailInput(op: op, key: key, keys: keys)
         return await Task.detached(priority: .userInitiated) {
-            Bridge.mail(op: op, indexDir: indexDir, bodyDir: bodyDir,
-                        accounts: accounts, model: model,
-                        profile: profile, key: key, keys: keys)
+            Bridge.mail(input)
         }.value
+    }
+
+    /// 入参装配只有这一处。同步版和异步版各拼一遍的话，将来加个字段
+    /// 要改两处，漏一处就是「同步能用、异步不能用」这种难查的毛病。
+    private func mailInput(op: String, key: String, keys: [String]) -> MailInput {
+        MailInput(op: op, indexDir: mailIndexDir, bodyDir: mailBodyDir,
+                  accounts: settings.mailAccounts(), model: modelWithKey,
+                  profile: settings.profile, key: key, keys: keys)
     }
 
     /// 配置里的模型，密钥现从钥匙串取。

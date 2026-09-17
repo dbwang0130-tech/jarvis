@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/dabao/jarvis/internal/agent"
@@ -46,40 +45,26 @@ type MailItem struct {
 	Snippet string `json:"snippet"`
 	Verdict string `json:"verdict"`
 	Reason  string `json:"reason"`
-	HasBody bool   `json:"has_body"`
 }
 
 type MailOutput struct {
 	Items []MailItem `json:"items"`
-	// Body 是展示用的原文：HTML 优先，没有才用纯文本。
-	Body *MailBody `json:"body,omitempty"`
-	// Draft 是起草出来的回信。
+	// Body 是展示用的原文。直接用 mailbox 的类型——照抄一份字段一样的
+	// 结构体，除了多一个搬字段的循环，没有任何好处。
+	Body *mailbox.FullBody `json:"body,omitempty"`
+	// Message 是这次动作的附注，给界面显示用（拉到几封、清掉几封）。
 	Message string `json:"message"`
 	Error   string `json:"error,omitempty"`
-}
-
-// MailBody 是一封邮件的原文。
-//
-// 账单、验证码、活动通知这类信的内容全在 HTML 的排版里，压成纯文本就只剩
-// 一堆散字——所以 HTML 要原样留着，内联图片也要嵌进去。
-type MailBody struct {
-	HTML string `json:"html"`
-	Text string `json:"text"`
-	// Attachments 只给清单不给内容：几 MB 的东西过一次 JSON 桥没有意义。
-	Attachments []MailAttachment `json:"attachments"`
-	// InlineDropped 是因为太大没嵌进来的内联图片数，让人知道有图没显示。
-	InlineDropped int `json:"inline_dropped"`
-}
-
-type MailAttachment struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Size int    `json:"size"`
 }
 
 func (o *MailOutput) normalize() {
 	if o.Items == nil {
 		o.Items = []MailItem{}
+	}
+	// 往下钻一层。数组补齐这件事在 marshal 出口统一做，不指望每个赋值点
+	// 都记得——Swift 那边数组字段是非可选的，解到 null 整个出参作废。
+	if o.Body != nil && o.Body.Attachments == nil {
+		o.Body.Attachments = []mailbox.Attachment{}
 	}
 }
 
@@ -116,7 +101,7 @@ func Mail(inputJSON string) string {
 	}
 }
 
-// listLocal 把本地存的读出来，清理过的不显示（墓碑只是为了别再拉回来）。
+// listLocal 把本地存的读出来。只有 list 这条路要真读盘。
 func listLocal(store *mailstore.Store, accounts []MailAccount) []MailItem {
 	var out []MailItem
 	for _, a := range accounts {
@@ -124,17 +109,24 @@ func listLocal(store *mailstore.Store, accounts []MailAccount) []MailItem {
 		if err != nil {
 			continue
 		}
-		for _, r := range recs {
-			if r.Deleted {
-				continue
-			}
-			out = append(out, MailItem{
-				Key: r.Key(), Account: r.Account, From: r.From, Addr: r.Addr,
-				Subject: r.Subject, Date: r.Date.Format("2006-01-02 15:04"),
-				Unread: r.Unread, Snippet: r.Snippet,
-				Verdict: r.Verdict, Reason: r.Reason, HasBody: r.HasBody,
-			})
+		out = append(out, itemsOf(recs)...)
+	}
+	return out
+}
+
+// itemsOf 把记录转成过桥的样子。清理过的不显示——墓碑只是为了别再拉回来。
+func itemsOf(recs []mailstore.Record) []MailItem {
+	out := make([]MailItem, 0, len(recs))
+	for _, r := range recs {
+		if r.Deleted {
+			continue
 		}
+		out = append(out, MailItem{
+			Key: r.Key(), Account: r.Account, From: r.From, Addr: r.Addr,
+			Subject: r.Subject, Date: r.Date.Format("2006-01-02 15:04"),
+			Unread: r.Unread, Snippet: r.Snippet,
+			Verdict: r.Verdict, Reason: r.Reason,
+		})
 	}
 	return out
 }
@@ -159,21 +151,32 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 			Date: m.Date, Unread: m.Unread, Snippet: m.Snippet,
 		})
 	}
+
+	// 接住 Merge 的返回值。它给的就是合并之后的全部记录，丢掉的话下面
+	// 每一步都要再读一次盘——一次同步能读上三四遍同一个文件。
+	merged := map[string][]mailstore.Record{}
+	known := map[string]mailstore.Triage{}
 	for acct, recs := range byAccount {
-		if _, err := store.Merge(acct, recs); err != nil {
+		after, err := store.Merge(acct, recs)
+		if err != nil {
 			return marshal(&MailOutput{Error: "存不下来：" + err.Error()})
+		}
+		merged[acct] = after
+		for _, r := range after {
+			if r.Verdict != "" {
+				known[r.Key()] = mailstore.Triage{Verdict: r.Verdict, Reason: r.Reason}
+			}
 		}
 	}
 
 	// **先看本地判过没有**。分拣要花一次模型调用，而同一封信的结论不会变——
 	// 服务器重发、换设备、翻页拉回旧邮件，都会让已经判过的又出现在清单里。
 	// 把已知结论填回会话，模型看到的清单上它们已经有标签了，不会重判。
-	known := knownVerdicts(store, byAccount)
 	need := 0
 	for _, it := range items {
-		v, ok := known[mailKeyOf(it.Msg.Account, uint32(it.Msg.UID))]
-		if ok {
-			_ = sess.SetTriage(it.No, v)
+		if t, ok := known[mailstore.Key(it.Msg.Account, uint32(it.Msg.UID))]; ok {
+			_ = sess.SetTriage(it.No, mail.Triage{
+				Verdict: mail.Verdict(t.Verdict), Reason: t.Reason})
 			continue
 		}
 		need++
@@ -183,12 +186,33 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 	// 一封没判过的都没有就别调模型了——白花一次钱换一句「都判过了」。
 	if need > 0 && in.Model.Provider != "" && in.Model.APIKey != "" {
 		triaged = runTriage(sess, in)
+
+		// 新判出来的**按账号攒起来一次写完**。一封一次的话，每封都要
+		// 「读整份索引 → 解析 → 排序 → 序列化 → 写 → rename」，
+		// 几十封就是 O(n²) 的磁盘读写。
+		fresh := map[string]map[uint32]mailstore.Triage{}
 		for _, it := range items {
 			if it.Verdict == "" {
 				continue
 			}
-			_ = store.SetTriage(it.Msg.Account, uint32(it.Msg.UID),
-				string(it.Verdict), it.Reason)
+			acct := it.Msg.Account
+			if _, ok := known[mailstore.Key(acct, uint32(it.Msg.UID))]; ok {
+				continue // 本来就是从本地填回去的，不用再写一遍
+			}
+			if fresh[acct] == nil {
+				fresh[acct] = map[uint32]mailstore.Triage{}
+			}
+			fresh[acct][uint32(it.Msg.UID)] = mailstore.Triage{
+				Verdict: string(it.Verdict), Reason: it.Reason}
+		}
+		for acct, vs := range fresh {
+			_ = store.SetTriages(acct, vs)
+			// 手上这份也跟着更新，结尾就不用再读一次盘。
+			for i := range merged[acct] {
+				if t, ok := vs[merged[acct][i].UID]; ok {
+					merged[acct][i].Verdict, merged[acct][i].Reason = t.Verdict, t.Reason
+				}
+			}
 		}
 	}
 
@@ -206,31 +230,11 @@ func mailSync(store *mailstore.Store, in MailInput) string {
 		}
 		msg += "。有账号没拉成：" + strings.Join(parts, "；")
 	}
-	return marshal(&MailOutput{Items: listLocal(store, in.Accounts), Message: msg})
-}
-
-// knownVerdicts 从本地索引里捞出已经判过的结论，键是「账号:UID」。
-func knownVerdicts(store *mailstore.Store, byAccount map[string][]mailstore.Record) map[string]mail.Triage {
-	out := map[string]mail.Triage{}
-	for acct := range byAccount {
-		recs, err := store.Load(acct)
-		if err != nil {
-			continue
-		}
-		for _, r := range recs {
-			if r.Verdict == "" {
-				continue
-			}
-			out[mailKeyOf(r.Account, r.UID)] = mail.Triage{
-				Verdict: mail.Verdict(r.Verdict), Reason: r.Reason,
-			}
-		}
+	var out []MailItem
+	for _, a := range in.Accounts {
+		out = append(out, itemsOf(merged[a.Name])...)
 	}
-	return out
-}
-
-func mailKeyOf(account string, uid uint32) string {
-	return account + ":" + strconv.FormatUint(uint64(uid), 10)
+	return marshal(&MailOutput{Items: out, Message: msg})
 }
 
 // runTriage 让模型把还没判过的分拣一遍，返回判了几封。
@@ -259,7 +263,7 @@ func runTriage(sess *mail.Session, in MailInput) int {
 }
 
 func mailRead(store *mailstore.Store, in MailInput) string {
-	acct, uid, ok := splitMailKey(in.Key)
+	acct, uid, ok := mailstore.SplitKey(in.Key)
 	if !ok {
 		return marshal(&MailOutput{Error: fmt.Sprintf("引用 %q 不合法", in.Key)})
 	}
@@ -284,22 +288,14 @@ func mailRead(store *mailstore.Store, in MailInput) string {
 	return marshal(&MailOutput{Body: parseMailBody(raw)})
 }
 
-func parseMailBody(raw []byte) *MailBody {
+// parseMailBody 把原始邮件解析成能展示的样子。
+// 解析不了也别空着手回去——原样给出来总比什么都没有强。
+func parseMailBody(raw []byte) *mailbox.FullBody {
 	full, err := mailbox.ParseBody(raw)
 	if err != nil || full == nil {
-		// 解析不了也别空着手回去——原样给出来总比什么都没有强。
-		return &MailBody{Text: string(raw), Attachments: []MailAttachment{}}
+		return &mailbox.FullBody{Text: string(raw)}
 	}
-	out := &MailBody{
-		HTML: full.HTML, Text: full.Text,
-		InlineDropped: full.InlineDropped,
-		Attachments:   make([]MailAttachment, 0, len(full.Attachments)),
-	}
-	for _, a := range full.Attachments {
-		out.Attachments = append(out.Attachments,
-			MailAttachment{Name: a.Name, Type: a.Type, Size: a.Size})
-	}
-	return out
+	return full
 }
 
 func mailClean(store *mailstore.Store, in MailInput) string {
@@ -310,7 +306,7 @@ func mailClean(store *mailstore.Store, in MailInput) string {
 
 	byAccount := map[string][]imap.UID{}
 	for _, k := range in.Keys {
-		acct, uid, ok := splitMailKey(k)
+		acct, uid, ok := mailstore.SplitKey(k)
 		if !ok {
 			continue
 		}
@@ -347,17 +343,4 @@ func mailClean(store *mailstore.Store, in MailInput) string {
 		msg += "。没清成的：" + strings.Join(fails, "；")
 	}
 	return marshal(&MailOutput{Items: listLocal(store, in.Accounts), Message: msg})
-}
-
-// splitMailKey 拆 "工作:1234"。账号名里可能有冒号，从最后一个切。
-func splitMailKey(key string) (account string, uid uint32, ok bool) {
-	i := strings.LastIndex(key, ":")
-	if i < 0 {
-		return "", 0, false
-	}
-	n, err := strconv.ParseUint(key[i+1:], 10, 32)
-	if err != nil {
-		return "", 0, false
-	}
-	return key[:i], uint32(n), true
 }

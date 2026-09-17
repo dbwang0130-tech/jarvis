@@ -24,9 +24,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dabao/jarvis/internal/config"
 )
 
 // Record 是索引里的一封邮件：列表页要显示的全部内容，不含正文。
@@ -45,15 +48,32 @@ type Record struct {
 	Verdict string `json:"verdict,omitempty"`
 	Reason  string `json:"reason,omitempty"`
 
-	// HasBody 表示正文已经存下来了，点开不用再连服务器。
-	HasBody bool `json:"has_body"`
 	// Deleted 是本地的墓碑：清理过的邮件不再显示，但记号要留着，
 	// 否则下次同步又把它拉回来。
 	Deleted bool `json:"deleted,omitempty"`
 }
 
 // Key 是一封邮件在存储里的身份。UID 只在单个邮箱内唯一，得带上账号。
-func (r Record) Key() string { return r.Account + ":" + fmt.Sprint(r.UID) }
+func (r Record) Key() string { return Key(r.Account, r.UID) }
+
+// Key 和 SplitKey 是一对。**这个格式只该有一个定义处**——拼的地方和拆的
+// 地方各写各的，哪天从冒号改成别的分隔符，就会出现一半索引查不到的怪事。
+func Key(account string, uid uint32) string {
+	return account + ":" + strconv.FormatUint(uint64(uid), 10)
+}
+
+// SplitKey 拆 "工作:1234"。账号名里可能有冒号，从最后一个切。
+func SplitKey(key string) (account string, uid uint32, ok bool) {
+	i := strings.LastIndex(key, ":")
+	if i < 0 {
+		return "", 0, false
+	}
+	n, err := strconv.ParseUint(key[i+1:], 10, 32)
+	if err != nil {
+		return "", 0, false
+	}
+	return key[:i], uint32(n), true
+}
 
 // Store 是邮件库。索引和正文分开放，因为它们的取舍相反：
 //
@@ -113,10 +133,10 @@ func safeName(s string) string {
 func (s *Store) Load(account string) ([]Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.loadLocked(account)
+	return s.load(account)
 }
 
-func (s *Store) loadLocked(account string) ([]Record, error) {
+func (s *Store) load(account string) ([]Record, error) {
 	raw, err := os.ReadFile(s.indexPath(account))
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -142,7 +162,7 @@ func (s *Store) Merge(account string, incoming []Record) ([]Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	old, err := s.loadLocked(account)
+	old, err := s.load(account)
 	if err != nil {
 		return nil, err
 	}
@@ -170,67 +190,72 @@ func (s *Store) Merge(account string, incoming []Record) ([]Record, error) {
 	}
 
 	sortByDate(old)
-	return old, s.saveLocked(account, old)
+	return old, s.save(account, old)
 }
 
-// Save 整份写回。
-func (s *Store) Save(account string, recs []Record) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.saveLocked(account, recs)
-}
-
-func (s *Store) saveLocked(account string, recs []Record) error {
+func (s *Store) save(account string, recs []Record) error {
 	raw, err := json.Marshal(recs)
 	if err != nil {
 		return err
 	}
-	// 先写临时文件再改名：写到一半断电或被系统杀掉的话，
-	// 原来那份还是完整的，而不是半截 JSON。
-	tmp := s.indexPath(account) + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.indexPath(account))
+	return config.WriteAtomic(s.indexPath(account), raw, 0o600)
 }
 
-// SetTriage 记下一封邮件的分拣结论。
-func (s *Store) SetTriage(account string, uid uint32, verdict, reason string) error {
+// update 是「加锁 → 读出来 → 改 → 写回去」这个模板。
+//
+// 下面几个改动方法的骨架一模一样，只有中间那步不同。各写一遍的话，
+// 哪天想给写入加一道校验或者换个锁的粒度，就要改三处。
+func (s *Store) update(account string, fn func(recs []Record) []Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	recs, err := s.loadLocked(account)
+	recs, err := s.load(account)
 	if err != nil {
 		return err
 	}
-	for i := range recs {
-		if recs[i].UID == uid {
-			recs[i].Verdict, recs[i].Reason = verdict, reason
-			return s.saveLocked(account, recs)
-		}
+	return s.save(account, fn(recs))
+}
+
+// SetTriages 一次记下多封邮件的分拣结论。
+//
+// 刻意不提供单封版本：一次同步动辄几十封，一封一次就是「读整份索引 →
+// 解析 → 排序 → 序列化 → 写 → rename」重复几十遍，n 封是 O(n²) 的
+// 磁盘读写。手机上文件系统调用不便宜——这正是这个包不用 Maildir 的理由，
+// 别在调用方把它重新犯一遍。
+func (s *Store) SetTriages(account string, verdicts map[uint32]Triage) error {
+	if len(verdicts) == 0 {
+		return nil
 	}
-	return fmt.Errorf("没有 UID 为 %d 的邮件", uid)
+	return s.update(account, func(recs []Record) []Record {
+		for i := range recs {
+			if t, ok := verdicts[recs[i].UID]; ok {
+				recs[i].Verdict, recs[i].Reason = t.Verdict, t.Reason
+			}
+		}
+		return recs
+	})
+}
+
+// Triage 是一条分拣结论。
+type Triage struct {
+	Verdict string
+	Reason  string
 }
 
 // MarkDeleted 打上墓碑。不真删记录——删了的话下次同步又会把它拉回来。
 func (s *Store) MarkDeleted(account string, uids []uint32) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	recs, err := s.loadLocked(account)
-	if err != nil {
-		return err
-	}
 	want := make(map[uint32]bool, len(uids))
 	for _, u := range uids {
 		want[u] = true
 	}
-	for i := range recs {
-		if want[recs[i].UID] {
-			recs[i].Deleted = true
-			_ = os.Remove(s.bodyPath(account, recs[i].UID)) // 正文不必留着占地方
-			recs[i].HasBody = false
+	return s.update(account, func(recs []Record) []Record {
+		for i := range recs {
+			if want[recs[i].UID] {
+				recs[i].Deleted = true
+				_ = os.Remove(s.bodyPath(account, recs[i].UID)) // 正文不必留着占地方
+			}
 		}
-	}
-	return s.saveLocked(account, recs)
+		return recs
+	})
 }
 
 // Body 读一封邮件的正文。没存过返回空串和 false，调用方再去服务器拉。
@@ -242,52 +267,12 @@ func (s *Store) Body(account string, uid uint32) (string, bool) {
 	return string(raw), true
 }
 
-// SetBody 存下一封邮件的正文，并在索引里标上。
+// SetBody 存下一封邮件的正文。
+//
+// 不碰索引：正文在不在，直接看文件在不在就知道（Body 试读一次即可），
+// 为此在索引里多记一个标志位，代价是每存一封正文就要把整份索引重写一遍。
 func (s *Store) SetBody(account string, uid uint32, body string) error {
-	if err := os.WriteFile(s.bodyPath(account, uid), []byte(body), 0o600); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	recs, err := s.loadLocked(account)
-	if err != nil {
-		return err
-	}
-	for i := range recs {
-		if recs[i].UID == uid {
-			recs[i].HasBody = true
-			return s.saveLocked(account, recs)
-		}
-	}
-	return nil
-}
-
-// MaxUID 返回索引里见过的最大 UID，用来向服务器要增量。
-// 没有记录时返回 0，调用方按首次同步处理。
-func (s *Store) MaxUID(account string) uint32 {
-	recs, err := s.Load(account)
-	if err != nil {
-		return 0
-	}
-	var max uint32
-	for _, r := range recs {
-		if r.UID > max {
-			max = r.UID
-		}
-	}
-	return max
-}
-
-// Reset 清掉一个账号的全部本地邮件。
-// UIDVALIDITY 变了就得这么办——服务器重建过索引，之前记的 UID 全部作废。
-func (s *Store) Reset(account string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	recs, _ := s.loadLocked(account)
-	for _, r := range recs {
-		_ = os.Remove(s.bodyPath(account, r.UID))
-	}
-	return os.Remove(s.indexPath(account))
+	return os.WriteFile(s.bodyPath(account, uid), []byte(body), 0o600)
 }
 
 func sortByDate(recs []Record) {

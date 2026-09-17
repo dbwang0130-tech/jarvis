@@ -211,14 +211,12 @@ struct MailItem: Codable, Identifiable, Hashable {
     var snippet = ""
     var verdict = ""
     var reason = ""
-    var hasBody = false
 
     var id: String { key }
 
     enum CodingKeys: String, CodingKey {
         case key, account, from, addr, subject, date, unread, snippet
         case verdict, reason
-        case hasBody = "has_body"
     }
 }
 
@@ -235,7 +233,6 @@ extension MailItem {
         snippet = try c.decodeIfPresent(String.self, forKey: .snippet) ?? ""
         verdict = try c.decodeIfPresent(String.self, forKey: .verdict) ?? ""
         reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
-        hasBody = try c.decodeIfPresent(Bool.self, forKey: .hasBody) ?? false
     }
 }
 
@@ -262,17 +259,70 @@ struct MailBody: Codable {
     var isEmpty: Bool { html.isEmpty && text.isEmpty }
 }
 
-struct MailAttachment: Codable, Identifiable, Hashable {
+/// 附件只给清单不给内容——几 MB 的东西过一次 JSON 桥没有意义。
+///
+/// 刻意**不声明 Identifiable**：能拿来当 id 的只有名字，而同一封信里
+/// 两个都叫「未命名.png」的附件很常见。声明了就等于承诺唯一，兑现不了
+/// 的承诺会让 List 的差分算错行数直接崩。列表里按下标遍历即可。
+struct MailAttachment: Codable, Hashable {
     var name = ""
     var type = ""
     var size = 0
 
-    var id: String { name + type + String(size) }
-
     var sizeText: String {
-        if size < 1024 { return "\(size) B" }
-        if size < 1024 * 1024 { return String(format: "%.0f KB", Double(size) / 1024) }
-        return String(format: "%.1f MB", Double(size) / 1024 / 1024)
+        ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
+    }
+}
+
+// 合成的 Decodable **不会**用属性默认值，缺一个键就抛错、整个出参作废。
+// MailItem 已经手写了容错解码，这两个当时漏了——防了一层没防另一层。
+extension MailResult {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        items = try c.decodeIfPresent([MailItem].self, forKey: .items) ?? []
+        body = try c.decodeIfPresent(MailBody.self, forKey: .body)
+        message = try c.decodeIfPresent(String.self, forKey: .message) ?? ""
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+    }
+}
+
+extension MailBody {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        html = try c.decodeIfPresent(String.self, forKey: .html) ?? ""
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        attachments = try c.decodeIfPresent([MailAttachment].self,
+                                            forKey: .attachments) ?? []
+        inlineDropped = try c.decodeIfPresent(Int.self, forKey: .inlineDropped) ?? 0
+    }
+}
+
+extension MailAttachment {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        type = try c.decodeIfPresent(String.self, forKey: .type) ?? ""
+        size = try c.decodeIfPresent(Int.self, forKey: .size) ?? 0
+    }
+}
+
+/// 传给 Go 的邮件入参。照 AskInput 的样子走 Codable，一次编码到位——
+/// 手拼 [String: Any] 要把 accounts 和 model 各自编一次、解一次、再整体
+/// 编一次，而且 try? 失败时会把字段悄悄丢掉（accounts 没了就是「还没配邮箱」）。
+struct MailInput: Codable {
+    var op: String
+    var indexDir: String
+    var bodyDir: String
+    var accounts: [MailAccountInput]
+    var model: ModelConfig
+    var profile: String
+    var key: String
+    var keys: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case op, accounts, model, profile, key, keys
+        case indexDir = "index_dir"
+        case bodyDir = "body_dir"
     }
 }
 

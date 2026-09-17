@@ -23,14 +23,11 @@ import (
 	"time"
 	// 把时区数据库打进二进制（约 450KB）。gomobile 编出来的 Go 在 iOS 沙箱里
 	// 读不到系统的 zoneinfo，不带这个的话 LoadLocation 一律失败。
-	_ "time/tzdata"
-
 	"github.com/dabao/jarvis/internal/agenda"
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/ledger"
 	"github.com/dabao/jarvis/internal/org"
-	"os"
-	"path/filepath"
+	_ "time/tzdata"
 )
 
 // SnapshotInput 是 Snapshot 的入参。
@@ -117,24 +114,22 @@ func SetDataDir(dir string) {
 	if strings.TrimSpace(dir) == "" {
 		return
 	}
-	// config.Path() 认这个环境变量，设了它整条链路（进度、配置）都跟着走。
-	_ = os.Setenv("JARVIS_CONFIG", filepath.Join(dir, "config.json"))
+	// 整条链路（同步进度、配置）都从 config.Path() 派生，设这一处就够。
+	config.SetDir(dir)
 }
 
-// 兜底：界面万一忘了调 SetDataDir，也别去写 ~/.config——那儿写不了，
-// 而失败是静默的（只返回个错误，没人看），表现为「每次收信都像第一次」。
-// 临时目录至少这一轮能用，比彻底不能写强。
-func init() {
-	if os.Getenv("JARVIS_CONFIG") != "" {
-		return
-	}
-	probe := filepath.Join(config.ConfigDir(), "jarvis")
-	if err := os.MkdirAll(probe, 0o700); err != nil {
-		_ = os.Setenv("JARVIS_CONFIG",
-			filepath.Join(os.TempDir(), "jarvis", "config.json"))
-	}
-}
-
+// SetTimeZone 设置进程的本地时区。**只有第一次调用生效**，界面应该在
+// app 启动时、任何别的调用之前调一次。
+//
+// gomobile 编出来的 Go 在 iOS 上找不到系统时区库，time.Local 会退成 UTC——
+// 「今天」「明天」「这周」全按 UTC 算，东八区下午六点之后整体差一天。
+// 桌面端读得到 /etc/localtime，所以只有手机上不对。
+//
+// **为什么只能设一次**：time.Local 是全局变量。改它的同时别的 goroutine
+// 正在 time.Now() 或 os.Stat 里读它，那就是数据竞争（-race 直接抓得到），
+// 而数据竞争是未定义行为，不是「顶多算错一次」。手机上下拉刷新和点开详情
+// 是真会同时跑的。时区在一次运行里不会变，设一次就够；真跨了时区，
+// 重开一次 app 就好。
 func SetTimeZone(name string) {
 	if name == "" {
 		return

@@ -56,6 +56,13 @@ check("AskOutput(干完活)") {
     return "reply=\(a.reply) history=\(a.history.count) steps=\(a.steps?.count ?? 0)"
 }
 
+for f in ["mail_list", "mail_error"] {
+    check("MailResult(\(f))") {
+        let r = try dec.decode(MailResult.self, from: try load("\(f).json"))
+        return "items=\(r.items.count) err=\(r.error ?? "-")"
+    }
+}
+
 // AskInput 方向相反，是 Swift 编码给 Go 的，字段名同样得对上。
 check("AskInput 编码") {
     let inp = AskInput(files: ["a.org": "* TODO x"], ledger: "", question: "今天干嘛",

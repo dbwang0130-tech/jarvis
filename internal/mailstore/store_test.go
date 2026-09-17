@@ -44,7 +44,9 @@ func TestMergeKeepsTriage(t *testing.T) {
 	if _, err := s.Merge("工作", []Record{rec(1, "季度汇报", 10)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetTriage("工作", 1, "important", "老板催的"); err != nil {
+	if err := s.SetTriages("工作", map[uint32]Triage{
+		1: {Verdict: "important", Reason: "老板催的"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -129,48 +131,10 @@ func TestBodyStoredSeparately(t *testing.T) {
 	if !ok || got != body {
 		t.Error("正文存取不一致")
 	}
-	recs, _ := s.Load("工作")
-	if !recs[0].HasBody {
-		t.Error("索引里没标上有正文")
-	}
 	// 索引本身不该被正文撑大。
 	raw, _ := os.ReadFile(s.indexPath("工作"))
 	if len(raw) > 2000 {
 		t.Errorf("正文漏进索引了，索引有 %d 字节", len(raw))
-	}
-}
-
-func TestMaxUIDForIncremental(t *testing.T) {
-	s := newStore(t)
-	if got := s.MaxUID("工作"); got != 0 {
-		t.Errorf("空库该返回 0，实际 %d", got)
-	}
-	if _, err := s.Merge("工作", []Record{rec(7, "a", 10), rec(23, "b", 11), rec(5, "c", 9)}); err != nil {
-		t.Fatal(err)
-	}
-	if got := s.MaxUID("工作"); got != 23 {
-		t.Errorf("该是 23，实际 %d", got)
-	}
-}
-
-// UIDVALIDITY 变了要能整个推倒重来。
-func TestReset(t *testing.T) {
-	s := newStore(t)
-	if _, err := s.Merge("工作", []Record{rec(1, "a", 10)}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.SetBody("工作", 1, "正文"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Reset("工作"); err != nil {
-		t.Fatal(err)
-	}
-	recs, _ := s.Load("工作")
-	if len(recs) != 0 {
-		t.Errorf("没清干净：%+v", recs)
-	}
-	if _, ok := s.Body("工作", 1); ok {
-		t.Error("正文没清掉")
 	}
 }
 
@@ -200,5 +164,35 @@ func TestAccountNameIsSafeAsFilename(t *testing.T) {
 		if filepath.Dir(p) != s.indexDir {
 			t.Errorf("账号名 %q 把文件写到了别处：%s", name, p)
 		}
+	}
+}
+
+// 键的格式只有这一个定义处，拼和拆必须对得上——写成两份的话，哪天换了
+// 分隔符就会出现一半索引查不到的怪事。
+func TestKeyRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		account string
+		uid     uint32
+	}{{"工作", 1234}, {"a:b", 99}, {"", 0}, {"带 空格", 4294967295}} {
+		key := Key(tc.account, tc.uid)
+		a, u, ok := SplitKey(key)
+		if !ok || a != tc.account || u != tc.uid {
+			t.Errorf("Key(%q,%d)=%q 拆回来是 (%q,%d,%v)", tc.account, tc.uid, key, a, u, ok)
+		}
+	}
+
+	// 拆不出来的要说不行，不能猜。
+	for _, bad := range []string{"没有冒号", "工作:", "工作:不是数字", "工作:-1", ""} {
+		if _, _, ok := SplitKey(bad); ok {
+			t.Errorf("SplitKey(%q) 不该成功", bad)
+		}
+	}
+}
+
+// Record.Key 必须跟 Key() 一致，否则存进去的键跟查出来的对不上。
+func TestRecordKeyUsesSharedFormat(t *testing.T) {
+	r := Record{Account: "工作", UID: 7}
+	if r.Key() != Key("工作", 7) {
+		t.Errorf("Record.Key()=%q，Key()=%q", r.Key(), Key("工作", 7))
 	}
 }

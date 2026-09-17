@@ -59,12 +59,10 @@ func (s *State) Save() error {
 	if err != nil {
 		return err
 	}
-	path := Path()
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+	if err := config.WriteAtomic(Path(), raw, 0o600); err != nil {
 		return fmt.Errorf("写状态文件失败: %w", err)
 	}
-	return os.Rename(tmp, path)
+	return nil
 }
 
 // Get 取一个账号的进度，没有记录时返回零值。

@@ -7,12 +7,14 @@ import Foundation
 /// 每次收信都当成第一次全量重拉，而错误没人看见。
 enum Paths {
     /// Application Support：本机数据，不进 iCloud，也不露在「文件」app 里。
-    static var support: URL {
+    /// 算一次、建一次。写成计算属性的话，每次访问都要问一遍文件系统
+    /// 再 createDirectory——而「秒开」那条路上会连着访问好几次。
+    static let support: URL = {
         let url = (try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true))
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
-    }
+    }()
 }

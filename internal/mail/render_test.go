@@ -23,7 +23,7 @@ func TestRenderNeverLeaksBody(t *testing.T) {
 		},
 	}}
 
-	out := render(items, false)
+	out := render(items)
 
 	if strings.Contains(out, secret) || strings.Contains(out, "8821") {
 		t.Fatalf("正文漏进给模型的清单里了：\n%s", out)
@@ -44,7 +44,7 @@ func TestRenderNeverLeaksBody(t *testing.T) {
 	}
 }
 
-// 已经判过的用紧凑格式，同样不带正文。
+// 已经判过的那些同样不带正文。
 func TestRenderCompactAlsoClean(t *testing.T) {
 	items := []*Item{{
 		No: 1,
@@ -54,7 +54,7 @@ func TestRenderCompactAlsoClean(t *testing.T) {
 		},
 		Triage: Triage{Verdict: VerdictPromo, Reason: "营销"},
 	}}
-	out := render(items, true)
+	out := render(items)
 	if strings.Contains(out, "买一送一") {
 		t.Errorf("紧凑格式也漏了正文：\n%s", out)
 	}

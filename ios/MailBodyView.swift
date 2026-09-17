@@ -51,7 +51,7 @@ struct HTMLView: UIViewRepresentable {
     let allowRemote: Bool
     @Binding var height: CGFloat
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeCoordinator() -> Coordinator { Coordinator(height: $height) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -69,10 +69,13 @@ struct HTMLView: UIViewRepresentable {
     }
 
     func updateUIView(_ web: WKWebView, context: Context) {
-        let wrapped = Self.wrap(html, allowRemote: allowRemote)
-        guard context.coordinator.lastHTML != wrapped else { return }
-        context.coordinator.lastHTML = wrapped
-        web.loadHTMLString(wrapped, baseURL: nil)
+        // 先比输入，再决定要不要拼。邮件的 HTML 加上内联图的 data URI 能到
+        // 好几 MB，而 body 每次重算都会走到这儿——拿拼好的结果去比，等于
+        // 每次白拼一次几 MB 的字符串。
+        let key = Coordinator.Loaded(html: html, allowRemote: allowRemote)
+        guard context.coordinator.loaded != key else { return }
+        context.coordinator.loaded = key
+        web.loadHTMLString(Self.wrap(html, allowRemote: allowRemote), baseURL: nil)
     }
 
     /// 套一层样式：按屏幕宽度缩放、跟随深浅色、图片不许撑破边界。
@@ -101,18 +104,26 @@ struct HTMLView: UIViewRepresentable {
         """
     }
 
+    /// 只拿它真正需要的东西，不持有整个 HTMLView。
+    ///
+    /// 持有 HTMLView 的话，里面那个可能几 MB 的 html 字符串会跟 WKWebView
+    /// 同寿——详情页开着的整段时间都钉在内存里，而它其实只需要一个回调。
     final class Coordinator: NSObject, WKNavigationDelegate {
-        private let parent: HTMLView
-        var lastHTML = ""
+        struct Loaded: Equatable {
+            let html: String
+            let allowRemote: Bool
+        }
 
-        init(_ parent: HTMLView) { self.parent = parent }
+        private let height: Binding<CGFloat>
+        var loaded: Loaded?
+
+        init(height: Binding<CGFloat>) { self.height = height }
 
         func webView(_ web: WKWebView, didFinish _: WKNavigation!) {
-            web.evaluateJavaScript("document.body.scrollHeight") { value, _ in
-                if let h = value as? CGFloat, h > 0 {
-                    // 太长的信截一截，外面那层列表照样能滚到底。
-                    parentHeight(self.parent, min(h, 6000))
-                }
+            web.evaluateJavaScript("document.body.scrollHeight") { [height] value, _ in
+                guard let h = value as? CGFloat, h > 0 else { return }
+                // 太长的信截一截，外面那层列表照样能滚到底。
+                height.wrappedValue = min(h, 6000)
             }
         }
 
@@ -129,8 +140,4 @@ struct HTMLView: UIViewRepresentable {
             decisionHandler(.allow)
         }
     }
-}
-
-@MainActor private func parentHeight(_ view: HTMLView, _ h: CGFloat) {
-    view.height = h
 }

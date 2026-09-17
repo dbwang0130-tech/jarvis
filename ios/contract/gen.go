@@ -61,6 +61,15 @@ func main() {
 	write(dir, "snapshot_error.json", mobile.Snapshot("不是 JSON"))
 	write(dir, "ask_error.json", mobile.Ask("不是 JSON"))
 
+	// 邮件那几条出参。本地库是空的，不连网——这里要验的是字段名和
+	// 可选性对不对得上，不是真去收信。
+	mailDir := filepath.Join(dir, "mailbox")
+	write(dir, "mail_list.json", mobile.Mail(mustJSON(mobile.MailInput{
+		Op: "list", IndexDir: mailDir,
+		Accounts: []mobile.MailAccount{{Name: "工作", Host: "imap.example.com"}},
+	})))
+	write(dir, "mail_error.json", mobile.Mail("不是 JSON"))
+
 	// Ask 干完活时的形状。history 里那条「只调工具不说话」的 assistant 消息
 	// 是关键：agent.Message.Content 带 omitempty，空串会让整个 content 键消失。
 	// 真机上第一次让秘书动日程就栽在这儿——Swift 解不出来，整轮作废。
@@ -83,6 +92,14 @@ func main() {
 		panic(err)
 	}
 	write(dir, "ask_ok.json", string(ok))
+}
+
+func mustJSON(v any) string {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(raw)
 }
 
 func write(dir, name, content string) {

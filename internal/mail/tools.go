@@ -157,18 +157,14 @@ func toolReadMail() *Tool {
 			if err != nil {
 				return "", err
 			}
-			c, err := s.client(it.Msg.Account)
+			body, err := s.Body(a.No)
 			if err != nil {
 				return "", err
 			}
-			full, err := c.ReadFull(it.Msg.UID)
-			if err != nil {
-				return "", err
-			}
-			it.Msg.Snippet = full.Snippet
+			m := it.Msg
 			return fmt.Sprintf("[%d] 账号:%s\n发件人: %s <%s>\n主题: %s\n时间: %s\n\n%s",
-				it.No, full.Account, full.From(), full.FromAddr, full.Subject,
-				full.Date.Format("2006-01-02 15:04"), full.Snippet), nil
+				it.No, m.Account, m.From(), m.FromAddr, m.Subject,
+				m.Date.Format("2006-01-02 15:04"), body), nil
 		},
 	}
 }

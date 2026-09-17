@@ -18,13 +18,13 @@ import (
 // 这类信，剥完就只剩一堆散字。
 type FullBody struct {
 	// HTML 是 text/html 部分，内联图片已经换成 data: URI。没有就是空。
-	HTML string
+	HTML string `json:"html"`
 	// Text 是 text/plain 部分。两者可能都有，界面优先用 HTML。
-	Text string
+	Text string `json:"text"`
 	// Attachments 是附件清单。正文里不显示，但得让人知道有这些东西。
-	Attachments []Attachment
+	Attachments []Attachment `json:"attachments"`
 	// InlineDropped 说明有内联图片因为太大没嵌进来。
-	InlineDropped int
+	InlineDropped int `json:"inline_dropped"`
 }
 
 // Attachment 是一个附件的信息。内容不带出来——几 MB 的东西过一次 JSON
@@ -50,25 +50,39 @@ func ParseBody(raw []byte) (*FullBody, error) {
 		return nil, fmt.Errorf("这封邮件解析不了：%w", err)
 	}
 
-	out := &FullBody{}
-	inline := map[string]string{} // Content-ID → data: URI
-	var used int
-	walkParts(ent, out, inline, &used)
+	c := &collector{inline: map[string]string{}}
+	c.walk(ent, 0)
 
 	// HTML 里的 cid: 引用换成 data: URI。换不掉的留着也无妨——
 	// 界面那边拦着不让它去联网取远程图片，一个取不到的 cid 只是个空框。
-	for cid, uri := range inline {
+	for cid, uri := range c.inline {
 		for _, form := range []string{"cid:" + cid, "cid:%3C" + cid + "%3E"} {
-			out.HTML = strings.ReplaceAll(out.HTML, form, uri)
+			c.out.HTML = strings.ReplaceAll(c.out.HTML, form, uri)
 		}
 	}
-	return out, nil
+	return &c.out, nil
 }
 
-func walkParts(ent *message.Entity, out *FullBody, inline map[string]string, used *int) {
+// collector 是解析过程中攒结果的地方。
+//
+// 收进一个结构体而不是三个参数手手相传：内联图的总字节数要跨递归共享，
+// 写成 `used *int` 那种取地址的形式，多一个人读就多一次「这是干嘛的」。
+type collector struct {
+	out    FullBody
+	inline map[string]string // Content-ID → data: URI
+	used   int
+}
+
+func (c *collector) walk(ent *message.Entity, depth int) {
+	// 深度上限跟解析摘要那条路共用同一个常量。畸形邮件能嵌套到爆栈，
+	// 而两条路各设各的上限，哪天有人调了一个、另一个不跟，就是个只在
+	// 特定邮件上复现的崩溃。
+	if depth > maxMIMEDepth {
+		return
+	}
 	mr := ent.MultipartReader()
 	if mr == nil {
-		collectPart(ent, out, inline, used)
+		c.collect(ent)
 		return
 	}
 	for {
@@ -76,18 +90,15 @@ func walkParts(ent *message.Entity, out *FullBody, inline map[string]string, use
 		if err != nil {
 			return // io.EOF 或者这一段坏了，已经收到的照常用
 		}
-		walkParts(part, out, inline, used)
+		c.walk(part, depth+1)
 	}
 }
 
-func collectPart(ent *message.Entity, out *FullBody, inline map[string]string, used *int) {
+func (c *collector) collect(ent *message.Entity) {
 	ct, params, _ := ent.Header.ContentType()
 	disp, dispParams, _ := ent.Header.ContentDisposition()
-
-	body, err := io.ReadAll(ent.Body)
-	if err != nil {
-		return
-	}
+	isAttach := disp == "attachment"
+	cid := strings.Trim(ent.Header.Get("Content-Id"), "<>")
 
 	name := dispParams["filename"]
 	if name == "" {
@@ -96,26 +107,23 @@ func collectPart(ent *message.Entity, out *FullBody, inline map[string]string, u
 	name = decodeWord(name)
 
 	switch {
-	case ct == "text/plain" && disp != "attachment":
-		out.Text += string(body)
+	case ct == "text/plain" && !isAttach:
+		c.out.Text += readAll(ent)
 
-	case ct == "text/html" && disp != "attachment":
-		out.HTML += string(body)
+	case ct == "text/html" && !isAttach:
+		c.out.HTML += readAll(ent)
 
-	case strings.HasPrefix(ct, "image/") && disp != "attachment":
-		// 内联图片：正文里用 cid: 引着，得嵌进去，不然就是一排破图。
-		cid := strings.Trim(ent.Header.Get("Content-Id"), "<>")
-		if cid == "" || len(body) > maxInlineOne || *used+len(body) > maxInlineTotal {
-			if cid != "" {
-				out.InlineDropped++
-			} else if name != "" {
-				out.Attachments = append(out.Attachments,
-					Attachment{Name: name, Type: ct, Size: len(body)})
-			}
+	// 只有带 Content-ID 的才是内联图——正文里用 cid: 引着它。
+	// 没有 ID 的图引不着，那就是个附件，走下面那条路。
+	case strings.HasPrefix(ct, "image/") && !isAttach && cid != "":
+		body := readAll(ent)
+		if len(body) > maxInlineOne || c.used+len(body) > maxInlineTotal {
+			c.out.InlineDropped++
 			return
 		}
-		*used += len(body)
-		inline[cid] = "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(body)
+		c.used += len(body)
+		c.inline[cid] = "data:" + ct + ";base64," +
+			base64.StdEncoding.EncodeToString([]byte(body))
 
 	default:
 		if name == "" {
@@ -124,7 +132,21 @@ func collectPart(ent *message.Entity, out *FullBody, inline map[string]string, u
 				name += exts[0]
 			}
 		}
-		out.Attachments = append(out.Attachments,
-			Attachment{Name: name, Type: ct, Size: len(body)})
+		// 附件只要大小，不要内容——一封带 9MB PDF 的信，每次点开都把
+		// 那 9MB 解码进内存再整块扔掉，纯属白烧。
+		n, err := io.Copy(io.Discard, ent.Body)
+		if err != nil && n == 0 {
+			return
+		}
+		c.out.Attachments = append(c.out.Attachments,
+			Attachment{Name: name, Type: ct, Size: int(n)})
 	}
+}
+
+func readAll(ent *message.Entity) string {
+	b, err := io.ReadAll(ent.Body)
+	if err != nil {
+		return string(b) // 读到一半坏了，已经拿到的照常用
+	}
+	return string(b)
 }

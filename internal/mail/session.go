@@ -478,41 +478,28 @@ func (s *Session) DefaultAccount() config.MailAccount {
 }
 
 // Digest 把整份清单压成给模型看的文本。
-func (s *Session) Digest() string { return render(s.Items(), true) }
+func (s *Session) Digest() string { return render(s.Items()) }
 
 // DigestOf 完整渲染指定的一批邮件，翻页后只把新的那批交给模型。
-func (s *Session) DigestOf(items []*Item) string { return render(items, false) }
+func (s *Session) DigestOf(items []*Item) string { return render(items) }
 
-// maxDetailed 限制清单里最多有多少封带正文。
-const maxDetailed = 100
-
-func render(items []*Item, compact bool) string {
+func render(items []*Item) string {
 	if len(items) == 0 {
 		return "（没有邮件）"
 	}
 	var b strings.Builder
-	detailed, brief := 0, 0
 	for _, it := range items {
 		m := it.Msg
-		if compact && it.Verdict != "" {
-			fmt.Fprintf(&b, "[%d] %s | %s | %s | %s | 已判:%s\n",
-				it.No, m.Account, m.From(), m.Subject, humanTime(m.Date), it.Verdict.Label())
-			continue
-		}
-		if detailed >= maxDetailed {
-			fmt.Fprintf(&b, "[%d] %s | %s <%s> | %s | %s | %s\n",
-				it.No, m.Account, m.From(), m.FromAddr, m.Subject,
-				humanTime(m.Date), m.BulkHint())
-			brief++
-			continue
-		}
-		fmt.Fprintf(&b, "[%d] %s | 发件人: %s <%s> | 主题: %s | %s | %s\n",
+		fmt.Fprintf(&b, "[%d] %s | 发件人: %s <%s> | 主题: %s | %s | %s",
 			it.No, m.Account, m.From(), m.FromAddr, m.Subject,
 			humanTime(m.Date), m.BulkHint())
-		if m.Unread {
-			b.WriteString("    状态: 未读\n")
+		switch {
+		case it.Verdict != "":
+			fmt.Fprintf(&b, " | 已判:%s", it.Verdict.Label())
+		case m.Unread:
+			b.WriteString(" | 未读")
 		}
-		detailed++
+		b.WriteString("\n")
 	}
 	// **正文不往外发**。分拣靠发件人、主题和群发头（List-Unsubscribe、
 	// Precedence 这些）就够判了——推广和垃圾的信号全在头里。而正文是私人
@@ -520,6 +507,9 @@ func render(items []*Item, compact bool) string {
 	//
 	// 真拿不准的那几封，让模型显式调 read_mail 单独看——那是一次明确的、
 	// 看得见的动作，不是默默把整个收件箱都送出去。
+	//
+	// 正文不发之后，原来那套「前 100 封给详细、后面给简略」的截断也没用了——
+	// 它存在的理由就是控制正文体积，现在每封都只有一行。
 	b.WriteString("\n（只给发件人、主题和群发标记，正文不外发。" +
 		"按这些判断；个别实在拿不准的用 read_mail 单独看那一封。）\n")
 	return b.String()
@@ -538,45 +528,29 @@ func humanTime(t time.Time) string {
 	return t.Format("01-02")
 }
 
-// Clean 把这些编号的邮件移进垃圾箱，返回成功的封数和失败说明。
+// Clean 按清单编号把邮件移进垃圾箱，返回成功的封数和失败说明。
 //
-// 提成方法是为了让手机那边也能用——原来这段埋在 clean_mail 工具的闭包里，
-// 而它要用到 s.client 这个不导出的方法，包外够不着。两处各写一遍的话，
-// 「移到哪个垃圾箱」「失败了要不要从清单里摘掉」这类判断迟早走散。
+// 编号是**给模型看的东西**——它只会说「把 3、5、7 清掉」。所以这里只负责
+// 把编号翻成账号和 UID，真正的活交给 CleanUIDs。「移到哪个垃圾箱」
+// 「失败了要不要从清单里摘掉」这类判断只有那一份。
 func (s *Session) Clean(nos []int) (done int, fails []string) {
 	group := map[string][]imap.UID{}
-	nosOf := map[string][]int{}
 	for _, no := range nos {
 		it, err := s.Item(no)
 		if err != nil {
 			fails = append(fails, err.Error())
 			continue
 		}
-		acct := it.Msg.Account
-		group[acct] = append(group[acct], it.Msg.UID)
-		nosOf[acct] = append(nosOf[acct], no)
+		group[it.Msg.Account] = append(group[it.Msg.Account], it.Msg.UID)
 	}
-
-	var removed []int
 	for acct, uids := range group {
-		c, err := s.client(acct)
-		if err != nil {
+		if err := s.CleanUIDs(acct, uids); err != nil {
 			fails = append(fails, acct+": "+err.Error())
 			continue
 		}
-		junk, err := c.JunkMailbox()
-		if err != nil {
-			fails = append(fails, err.Error())
-			continue
-		}
-		if err := c.MoveTo(uids, junk); err != nil {
-			fails = append(fails, acct+": "+err.Error())
-			continue
-		}
-		removed = append(removed, nosOf[acct]...)
+		done += len(uids)
 	}
-	s.Remove(removed)
-	return len(removed), fails
+	return done, fails
 }
 
 // CleanUIDs 按账号和 UID 直接把邮件移进垃圾箱，不要求它们在当前清单里。
@@ -624,34 +598,24 @@ func (s *Session) RawUID(account string, uid imap.UID) ([]byte, error) {
 	return c.ReadRaw(uid)
 }
 
-// Body 拉一封邮件的完整正文。ReadFull 把整封正文放在 Snippet 里
-// （名字有点误导，它平时只装开头几句，读全文时装的是全部）。
+// Body 按清单编号拉一封邮件的完整正文。跟 Clean 一样，只做编号翻译。
 func (s *Session) Body(no int) (string, error) {
 	it, err := s.Item(no)
 	if err != nil {
 		return "", err
 	}
-	c, err := s.client(it.Msg.Account)
+	raw, err := s.RawUID(it.Msg.Account, it.Msg.UID)
 	if err != nil {
 		return "", err
 	}
-	full, err := c.ReadFull(it.Msg.UID)
+	full, err := mailbox.ParseBody(raw)
 	if err != nil {
 		return "", err
 	}
-	it.Msg.Snippet = full.Snippet
-	return full.Snippet, nil
-}
-
-// Raw 取回一封邮件的原始字节，供展示用的解析。
-func (s *Session) Raw(no int) ([]byte, error) {
-	it, err := s.Item(no)
-	if err != nil {
-		return nil, err
+	text := full.Text
+	if text == "" {
+		text = full.HTML
 	}
-	c, err := s.client(it.Msg.Account)
-	if err != nil {
-		return nil, err
-	}
-	return c.ReadRaw(it.Msg.UID)
+	it.Msg.Snippet = text
+	return text, nil
 }

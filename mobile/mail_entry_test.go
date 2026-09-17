@@ -66,29 +66,6 @@ func TestMailBadInput(t *testing.T) {
 	}
 }
 
-// 引用是「账号:UID」。账号名里可能有冒号，得从最后一个切。
-func TestSplitMailKey(t *testing.T) {
-	cases := map[string]struct {
-		account string
-		uid     uint32
-		ok      bool
-	}{
-		"工作:1234": {"工作", 1234, true},
-		"a:b:99":  {"a:b", 99, true},
-		"没有冒号":    {"", 0, false},
-		"工作:":     {"", 0, false},
-		"工作:不是数字": {"", 0, false},
-		"工作:-1":   {"", 0, false},
-	}
-	for key, want := range cases {
-		a, u, ok := splitMailKey(key)
-		if ok != want.ok || (ok && (a != want.account || u != want.uid)) {
-			t.Errorf("splitMailKey(%q) = (%q, %d, %v)，该是 (%q, %d, %v)",
-				key, a, u, ok, want.account, want.uid, want.ok)
-		}
-	}
-}
-
 // 清理和读正文都该只靠本地索引里的「账号 + UID」，不要求这封信在
 // 「这次拉下来的清单」里——用户看的是本地那份，里面的邮件多半早就不在
 // 当前会话里了。让他为了清一封信先同步一次，是拿实现细节为难人。

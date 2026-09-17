@@ -185,8 +185,24 @@ func defaultLocal() Config {
 	}
 }
 
-// Path 返回配置文件路径：$JARVIS_CONFIG，否则 ~/.config/jarvis/config.json。
+// dirOverride 是程序内部指定的配置目录。
+//
+// 不借 JARVIS_CONFIG 环境变量传这个值：那是留给用户覆盖的入口，程序自己
+// 拿它当参数通道，会跟用户设的那份撞上，也让「这个值是谁设的」查不清楚。
+var dirOverride string
+
+// SetDir 指定配置目录。给那些默认路径不可用的宿主用——iOS 上 ~ 是应用
+// 容器根目录，不可写，`~/.config` 一建就是 operation not permitted。
+//
+// 要在读写任何配置之前调。
+func SetDir(dir string) { dirOverride = dir }
+
+// Path 返回配置文件路径：SetDir 指定的目录 > $JARVIS_CONFIG >
+// ~/.config/jarvis/config.json。
 func Path() string {
+	if dirOverride != "" {
+		return filepath.Join(dirOverride, "config.json")
+	}
 	if p := os.Getenv("JARVIS_CONFIG"); p != "" {
 		return Expand(p)
 	}
@@ -466,6 +482,23 @@ func RunCmd(line string) (string, error) {
 		return "", fmt.Errorf("命令 %q 没有输出", line)
 	}
 	return s, nil
+}
+
+// WriteAtomic 把内容写进文件：先写同目录的临时文件再改名。
+//
+// 直接 WriteFile 的话，写到一半断电或者被系统杀掉，留下的是半截内容——
+// 对 JSON 来说就是下次读不出来。改名在同一个文件系统上是原子的，
+// 要么是旧的完整内容，要么是新的完整内容。
+func WriteAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // KeychainGet 从 macOS 登录钥匙串读取一条通用密码。

@@ -3,11 +3,11 @@ package mobile
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dabao/jarvis/internal/config"
 )
 
 // 这一层是 iOS 端唯一的入口，所以约定必须钉死：进出都是 JSON，
@@ -223,11 +223,13 @@ func mustJSON(t *testing.T, v any) string {
 // 不然用户看到的是解码错误而不是真正的原因。
 func TestNoNullArrays(t *testing.T) {
 	cases := map[string]string{
-		"正常":     Snapshot(mustJSON(t, SnapshotInput{Files: map[string]string{"a.org": "* TODO 没有标签\n"}, Days: 3})),
-		"空输入":    Snapshot(`{}`),
-		"入参不合法":  Snapshot("不是 JSON"),
-		"时间不合法":  Snapshot(`{"now":"不是时间"}`),
-		"Ask 出错": Ask("不是 JSON"),
+		"正常":      Snapshot(mustJSON(t, SnapshotInput{Files: map[string]string{"a.org": "* TODO 没有标签\n"}, Days: 3})),
+		"空输入":     Snapshot(`{}`),
+		"入参不合法":   Snapshot("不是 JSON"),
+		"时间不合法":   Snapshot(`{"now":"不是时间"}`),
+		"Ask 出错":  Ask("不是 JSON"),
+		"Mail 出错": Mail("不是 JSON"),
+		"Mail 空":  Mail(`{"index_dir":"` + t.TempDir() + `"}`),
 	}
 	for name, out := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -547,22 +549,17 @@ func TestRecentTransactions(t *testing.T) {
 // ~/.config 一写就是 operation not permitted，而且是静默失败——
 // 同步进度存不下来，表现为「每次收信都像第一次」。
 func TestSetDataDirRedirects(t *testing.T) {
-	t.Setenv("JARVIS_CONFIG", "")
+	t.Cleanup(func() { config.SetDir("") })
+
 	dir := t.TempDir()
 	SetDataDir(dir)
-
-	got := os.Getenv("JARVIS_CONFIG")
-	if filepath.Dir(got) != dir {
+	if got := config.Dir(); got != dir {
 		t.Fatalf("配置没指到给定目录：%q", got)
 	}
-	// 真的能写进去才算数。
-	if err := os.MkdirAll(filepath.Dir(got), 0o700); err != nil {
-		t.Fatalf("给定目录写不了：%v", err)
-	}
 
-	// 空的不该把已经设好的弄坏。
+	// 空的不该把已经设好的冲掉。
 	SetDataDir("")
-	if os.Getenv("JARVIS_CONFIG") != got {
-		t.Error("空路径把设好的冲掉了")
+	if got := config.Dir(); got != dir {
+		t.Errorf("空路径把设好的冲掉了：%q", got)
 	}
 }
