@@ -18,6 +18,8 @@ enum Bridge {
             "files": files,
             "ledger": ledger,
             "days": days,
+            // Go 在 iOS 上读不到系统时区库，不带过去就按 UTC 算日期。
+            "tz": TimeZone.current.identifier,
         ]
         guard let json = encode(input) else {
             return Snapshot(days: [], todos: [], ledger: nil, error: "入参编码失败")

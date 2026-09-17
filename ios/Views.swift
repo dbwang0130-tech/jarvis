@@ -309,7 +309,12 @@ struct ChatView: View {
             // 恢复出来的对话直接落在底部，不然打开看到的是最早那几句。
             .defaultScrollAnchor(.bottom)
             .onChange(of: store.messages.count) { _, _ in toBottom(proxy) }
-            .onChange(of: store.steps.count) { _, _ in toBottom(proxy) }
+            .onChange(of: store.steps.count) { _, count in
+                // 开始动手了就把键盘收掉——这会儿是要看它干了什么，
+                // 而不是接着打字。只在第一步冒出来时收，之后不打扰。
+                if count == 1 { focused = false }
+                toBottom(proxy)
+            }
             .onChange(of: store.thinking) { _, _ in toBottom(proxy) }
         }
     }
@@ -369,9 +374,8 @@ struct ChatView: View {
     private func submit() {
         let q = draft
         draft = ""
-        // 发完把键盘收掉：秘书要想一会儿，键盘杵着挡掉半屏，
-        // 正好这段时间是要看它干了什么的。
-        focused = false
+        // 不在这儿收键盘：刚发完还想接着补一句是常事。
+        // 等它真动起手来（操作列表冒出来）再收，那会儿是要看它干什么。
         Task { await store.send(q) }
     }
 

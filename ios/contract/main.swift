@@ -63,7 +63,7 @@ check("AskInput 编码") {
                        model: ModelConfig(), profile: "学生")
     let obj = try JSONSerialization.jsonObject(
         with: try JSONEncoder().encode(inp)) as! [String: Any]
-    let want = ["files", "history", "ledger", "model", "profile", "question"]
+    let want = ["files", "history", "ledger", "model", "profile", "question", "tz"]
     guard obj.keys.sorted() == want else {
         throw Err("字段对不上：\(obj.keys.sorted()) 应该是 \(want)")
     }
@@ -73,7 +73,10 @@ check("AskInput 编码") {
     guard m.keys.sorted() == wantModel else {
         throw Err("model 字段对不上：\(m.keys.sorted())")
     }
-    return "顶层 \(want.count) 个字段，model \(wantModel.count) 个"
+    guard let tz = obj["tz"] as? String, !tz.isEmpty else {
+        throw Err("tz 是空的——手机上会按 UTC 算日期")
+    }
+    return "顶层 \(want.count) 个字段（tz=\(tz)），model \(wantModel.count) 个"
 }
 
 struct Err: Error, CustomStringConvertible {

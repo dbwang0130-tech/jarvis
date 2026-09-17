@@ -32,6 +32,8 @@ type AskInput struct {
 	Question string `json:"question"`
 	// History 是之前几轮的对话，原样从上次的出参里拿回来。
 	History []agent.Message `json:"history"`
+	// TZ 是设备的时区名，见 applyTimeZone。
+	TZ string `json:"tz"`
 	// Model 是模型接入参数。
 	Model ModelConfig `json:"model"`
 	// Profile 是用户自述，交给模型判断什么算要紧。
@@ -86,6 +88,8 @@ func Ask(inputJSON string) string {
 	if err := json.Unmarshal([]byte(inputJSON), &in); err != nil {
 		return askError("入参不是合法 JSON：%v", err)
 	}
+	applyTimeZone(in.TZ)
+
 	if strings.TrimSpace(in.Question) == "" {
 		return askError("没说要干什么")
 	}

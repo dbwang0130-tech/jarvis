@@ -15,7 +15,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+	// 把时区数据库打进二进制（约 450KB）。gomobile 编出来的 Go 在 iOS 沙箱里
+	// 读不到系统的 zoneinfo，不带这个的话 LoadLocation 一律失败。
+	_ "time/tzdata"
 
 	"github.com/dabao/jarvis/internal/agenda"
 	"github.com/dabao/jarvis/internal/ledger"
@@ -32,6 +36,31 @@ type SnapshotInput struct {
 	Days int `json:"days"`
 	// Now 可以指定「现在」，留空就是真的现在（测试用）。
 	Now string `json:"now"`
+	// TZ 是设备的时区名（如 Asia/Shanghai）。见 applyTimeZone。
+	TZ string `json:"tz"`
+}
+
+var tzMu sync.Mutex
+
+// applyTimeZone 把进程的本地时区设成设备的那个。
+//
+// gomobile 编出来的 Go 在 iOS 上找不到系统时区库，time.Local 会退成 UTC——
+// 「今天」「明天」「这周」全按 UTC 算，东八区下午六点之后就整体差一天。
+// 桌面端读得到 /etc/localtime，所以只有手机上不对。
+//
+// 时区是进程级的全局状态，但在 iOS 上这个进程就只有这一个 app，设一次就行。
+func applyTimeZone(name string) {
+	if name == "" {
+		return
+	}
+	tzMu.Lock()
+	defer tzMu.Unlock()
+	if time.Local != nil && time.Local.String() == name {
+		return
+	}
+	if loc, err := time.LoadLocation(name); err == nil {
+		time.Local = loc
+	}
 }
 
 // SnapshotOutput 是界面要显示的东西。
@@ -96,6 +125,8 @@ func Snapshot(inputJSON string) string {
 	if err := json.Unmarshal([]byte(inputJSON), &in); err != nil {
 		return errorOut("入参不是合法 JSON：%v", err)
 	}
+
+	applyTimeZone(in.TZ)
 
 	now := time.Now()
 	if in.Now != "" {

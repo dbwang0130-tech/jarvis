@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // 这一层是 iOS 端唯一的入口，所以约定必须钉死：进出都是 JSON，
@@ -255,5 +256,34 @@ func walkNull(t *testing.T, path string, v any) {
 		for i, sub := range x {
 			walkNull(t, fmt.Sprintf("%s[%d]", path, i), sub)
 		}
+	}
+}
+
+// gomobile 编出来的二进制在 iOS 沙箱里读不到系统的 zoneinfo，时区数据库是
+// 靠 `_ "time/tzdata"` 打进来的。那行看着像个没用的空导入，很容易被顺手删掉——
+// 删了 LoadLocation 一律失败，time.Local 退成 UTC，手机上「今天」整体差一天。
+func TestApplyTimeZone(t *testing.T) {
+	orig := time.Local
+	t.Cleanup(func() { time.Local = orig })
+
+	applyTimeZone("Asia/Shanghai")
+	if got := time.Local.String(); got != "Asia/Shanghai" {
+		t.Fatalf("时区没设上：%s（tzdata 没打进来？）", got)
+	}
+	if _, off := time.Now().Zone(); off != 8*3600 {
+		t.Fatalf("偏移不对：%d 秒", off)
+	}
+
+	// 空的和认不出来的都不该把已经设好的弄坏。
+	for _, bad := range []string{"", "Not/AZone"} {
+		applyTimeZone(bad)
+		if got := time.Local.String(); got != "Asia/Shanghai" {
+			t.Fatalf("applyTimeZone(%q) 把时区弄坏了：%s", bad, got)
+		}
+	}
+
+	applyTimeZone("America/New_York")
+	if got := time.Local.String(); got != "America/New_York" {
+		t.Fatalf("换时区没生效：%s", got)
 	}
 }

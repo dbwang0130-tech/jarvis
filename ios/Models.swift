@@ -151,6 +151,8 @@ struct AskInput: Codable {
     var history: [Message]
     var model: ModelConfig
     var profile: String
+    /// Go 在 iOS 上读不到系统时区库，不带过去就按 UTC 算日期。
+    var tz: String = TimeZone.current.identifier
 }
 
 struct AskOutput: Codable {
