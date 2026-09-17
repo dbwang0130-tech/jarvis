@@ -43,8 +43,12 @@ fi
 
 # --- 4. 真机 ---
 # devicectl 会把模拟器也列出来，Reality 那列写着 simulated，要滤掉。
+# 状态有 connected / available (paired) / unavailable 几种。只认 connected
+# 的话，无线配对或者刚插上还没完全就绪的设备会被自己的守卫拦下来——
+# 真不可用的话 xcodebuild 会报得更清楚，不必在这儿提前判死。
 UDID=${DEVICE_ID:-$(xcrun devicectl list devices 2>/dev/null \
-      | awk '$0 !~ /simulated/ && /connected/ {for(i=1;i<=NF;i++) if($i ~ /^[0-9A-F-]{25,}$/) {print $i; exit}}')}
+      | awk '$0 !~ /simulated/ && $0 !~ /unavailable/ && /(connected|available)/ \
+             {for(i=1;i<=NF;i++) if($i ~ /^[0-9A-F-]{25,}$/) {print $i; exit}}')}
 [ -n "$UDID" ] || die "没有插着的 iPhone。
 插上数据线，手机上点「信任此电脑」，解锁屏幕，再跑一次。
 （第一次连还要在 Xcode 里等它 Preparing device 走完）
