@@ -15,6 +15,7 @@ import pathlib
 IOS = pathlib.Path(__file__).resolve().parent
 FRAMEWORK = "Mobile.xcframework"
 ASSETS = "Assets.xcassets"
+PRIVACY = "PrivacyInfo.xcprivacy"
 BUNDLE_ID = "com.dabao.jarvis"
 DEPLOY_TARGET = "26.0"  # Liquid Glass 那套要 26 起；设备是 iPhone 17 Pro，本来就跑 26+
 
@@ -46,7 +47,7 @@ def main() -> None:
     # 资源目录：有就带上，没有就当没这回事——图标是可选的。
     assets_ref, assets_build = uid("fr:assets"), uid("bf:assets")
     has_assets = (IOS / ASSETS).is_dir()
-    resources = []
+    resources: list[str] = []
     if has_assets:
         refs.append(f'\t\t{assets_ref} /* {ASSETS} */ = {{isa = PBXFileReference; '
                     f'lastKnownFileType = folder.assetcatalog; path = {ASSETS}; '
@@ -55,6 +56,17 @@ def main() -> None:
                       f'{{isa = PBXBuildFile; fileRef = {assets_ref} /* {ASSETS} */; }};')
         resources.append(f'\t\t\t\t{assets_build} /* {ASSETS} in Resources */,')
         children.append(f'\t\t\t\t{assets_ref} /* {ASSETS} */,')
+
+    # 隐私清单要进 bundle（不是 Info.plist 的一部分），所以走资源那条路。
+    priv_ref, priv_build = uid("fr:privacy"), uid("bf:privacy")
+    if (IOS / PRIVACY).is_file():
+        refs.append(f'\t\t{priv_ref} /* {PRIVACY} */ = {{isa = PBXFileReference; '
+                    f'lastKnownFileType = text.xml; path = {PRIVACY}; '
+                    f'sourceTree = "<group>"; }};')
+        builds.append(f'\t\t{priv_build} /* {PRIVACY} in Resources */ = '
+                      f'{{isa = PBXBuildFile; fileRef = {priv_ref} /* {PRIVACY} */; }};')
+        resources.append(f'\t\t\t\t{priv_build} /* {PRIVACY} in Resources */,')
+        children.append(f'\t\t\t\t{priv_ref} /* {PRIVACY} */,')
 
     fw_ref, fw_build, fw_embed = uid("fr:fw"), uid("bf:fw"), uid("bf:fwembed")
     refs.append(f'\t\t{fw_ref} /* {FRAMEWORK} */ = {{isa = PBXFileReference; '
@@ -93,6 +105,7 @@ def main() -> None:
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -107,7 +120,7 @@ def main() -> None:
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = "1,2";'''
+				TARGETED_DEVICE_FAMILY = 1;'''
 
     nl = "\n"
     pbx = f'''// !$*UTF8*$!
@@ -206,12 +219,12 @@ def main() -> None:
 				}};
 			}};
 			buildConfigurationList = {i["projCfgList"]} /* Build configuration list for PBXProject "Jarvis" */;
-			developmentRegion = en;
+			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
-				Base,
 				"zh-Hans",
+				Base,
+				en,
 			);
 			mainGroup = {i["mainGroup"]};
 			productRefGroup = {i["productsGroup"]} /* Products */;
