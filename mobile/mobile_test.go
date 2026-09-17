@@ -372,3 +372,74 @@ func TestTodoLimit(t *testing.T) {
 		t.Errorf("总数该是 50，实际 %d", out.TodosTotal)
 	}
 }
+
+// 详情只给「已计时 3 小时」这个总数的话，「什么时候做的、做了几回、
+// 中间状态怎么变的」全看不出来。这条守着 LOGBOOK 真的被读出来了。
+func TestDetailReadsLogbook(t *testing.T) {
+	doc := `* DONE 写周报
+  CLOSED: [2026-09-16 三 18:20]
+  :LOGBOOK:
+  CLOCK: [2026-09-16 三 14:00]--[2026-09-16 三 15:30] =>  1:30
+  CLOCK: [2026-09-16 三 16:00]--[2026-09-16 三 16:45] =>  0:45
+  - State "DONE" from "NEXT" [2026-09-16 三 18:20]
+  - Note taken on [2026-09-16 三 17:00] \\
+    卡在数据那一段，问了老张才通
+  :END:
+  正文留着。
+`
+	var d DetailOutput
+	if err := json.Unmarshal([]byte(Detail(mustJSON(t,
+		DetailInput{Files: map[string]string{"a.org": doc}, Ref: "a.org:0"}))), &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Error != "" {
+		t.Fatalf("不该出错：%s", d.Error)
+	}
+	if d.Clocked != 135 {
+		t.Errorf("总时长该是 135 分钟，实际 %d", d.Clocked)
+	}
+	if len(d.Log) != 4 {
+		t.Fatalf("该有 4 条记录（两段计时 + 一次状态变更 + 一条笔记），实际 %d：%+v",
+			len(d.Log), d.Log)
+	}
+
+	kinds := map[string]int{}
+	for _, l := range d.Log {
+		kinds[l.Kind]++
+	}
+	if kinds["clock"] != 2 || kinds["state"] != 1 || kinds["note"] != 1 {
+		t.Errorf("种类不对：%v", kinds)
+	}
+
+	// 笔记正文在续行里，解析器只留了头一行——不捞回来就是一条空笔记。
+	var note LogItem
+	for _, l := range d.Log {
+		if l.Kind == "note" {
+			note = l
+		}
+	}
+	if !strings.Contains(note.Text, "问了老张") {
+		t.Errorf("笔记正文没捞回来：%q", note.Text)
+	}
+	if strings.Contains(note.Text, "Note taken on") {
+		t.Errorf("笔记里混进了 org 的样板字：%q", note.Text)
+	}
+
+	// 新的排前面，否则一眼看过去最上面是最早的事。
+	for i := 1; i < len(d.Log); i++ {
+		if d.Log[i-1].When != "" && d.Log[i].When != "" && d.Log[i-1].When < d.Log[i].When {
+			t.Errorf("顺序不对，%q 排在了 %q 前面", d.Log[i-1].When, d.Log[i].When)
+		}
+	}
+
+	// 状态变更要说清楚从哪变到哪。
+	var state LogItem
+	for _, l := range d.Log {
+		if l.Kind == "state" {
+			state = l
+		}
+	}
+	if !strings.Contains(state.Text, "NEXT") || !strings.Contains(state.Text, "DONE") {
+		t.Errorf("状态变更没说清楚：%q", state.Text)
+	}
+}

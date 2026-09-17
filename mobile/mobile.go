@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -164,13 +165,118 @@ type DetailOutput struct {
 	Clocked   int        `json:"clocked"`
 	Notes     string     `json:"notes"`
 	Boxes     []Checkbox `json:"boxes"`
-	Error     string     `json:"error,omitempty"`
+	// Log 是 LOGBOOK 里的记录：每一段计时、状态怎么变的、记过什么笔记。
+	// 只给总时长的话，「这件事什么时候做的、做了几回」全看不出来。
+	Log   []LogItem `json:"log"`
+	Error string    `json:"error,omitempty"`
+}
+
+// LogItem 是 LOGBOOK 里的一条，新的排在前面。
+type LogItem struct {
+	// Kind 是 clock / state / note / other。
+	Kind string `json:"kind"`
+	When string `json:"when"`
+	Text string `json:"text"`
+	// Minutes 只有计时那种才有；仍在走的那条是 Running。
+	Minutes int  `json:"minutes"`
+	Running bool `json:"running"`
 }
 
 func (o *DetailOutput) normalize() {
 	if o.Boxes == nil {
 		o.Boxes = []Checkbox{}
 	}
+	if o.Log == nil {
+		o.Log = []LogItem{}
+	}
+}
+
+// buildLog 把计时和日志并成一条时间线，新的在前。
+//
+// org 里这两样分开存（CLOCK 行和 - State/- Note 行），但看的人不关心这个
+// 区别——他想知道的是「这件事都发生过什么」，按时间排下来就对了。
+func buildLog(n *org.Node) []LogItem {
+	var out []LogItem
+	for _, c := range n.Clocks {
+		if c.Start == nil {
+			continue
+		}
+		it := LogItem{
+			Kind:    "clock",
+			When:    c.Start.Start.Format("2006-01-02 15:04"),
+			Minutes: int(c.Duration().Minutes()),
+			Running: c.Running(),
+		}
+		if it.Running {
+			it.Text = "还在计时"
+		} else if c.End != nil {
+			it.Text = "到 " + c.End.Start.Format("15:04")
+		}
+		out = append(out, it)
+	}
+	for _, e := range n.Logs {
+		it := LogItem{When: stampText(e.Time), Text: e.Text}
+		switch e.Kind {
+		case org.LogState:
+			it.Kind = "state"
+			it.Text = fmt.Sprintf("%s → %s", orDash(e.From), orDash(e.To))
+		case org.LogNote:
+			it.Kind = "note"
+			it.Text = noteBody(n, e)
+		default:
+			it.Kind = "other"
+		}
+		out = append(out, it)
+	}
+	// 新的排前面。没时间戳的沉底，免得插在中间乱了顺序。
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].When == "" != (out[j].When == "") {
+			return out[j].When == ""
+		}
+		return out[i].When > out[j].When
+	})
+	return out
+}
+
+// noteBody 把一条笔记的正文捞出来。
+//
+// org 写的笔记是这个样子：
+//
+//   - Note taken on [2026-09-16 三 18:20] \
+//     卡在数据那一段，问了老张才通
+//
+// 解析器逐行看，只留下了头一行（「Note taken on …」），正文那几行续行
+// 全丢了——照原样显示就是一条没有内容的笔记。这里回文档里把续行捞回来。
+func noteBody(n *org.Node, e org.LogEntry) string {
+	if n.Doc == nil {
+		return e.Text
+	}
+	var body []string
+	for i := e.Line + 1; i < n.End && i < len(n.Doc.Lines); i++ {
+		t := strings.TrimSpace(n.Doc.Lines[i])
+		// 碰到下一条记录、抽屉收尾或空行就停。
+		if t == "" || t == ":END:" || strings.HasPrefix(t, "- ") ||
+			strings.HasPrefix(t, "CLOCK:") {
+			break
+		}
+		body = append(body, t)
+	}
+	if len(body) == 0 {
+		// 只有头一行的话，把「Note taken on …」这串没信息量的字去掉，
+		// 时间已经单独显示了。
+		return strings.TrimSpace(strings.TrimSuffix(
+			regexpNotePrefix.ReplaceAllString(e.Text, ""), "\\"))
+	}
+	return strings.Join(body, "\n")
+}
+
+var regexpNotePrefix = regexp.MustCompile(`^- Note taken on\s*\[[^\]]*\]\s*`)
+
+func orDash(s string) string {
+	if s == "" {
+		return "无"
+	}
+	return s
 }
 
 // Detail 取一条条目的详情。ref 形如 work.org:12，用列表里给的那个。
@@ -205,6 +311,7 @@ func Detail(inputJSON string) string {
 	for _, b := range n.Boxes {
 		out.Boxes = append(out.Boxes, Checkbox{Done: b.Done, Text: b.Text})
 	}
+	out.Log = buildLog(n)
 	return marshal(&out)
 }
 

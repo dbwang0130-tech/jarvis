@@ -369,6 +369,12 @@ struct ItemDetail: View {
                         }
                     }
 
+                    if !data.log.isEmpty {
+                        Section("做过什么") {
+                            ForEach(data.log) { LogRow(entry: $0) }
+                        }
+                    }
+
                     if let err = data.error, !err.isEmpty {
                         Section { Text(err).font(.footnote).foregroundStyle(.red) }
                     }
@@ -539,6 +545,66 @@ struct ActionButton: View {
         .buttonStyle(.plain)
         .disabled(working || store.thinking)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: Brand.smallRadius))
+    }
+}
+
+/// LOGBOOK 里的一条。计时、状态变更、笔记混在一条时间线上——
+/// 看的人不关心 org 把它们分开存在哪儿，只想知道这件事都发生过什么。
+struct LogRow: View {
+    let entry: LogItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.footnote)
+                .foregroundStyle(color)
+                .frame(width: 18)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    if entry.kind == "clock" {
+                        Text(entry.duration)
+                            .font(.callout.weight(.medium).monospacedDigit())
+                            .foregroundStyle(entry.running ? Color.orange : Color.primary)
+                    } else if !entry.text.isEmpty {
+                        Text(entry.text)
+                            .font(.callout)
+                            .textSelection(.enabled)
+                    }
+                }
+                HStack(spacing: 6) {
+                    if !entry.when.isEmpty {
+                        Text(entry.when)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    if entry.kind == "clock", !entry.text.isEmpty {
+                        Text(entry.text).font(.caption2).foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 1)
+    }
+
+    private var icon: String {
+        switch entry.kind {
+        case "clock": return entry.running ? "stopwatch.fill" : "stopwatch"
+        case "state": return "arrow.triangle.branch"
+        case "note":  return "text.quote"
+        default:      return "circle.dotted"
+        }
+    }
+
+    private var color: Color {
+        switch entry.kind {
+        case "clock": return entry.running ? .orange : .blue
+        case "state": return .green
+        case "note":  return .secondary
+        // Color 没有 tertiary（那是 ShapeStyle 上的），拿次要色淡一档代替。
+        default:      return .secondary.opacity(0.6)
+        }
     }
 }
 

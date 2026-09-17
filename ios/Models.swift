@@ -176,9 +176,29 @@ struct DetailData: Codable {
     var clocked = 0
     var notes = ""
     var boxes: [Checkbox] = []
+    /// LOGBOOK 里的记录，新的在前。只给「已计时 3 小时」这个总数的话，
+    /// 「什么时候做的、做了几回、中间状态怎么变的」全看不出来。
+    var log: [LogItem] = []
     var error: String?
 
     static let empty = DetailData()
+}
+
+struct LogItem: Codable, Identifiable {
+    /// clock / state / note / other
+    var kind = ""
+    var when = ""
+    var text = ""
+    var minutes = 0
+    var running = false
+
+    var id: String { kind + when + text }
+
+    var duration: String {
+        if running { return "进行中" }
+        if minutes < 60 { return "\(minutes) 分钟" }
+        return "\(minutes / 60) 小时 \(minutes % 60) 分"
+    }
 }
 
 // MARK: - 对话
