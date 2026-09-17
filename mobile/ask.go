@@ -34,7 +34,7 @@ type AskInput struct {
 	Question string `json:"question"`
 	// History 是之前几轮的对话，原样从上次的出参里拿回来。
 	History []agent.Message `json:"history"`
-	// TZ 是设备的时区名，见 applyTimeZone。
+	// TZ 是设备的时区名，见 SetTimeZone。
 	TZ string `json:"tz"`
 	// Memory 是长期记忆全文（iCloud 里的 memory.md），没有就留空。
 	Memory string `json:"memory"`
@@ -139,7 +139,7 @@ func askWith(inputJSON string, host Host) string {
 	if err := json.Unmarshal([]byte(inputJSON), &in); err != nil {
 		return askError("入参不是合法 JSON：%v", err)
 	}
-	applyTimeZone(in.TZ)
+	SetTimeZone(in.TZ)
 
 	if strings.TrimSpace(in.Question) == "" {
 		return askError("没说要干什么")

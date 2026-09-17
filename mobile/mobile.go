@@ -42,7 +42,7 @@ type SnapshotInput struct {
 	TodoLimit int `json:"todo_limit"`
 	// Now 可以指定「现在」，留空就是真的现在（测试用）。
 	Now string `json:"now"`
-	// TZ 是设备的时区名（如 Asia/Shanghai）。见 applyTimeZone。
+	// TZ 是设备的时区名（如 Asia/Shanghai）。见 SetTimeZone。
 	TZ string `json:"tz"`
 }
 
@@ -86,26 +86,35 @@ func filesKey(files map[string]string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-var tzMu sync.Mutex
+var (
+	tzMu  sync.Mutex
+	tzSet bool
+)
 
-// applyTimeZone 把进程的本地时区设成设备的那个。
+// SetTimeZone 设置进程的本地时区。**只有第一次调用生效**，界面应该在
+// app 启动时、任何别的调用之前调一次。
 //
 // gomobile 编出来的 Go 在 iOS 上找不到系统时区库，time.Local 会退成 UTC——
-// 「今天」「明天」「这周」全按 UTC 算，东八区下午六点之后就整体差一天。
+// 「今天」「明天」「这周」全按 UTC 算，东八区下午六点之后整体差一天。
 // 桌面端读得到 /etc/localtime，所以只有手机上不对。
 //
-// 时区是进程级的全局状态，但在 iOS 上这个进程就只有这一个 app，设一次就行。
-func applyTimeZone(name string) {
+// **为什么只能设一次**：time.Local 是全局变量。改它的同时别的 goroutine
+// 正在 time.Now() 或 os.Stat 里读它，那就是数据竞争（-race 直接抓得到），
+// 而数据竞争是未定义行为，不是「顶多算错一次」。手机上下拉刷新和点开详情
+// 是真会同时跑的。时区在一次运行里不会变，设一次就够；真跨了时区，
+// 重开一次 app 就好。
+func SetTimeZone(name string) {
 	if name == "" {
 		return
 	}
 	tzMu.Lock()
 	defer tzMu.Unlock()
-	if time.Local != nil && time.Local.String() == name {
+	if tzSet {
 		return
 	}
 	if loc, err := time.LoadLocation(name); err == nil {
 		time.Local = loc
+		tzSet = true
 	}
 }
 
@@ -285,7 +294,7 @@ func Detail(inputJSON string) string {
 	if err := json.Unmarshal([]byte(inputJSON), &in); err != nil {
 		return marshal(&DetailOutput{Error: fmt.Sprintf("入参不是合法 JSON：%v", err)})
 	}
-	applyTimeZone(in.TZ)
+	SetTimeZone(in.TZ)
 
 	path, line, ok := splitRef(in.Ref)
 	if !ok {
@@ -391,7 +400,7 @@ func Snapshot(inputJSON string) string {
 		return errorOut("入参不是合法 JSON：%v", err)
 	}
 
-	applyTimeZone(in.TZ)
+	SetTimeZone(in.TZ)
 
 	now := time.Now()
 	if in.Now != "" {

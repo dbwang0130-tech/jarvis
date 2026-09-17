@@ -262,11 +262,12 @@ func walkNull(t *testing.T, path string, v any) {
 // gomobile 编出来的二进制在 iOS 沙箱里读不到系统的 zoneinfo，时区数据库是
 // 靠 `_ "time/tzdata"` 打进来的。那行看着像个没用的空导入，很容易被顺手删掉——
 // 删了 LoadLocation 一律失败，time.Local 退成 UTC，手机上「今天」整体差一天。
-func TestApplyTimeZone(t *testing.T) {
-	orig := time.Local
-	t.Cleanup(func() { time.Local = orig })
+func TestSetTimeZone(t *testing.T) {
+	orig, origSet := time.Local, tzSet
+	t.Cleanup(func() { time.Local, tzSet = orig, origSet })
 
-	applyTimeZone("Asia/Shanghai")
+	tzSet = false
+	SetTimeZone("Asia/Shanghai")
 	if got := time.Local.String(); got != "Asia/Shanghai" {
 		t.Fatalf("时区没设上：%s（tzdata 没打进来？）", got)
 	}
@@ -274,17 +275,29 @@ func TestApplyTimeZone(t *testing.T) {
 		t.Fatalf("偏移不对：%d 秒", off)
 	}
 
-	// 空的和认不出来的都不该把已经设好的弄坏。
-	for _, bad := range []string{"", "Not/AZone"} {
-		applyTimeZone(bad)
+	// 只认第一次。后面再怎么喊都不该改动 time.Local——改它的同时别的
+	// goroutine 正在读，那是数据竞争，不是「顶多算错一次」。
+	for _, later := range []string{"America/New_York", "UTC", "", "Not/AZone"} {
+		SetTimeZone(later)
 		if got := time.Local.String(); got != "Asia/Shanghai" {
-			t.Fatalf("applyTimeZone(%q) 把时区弄坏了：%s", bad, got)
+			t.Fatalf("SetTimeZone(%q) 不该生效，时区变成了 %s", later, got)
 		}
 	}
+}
 
-	applyTimeZone("America/New_York")
-	if got := time.Local.String(); got != "America/New_York" {
-		t.Fatalf("换时区没生效：%s", got)
+// 认不出来的时区名不该把 tzSet 标记掉，否则后面真正合法的那个就设不上了。
+func TestSetTimeZoneBadNameDoesNotLock(t *testing.T) {
+	orig, origSet := time.Local, tzSet
+	t.Cleanup(func() { time.Local, tzSet = orig, origSet })
+
+	tzSet = false
+	SetTimeZone("Not/AZone")
+	if tzSet {
+		t.Fatal("认不出来的名字把开关锁死了")
+	}
+	SetTimeZone("Asia/Tokyo")
+	if got := time.Local.String(); got != "Asia/Tokyo" {
+		t.Fatalf("合法的时区没设上：%s", got)
 	}
 }
 

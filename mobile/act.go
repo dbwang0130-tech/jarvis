@@ -51,7 +51,7 @@ func Act(inputJSON string) string {
 	if err := json.Unmarshal([]byte(inputJSON), &in); err != nil {
 		return marshal(&ActOutput{Error: fmt.Sprintf("入参不是合法 JSON：%v", err)})
 	}
-	applyTimeZone(in.TZ)
+	SetTimeZone(in.TZ)
 
 	wd, err := newWorkdir(in.Files, "jarvis-act-")
 	if err != nil {
