@@ -88,10 +88,16 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("取消")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("存") { save() }
+                    Button { save() } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .accessibilityLabel("存")
                 }
             }
             .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in

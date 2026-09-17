@@ -148,7 +148,10 @@ func buildDays(c *org.Collection, now time.Time, days int, opts agenda.Options) 
 
 	out := make([]Day, 0, len(ag.Days))
 	for _, d := range ag.Days {
-		if len(d.Items) == 0 && !d.IsToday() {
+		// 不能用 d.IsToday()——它按真实时钟算，而这里的 now 是入参给的。
+		// 两者不一致时「今天」会标到别的日子上，日程窗口和高亮各说各话。
+		today := sameDay(d.Date, now)
+		if len(d.Items) == 0 && !today {
 			continue // 空日子不占地方，今天除外
 		}
 		items := make([]Item, 0, len(d.Items))
@@ -158,11 +161,17 @@ func buildDays(c *org.Collection, now time.Time, days int, opts agenda.Options) 
 		out = append(out, Day{
 			Date:    d.Date.Format("2006-01-02"),
 			Weekday: weekday(d.Date),
-			Today:   d.IsToday(),
+			Today:   today,
 			Items:   items,
 		})
 	}
 	return out
+}
+
+func sameDay(a, b time.Time) bool {
+	y1, m1, d1 := a.Date()
+	y2, m2, d2 := b.Date()
+	return y1 == y2 && m1 == m2 && d1 == d2
 }
 
 func buildTodos(c *org.Collection) []Item {

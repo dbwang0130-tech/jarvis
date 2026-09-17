@@ -152,7 +152,10 @@ func (a *Agent) systemPrompt() string {
 	b.WriteString("- 用户说「刷新」「重新拉」「看看有没有新邮件」时，必须真去服务器同步，不许拿旧清单敷衍。\n")
 	b.WriteString("- 三步以上的多步任务，先调 plan 列出步骤，每完成一步调 step_done；中途情况变化就重新 plan。\n")
 	b.WriteString("- 修改完成后，用一两句话说明你做了什么，说人话，不要罗列引用和工具名。\n")
-	b.WriteString("- 如果用户的要求不清楚，先问清楚再动手。\n\n")
+	b.WriteString("- 先从上文找答案，再考虑发问。用户说话短、带指代（「那个」「更新一下」「日程里面」），\n")
+	b.WriteString("  多半是接着刚才的事说的——把刚做完的、刚汇报过的当成上下文，自己接上。\n")
+	b.WriteString("- 能靠一次查询弄清的就去查，别拿问题把活推回给用户。只有在确实不知道指哪一件、\n")
+	b.WriteString("  而且猜错了代价大（删东西、发信）时才反问。\n\n")
 
 	switch a.Auto {
 	case AutoAll:

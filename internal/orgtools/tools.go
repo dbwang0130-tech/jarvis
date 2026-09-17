@@ -557,13 +557,19 @@ func (w *Workspace) setState(ref, title, state string) (string, bool, error) {
 	if err := doc.Save(); err != nil {
 		return "", false, err
 	}
-	w.record(doc, "把「%s」从 %s 改为 %s", n.Title, orDash(old), orDash(n.TODO))
-
-	msg := fmt.Sprintf("已把「%s」的状态从 %s 改为 %s。", n.Title, orDash(old), orDash(n.TODO))
-	if n.TODO == old && n.Scheduled != nil {
-		msg += fmt.Sprintf("这是重复任务，下次计划已推进到 %s。", n.Scheduled.Start.Format("2006-01-02"))
+	// 重复任务标完成后，org 的做法是把状态退回原样、把计划推到下一个周期。
+	// 照字面说成「从 TODO 改为 TODO」，看着像没生效——模型也会原样转述给用户。
+	repeated := n.TODO == old && n.Scheduled != nil
+	if repeated {
+		next := n.Scheduled.Start.Format("2006-01-02")
+		w.record(doc, "完成「%s」这一次，下次计划推进到 %s", n.Title, next)
+		return fmt.Sprintf("「%s」这一次已完成。这是重复任务，状态回到 %s，下次计划推进到 %s。（新引用 %s）",
+			n.Title, orDash(n.TODO), next, refOf(doc, n)), true, nil
 	}
-	return msg + fmt.Sprintf("（新引用 %s）", refOf(doc, n)), true, nil
+
+	w.record(doc, "把「%s」从 %s 改为 %s", n.Title, orDash(old), orDash(n.TODO))
+	return fmt.Sprintf("已把「%s」的状态从 %s 改为 %s。（新引用 %s）",
+		n.Title, orDash(old), orDash(n.TODO), refOf(doc, n)), true, nil
 }
 
 func (w *Workspace) setPriority(ref, title, prio string) (string, bool, error) {
