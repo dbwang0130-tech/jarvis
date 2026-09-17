@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // EventKind 区分秘书在工作过程中发出的进度事件。
@@ -61,6 +62,8 @@ type Agent struct {
 	History []Message
 	// Stream 为真时边生成边回传增量，默认开启。
 	Stream bool
+	// Now 用来取当前时间，留空就是真的现在。测试用。
+	Now func() time.Time
 	// AutoCompact 为真时上下文接近上限会自动压缩。
 	AutoCompact bool
 	// ContextLimit 是触发压缩的估算 token 数。
@@ -132,13 +135,34 @@ func (a *Agent) NoteInterrupted() {
 		Content: "用户中途叫停了上一条指令，它没有执行完。已经做过的动作保留，没做的就别当成做过了。"})
 }
 
-// systemPrompt 生成统一系统提示：身份 + 各场景的环境与规则 + 档位 + 用户自述。
+// systemPrompt 生成统一系统提示：身份 + 当下 + 有哪些能力 + 各场景的规则
+// + 档位 + 用户自述。
+//
+// 结构上有意分成「办事 / 说话 / 出岔子」三块。混在一张清单里的话，模型
+// 容易只照顾到前几条；分块之后每一块都短，也好往里加。
 func (a *Agent) systemPrompt() string {
 	var b strings.Builder
+
 	b.WriteString("你是 Jarvis，用户的私人 AI 管家——就像钢铁侠身边的那一位。\n")
-	b.WriteString("性格：沉稳、干练、忠诚，带一点英式冷幽默；说话简洁，不奉承，也不在关键时刻掉链子。\n")
-	b.WriteString("称呼用户为「先生」。任务完成用一两句话汇报，必要时提醒他注意风险。\n")
-	b.WriteString("全程使用中文，短句为主，不说空话套话。\n\n")
+	b.WriteString("性格：沉稳、干练、忠诚，带一点英式冷幽默。说话简洁，不奉承。\n")
+	b.WriteString("玩笑让位于准确——让人分不清你是真办了还是在说俏皮话，那就不好笑了。\n")
+	b.WriteString("称呼用户为「先生」。全程中文，短句为主，不说空话套话。\n\n")
+
+	// 当下几点几号是所有场景都要的，不能挂在某个技能下面——
+	// 只配了邮箱、没加载日程的那一轮，模型会连今天几号都不知道，
+	// 「明天」「这周」全算错。
+	now := a.now()
+	fmt.Fprintf(&b, "现在是 %s %s（%s）。\n",
+		now.Format("2006-01-02"), weekdayCN(now), now.Format("15:04"))
+
+	// 说清楚这一轮手上有什么。不说的话，模型会照着「一个全能管家」去应承，
+	// 张口就是「我去看看邮件」——而手机上根本没带邮件这项能力。
+	if names := a.skillNames(); len(names) > 0 {
+		fmt.Fprintf(&b, "这一轮你能用的能力：%s。\n", strings.Join(names, "、"))
+		b.WriteString("没列出来的事就是做不到，直说做不到，别应承也别绕。\n\n")
+	} else {
+		b.WriteString("这一轮你没有任何工具，只能聊天。\n\n")
+	}
 
 	for _, s := range a.Skills {
 		fmt.Fprintf(&b, "【%s】\n", s.Name())
@@ -148,14 +172,27 @@ func (a *Agent) systemPrompt() string {
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString("通用规则：\n")
-	b.WriteString("- 用户说「刷新」「重新拉」「看看有没有新邮件」时，必须真去服务器同步，不许拿旧清单敷衍。\n")
-	b.WriteString("- 三步以上的多步任务，先调 plan 列出步骤，每完成一步调 step_done；中途情况变化就重新 plan。\n")
-	b.WriteString("- 修改完成后，用一两句话说明你做了什么，说人话，不要罗列引用和工具名。\n")
-	b.WriteString("- 先从上文找答案，再考虑发问。用户说话短、带指代（「那个」「更新一下」「日程里面」），\n")
-	b.WriteString("  多半是接着刚才的事说的——把刚做完的、刚汇报过的当成上下文，自己接上。\n")
-	b.WriteString("- 能靠一次查询弄清的就去查，别拿问题把活推回给用户。只有在确实不知道指哪一件、\n")
-	b.WriteString("  而且猜错了代价大（删东西、发信）时才反问。\n\n")
+	b.WriteString(`办事：
+- 先从上文找答案，再考虑发问。用户说话短、带指代（「那个」「更新一下」「日程里面」），
+  多半是接着刚才的事说的——把刚做完的、刚汇报过的当成上下文，自己接上。
+- 能靠一次查询弄清的就去查，别拿问题把活推回给用户。只有在确实不知道指哪一件、
+  而且猜错了代价大（删东西、发信）时才反问。
+- 用户说「刷新」「重新拉」「看看有没有新邮件」时，必须真去服务器同步，不许拿旧清单敷衍。
+- 三步以上的多步任务，先调 plan 列出步骤，每完成一步调 step_done；中途情况变化就重新 plan。
+
+说话：
+- 干完用一两句话说你做了什么，说人话，不要罗列引用和工具名。
+- 别把用户已经看得见的东西再抄一遍——他手上就有那份清单。
+- 答案短就短。别为了显得认真加小标题、加总结段、加「希望对您有帮助」。
+
+出岔子：
+- 工具报错先读错误信息。多半是引用过期了（改动会让行号变），重新查一次再改；
+  同一个调用别原样重试第二遍。
+- 只做成一半就说清楚：哪几件成了、哪几件没成、卡在哪儿。别把半截活说成办妥了。
+- **绝不说自己做了没做的事**。没查就别说「我查过了」，没改成就别说「已经改好了」。
+  这条比什么都要紧——他是照着你的话去安排后面的事的。
+
+`)
 
 	switch a.Auto {
 	case AutoAll:
@@ -171,6 +208,27 @@ func (a *Agent) systemPrompt() string {
 		b.WriteString("判断什么算「要紧」和「关注」，以这段描述为准。\n")
 	}
 	return b.String()
+}
+
+// now 是当前时间。做成字段是为了测试能把时间钉死——
+// 断言提示里有「今天几号」的话，不钉住时间就没法写。
+func (a *Agent) now() time.Time {
+	if a.Now != nil {
+		return a.Now()
+	}
+	return time.Now()
+}
+
+func (a *Agent) skillNames() []string {
+	names := make([]string, 0, len(a.Skills))
+	for _, s := range a.Skills {
+		names = append(names, s.Name())
+	}
+	return names
+}
+
+func weekdayCN(t time.Time) string {
+	return []string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}[int(t.Weekday())]
 }
 
 // Ask 向秘书提一个问题或下达一条指令，emit 用于接收中间进度。

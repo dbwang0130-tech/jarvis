@@ -29,6 +29,16 @@ enum Brand {
                        startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
+    /// 一句话说清这是什么。收在一处，免得欢迎页、空状态、设置页各写一句，
+    /// 三个地方三种说法。
+    ///
+    /// 选这句是因为它同时说清了两件事：怎么用（说一句），以及凭什么敢
+    /// 交给它（剩下的它办）。数据在谁手里那件事是第二位的，单独一行讲。
+    static let slogan = "说一句，剩下的交给我"
+
+    /// 副标题：数据归属。这是跟别的日程 app 最大的差别，值得单独说。
+    static let subtitle = "日程、账本、邮件都是你自己的文件，手机和电脑同一份"
+
     /// 全 app 的圆角。3D 那张头像是圆润的，界面跟着圆一点才是一家人。
     static let radius: CGFloat = 18
     static let smallRadius: CGFloat = 12

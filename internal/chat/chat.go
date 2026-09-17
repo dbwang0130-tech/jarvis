@@ -184,7 +184,7 @@ func (s *Session) reloadAgent(msg string) {
 	s.skills = s.buildSkills()
 	s.ag, s.agentErr = agent.Build(s.cfg, s.skills...)
 	if s.agentErr != nil {
-		fail("秘书不可用：%v", s.agentErr)
+		fail("Jarvis 不可用：%v", s.agentErr)
 		return
 	}
 	note("%s", msg)
@@ -383,7 +383,7 @@ func (s *Session) readSecret(hint string) (string, eventKind) {
 
 func (s *Session) ask(input string) {
 	if s.ag == nil {
-		fail("秘书不可用：%v", s.agentErr)
+		fail("Jarvis 不可用：%v", s.agentErr)
 		return
 	}
 

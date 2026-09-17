@@ -23,13 +23,13 @@ const (
 	viewLedger
 )
 
-var viewNames = []string{"秘书", "日程", "待办", "邮件", "财务"}
+var viewNames = []string{"Jarvis", "日程", "待办", "邮件", "财务"}
 
 func (v view) String() string {
 	if int(v) < len(viewNames) {
 		return viewNames[v]
 	}
-	return "秘书"
+	return "Jarvis"
 }
 
 // next 返回 tab 轮换到的下一个视图。
@@ -238,7 +238,7 @@ func itemLine(it agenda.Item, showCat bool) string {
 func (s *Session) renderMail() string {
 	items := s.mailS.Items()
 	if len(items) == 0 {
-		return dim + "  还没同步邮件，跟秘书说「看看新邮件」。" + reset + "\n"
+		return dim + "  还没同步邮件，跟 Jarvis 说「看看新邮件」。" + reset + "\n"
 	}
 	subjW := max(10, width()-40)
 	var b strings.Builder

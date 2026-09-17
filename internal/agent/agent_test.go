@@ -417,3 +417,68 @@ func TestStreamAssemblesDeltas(t *testing.T) {
 		t.Fatalf("增量事件拼出来是 %q", got.String())
 	}
 }
+
+// 系统提示是这个 app 行为的地基，几条要害得钉住——改提示词很容易顺手
+// 把某一条挤掉，而挤掉之后没有任何编译错误或测试失败会提醒你。
+func TestSystemPrompt(t *testing.T) {
+	at := time.Date(2026, 9, 17, 14, 30, 0, 0, time.Local)
+	a := &Agent{
+		Now:    func() time.Time { return at },
+		Skills: []Skill{fakeSkill{}},
+		Auto:   AutoClean,
+	}
+	p := a.systemPrompt()
+
+	// 当下几点几号是所有场景都要的。只配了邮箱、没加载日程的那一轮，
+	// 模型会连今天几号都不知道，「明天」「这周」全算错。
+	for _, want := range []string{"2026-09-17", "周四", "14:30"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("提示里没有 %q：\n%s", want, p)
+		}
+	}
+
+	// 手上有什么能力要说明白，不然模型会照着「全能管家」应承，
+	// 张口就是「我去看看邮件」——而这一轮根本没带邮件。
+	if !strings.Contains(p, "测试") {
+		t.Errorf("没列出这一轮的能力：\n%s", p)
+	}
+	if !strings.Contains(p, "做不到") {
+		t.Errorf("没说清楚没列出来的事做不到：\n%s", p)
+	}
+
+	// 技能自己的环境和规则要带上。
+	if !strings.Contains(p, "照做就是") {
+		t.Errorf("技能的规则没带上：\n%s", p)
+	}
+
+	// 最要紧的那条：不许说自己做了没做的事。
+	if !strings.Contains(p, "绝不说自己做了没做的事") {
+		t.Errorf("诚实那条丢了：\n%s", p)
+	}
+
+	if !strings.Contains(p, "自动整理档") {
+		t.Errorf("没说清楚当前档位：\n%s", p)
+	}
+}
+
+// 一个工具都没有的时候别装得像什么都能干。
+func TestSystemPromptWithoutSkills(t *testing.T) {
+	a := &Agent{Now: func() time.Time { return time.Date(2026, 1, 1, 9, 0, 0, 0, time.Local) }}
+	p := a.systemPrompt()
+	if !strings.Contains(p, "没有任何工具") {
+		t.Errorf("没工具时该说清楚：\n%s", p)
+	}
+}
+
+// 用户自述只在填了的时候出现，空的不该留个空标题在那儿。
+func TestSystemPromptProfile(t *testing.T) {
+	a := &Agent{Now: time.Now, Skills: []Skill{fakeSkill{}}}
+	if strings.Contains(a.systemPrompt(), "关于你的用户") {
+		t.Error("没填自述却出现了自述那一段")
+	}
+	a.Profile = "  博士在读，在写毕业论文  "
+	p := a.systemPrompt()
+	if !strings.Contains(p, "关于你的用户") || !strings.Contains(p, "毕业论文") {
+		t.Errorf("自述没带上：\n%s", p)
+	}
+}

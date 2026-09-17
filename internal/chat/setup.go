@@ -166,7 +166,7 @@ func (s *Session) setupMail() (bool, bool) {
 			return false, abort
 		}
 	} else {
-		note("秘书要收发邮件的话得先加个账号，不用就跳过。")
+		note("Jarvis 要收发邮件的话得先加个账号，不用就跳过。")
 		want, abort := s.askYes("现在加一个", false)
 		if abort || !want {
 			return false, abort

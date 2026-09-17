@@ -48,10 +48,17 @@ struct WelcomeView: View {
             Spacer()
             Avatar(size: 140)
                 .shadow(color: Brand.primary.opacity(0.25), radius: 18, y: 8)
-            Text("Jarvis").font(.largeTitle.bold())
-            Text("日程和账本都放在 iCloud 里，\n跟电脑上那份是同一份。")
+            VStack(spacing: 8) {
+                Text("Jarvis").font(.largeTitle.bold())
+                Text(Brand.slogan)
+                    .font(.title3)
+                    .foregroundStyle(Brand.primary)
+            }
+            Text(Brand.subtitle)
+                .font(.footnote)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 32)
 
             Button("选 iCloud 里的 Jarvis 目录") { picking = true }
                 .buttonStyle(.borderedProminent)
@@ -76,11 +83,13 @@ struct MainTabs: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
-        // 秘书排第一，因为它是主交互——其余三页是"看"，这页是"使唤"。
+        // Jarvis 排第一，因为它是主交互——其余三页是"看"，这页是"使唤"。
         // TabView 默认选第一个，不用另外记选中状态。
         TabView {
             NavigationStack { ChatView() }
-                .tabItem { Label("Jarvis", systemImage: "bubble.left.and.text.bubble.right") }
+                // 单个气泡，笔画密度跟旁边的清单图标一致；两个气泡叠起来的那个
+                // 在 28pt 下糊成一团，比另外三个都重。三个点直接表达「在说话」。
+                .tabItem { Label("Jarvis", systemImage: "ellipsis.bubble") }
             NavigationStack { AgendaView() }
                 .tabItem { Label("日程", systemImage: "calendar") }
             NavigationStack { TodosView() }
@@ -438,7 +447,7 @@ struct ChatView: View {
                                 Avatar(size: 44)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Jarvis").font(.headline)
-                                    Text("日程、账本、邮件，说一句就办")
+                                    Text(Brand.slogan)
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                             }

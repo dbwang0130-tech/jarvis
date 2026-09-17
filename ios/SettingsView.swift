@@ -28,7 +28,7 @@ struct SettingsView: View {
                         Avatar(size: 52)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Jarvis").font(.headline)
-                            Text("日程、账本、邮件都跟电脑上是同一份")
+                            Text(Brand.slogan)
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -82,7 +82,7 @@ struct SettingsView: View {
                 }
 
                 Section("关于你") {
-                    TextField("一句话介绍自己，秘书据此判断什么算要紧",
+                    TextField("一句话介绍自己，Jarvis 据此判断什么算要紧",
                               text: $profile, axis: .vertical)
                         .lineLimit(2...6)
                 }

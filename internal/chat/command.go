@@ -302,7 +302,7 @@ func (s *Session) help() {
 
 func (s *Session) dream() {
 	if s.ag == nil {
-		fail("秘书不可用，无法整理记忆")
+		fail("Jarvis 不可用，无法整理记忆")
 		return
 	}
 	content := strings.TrimSpace(s.memSkill.Content)
