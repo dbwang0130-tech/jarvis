@@ -135,8 +135,6 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 
 **新增工具后**除了在 `buildSkills()` 注册，还要在 `command.go` 旁边的 `toolLabels` 表里补中文标签，否则界面直接显示英文工具名。
 
-**注意**：`internal/cozmo`（点阵表情渲染）目前**没有任何引用**，改之前先确认是不是在改死代码。
-
 早先那版 bubbletea 四视图 TUI（`internal/ui`，约 4800 行）已经删掉了——`internal/chat` 是它的完整替代。连带摘掉了 bubbletea / bubbles / lipgloss / termenv 四个直接依赖，直接依赖从 8 个降到 5 个。想翻旧实现的话在 git 历史里（初始提交 `7febf4b`）。**别把 lipgloss/termenv 再引回主程序**：它们会向终端查背景色（OSC 11）并直接从 tty 读应答，把用户按键一起吃掉，表现为「键盘完全没反应」。
 
 删掉的东西里有一个 `chat` 没有对应实现的功能：`editor.go` 的「用 $EDITOR 打开条目编辑」。需要的话得重新写。
