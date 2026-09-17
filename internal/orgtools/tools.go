@@ -765,6 +765,14 @@ func (w *Workspace) clockIn(ref, title string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
+
+	// 别的条目还在计时就先收掉。同时开着两个，统计出来的工时就是假的，
+	// 而且那条没收尾的 CLOCK 会一直挂着。
+	//
+	// 这条写在提示词里也说了一遍，但提示词是建议、代码才是保证——模型忘了
+	// 先 clock_out 的代价是一份查不出来的错账。
+	closed := w.closeRunningClocks(n)
+
 	w.snapshot(doc)
 	n, err = doc.ClockIn(n, w.now())
 	if err != nil {
@@ -774,7 +782,41 @@ func (w *Workspace) clockIn(ref, title string) (string, bool, error) {
 		return "", false, err
 	}
 	w.record(doc, "开始为「%s」计时", n.Title)
-	return fmt.Sprintf("已开始为「%s」计时。", n.Title), true, nil
+
+	msg := fmt.Sprintf("已开始为「%s」计时。", n.Title)
+	if len(closed) > 0 {
+		msg += fmt.Sprintf("（顺带停掉了还在计时的：%s）", strings.Join(closed, "、"))
+	}
+	return msg, true, nil
+}
+
+// closeRunningClocks 把除 keep 之外所有还开着的计时收掉，返回它们的标题。
+func (w *Workspace) closeRunningClocks(keep *org.Node) []string {
+	var closed []string
+	now := w.now()
+	for _, d := range w.Coll.Docs {
+		dirty := false
+		for _, n := range d.Nodes {
+			if n == keep || n.RunningClock() == nil {
+				continue
+			}
+			if !dirty {
+				w.snapshot(d)
+			}
+			if _, err := d.ClockOut(n, now); err != nil {
+				continue // 收不掉就算了，别为这个把 clock_in 整个搅黄
+			}
+			closed = append(closed, n.Title)
+			dirty = true
+		}
+		if dirty {
+			if err := d.Save(); err != nil {
+				// 同上：记一笔，但不挡着主要的事
+				w.record(d, "停掉旧计时时保存失败：%v", err)
+			}
+		}
+	}
+	return closed
 }
 
 func (w *Workspace) clockOut(ref, title string) (string, bool, error) {
