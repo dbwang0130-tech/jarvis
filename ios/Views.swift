@@ -276,8 +276,11 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button("清空") { store.clearChat() }
-                    .disabled(store.messages.isEmpty)
+                Button { store.clearChat() } label: {
+                    Image(systemName: "trash")
+                }
+                .disabled(store.messages.isEmpty)
+                .accessibilityLabel("清空")
             }
             SettingsLink()
         }
