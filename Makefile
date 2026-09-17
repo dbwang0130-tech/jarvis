@@ -70,7 +70,7 @@ ios-check:
 		exit 1; }
 	xcrun -sdk iphoneos swiftc -typecheck \
 		-sdk $$(xcrun --sdk iphoneos --show-sdk-path) \
-		-target arm64-apple-ios17.0 ios/*.swift
+		-target arm64-apple-ios26.0 ios/*.swift
 	@echo "Swift 代码在 iOS SDK 下检查通过"
 
 # 验两端的 JSON 契约：Go 真实出参能不能被 iOS 真正在用的 Models.swift 解开。

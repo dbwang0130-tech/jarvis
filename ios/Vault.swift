@@ -184,7 +184,14 @@ final class Vault {
 
     /// iCloud 里的文件可能只是个占位符，得先让它下下来。
     private func ensureDownloaded(_ url: URL) throws {
-        let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+        let values = try? url.resourceValues(
+            forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
+
+        // **不是 iCloud 托管的文件就直接走**。本机文件、模拟器里的文件、
+        // 状态读不出来的文件，它们的 downloadingStatus 永远不会变成 .current，
+        // 原来不管三七二十一都等满十秒——三个 org 文件加账本加记忆，
+        // 一次刷新白等五十秒，界面就一直空着。
+        guard values?.isUbiquitousItem == true else { return }
         if values?.ubiquitousItemDownloadingStatus == .current { return }
 
         try? FileManager.default.startDownloadingUbiquitousItem(at: url)

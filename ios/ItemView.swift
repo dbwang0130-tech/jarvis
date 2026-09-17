@@ -150,8 +150,8 @@ struct ItemRow: View {
                 Text(item.priority)
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.white)
-                    .frame(width: 15, height: 15)
-                    .background(priorityColor(item.priority), in: Circle())
+                    .frame(width: 16, height: 16)
+                    .background(priorityColor(item.priority).gradient, in: Circle())
             }
         }
     }
@@ -258,7 +258,15 @@ struct ItemDetail: View {
     var body: some View {
         NavigationStack {
             List {
-                Section { header }
+                Section {
+                    header
+                        .listRowInsets(EdgeInsets(top: 12, leading: 12,
+                                                  bottom: 12, trailing: 12))
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: Brand.radius)
+                                .fill(Brand.soft)
+                                .padding(.vertical, 2))
+                }
 
                 if let data {
                     let facts = facts(data)

@@ -16,7 +16,7 @@ IOS = pathlib.Path(__file__).resolve().parent
 FRAMEWORK = "Mobile.xcframework"
 ASSETS = "Assets.xcassets"
 BUNDLE_ID = "com.dabao.jarvis"
-DEPLOY_TARGET = "17.0"
+DEPLOY_TARGET = "26.0"  # Liquid Glass 那套要 26 起；设备是 iPhone 17 Pro，本来就跑 26+
 
 
 def uid(seed: str) -> str:

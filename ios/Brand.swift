@@ -22,6 +22,17 @@ enum Brand {
     /// 秘书气泡里的字。浅色下是深蓝而不是纯黑——纯黑压在浅蓝上太硬。
     static let onSoft = adaptive(light: 0x14294A, dark: 0xDCE8F7)
 
+    /// 主色到亮蓝的渐变。用在最显眼的那一两处（发送、今天），
+    /// 别到处铺——满屏渐变会把层次全抹平。
+    static var sheen: LinearGradient {
+        LinearGradient(colors: [primary, accent],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    /// 全 app 的圆角。3D 那张头像是圆润的，界面跟着圆一点才是一家人。
+    static let radius: CGFloat = 18
+    static let smallRadius: CGFloat = 12
+
     private static func adaptive(light: UInt32, dark: UInt32) -> Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark ? ui(dark) : ui(light)

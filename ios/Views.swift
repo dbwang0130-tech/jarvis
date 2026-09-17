@@ -18,6 +18,8 @@ struct RootView: View {
         }
         .environmentObject(store)
         .tint(Brand.primary)
+        // 图标那个人是圆润的软塑感，字跟着圆一点才像一家人。
+        .fontDesign(.rounded)
         .task {
             if store.isConfigured { await store.reload() }
         }
@@ -109,7 +111,7 @@ struct AgendaView: View {
                             Text("今天")
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Brand.primary, in: Capsule())
+                                .background(Brand.sheen, in: Capsule())
                                 .foregroundStyle(.white)
                         }
                     }
@@ -185,9 +187,9 @@ struct TodosView: View {
             Text("共 \(s.todosTotal) 条，只显示前 \(s.todos.count) 条")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity)
-                .background(.bar)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .glassEffect(.regular, in: .capsule)
+                .padding(.bottom, 8)
         }
     }
 }
@@ -202,21 +204,32 @@ struct LedgerTab: View {
             if let l = store.snapshot.ledger {
                 List {
                     Section {
-                        HStack {
-                            Stat(name: "净资产", value: l.net, emphasize: true)
-                            Divider()
-                            Stat(name: "资产", value: l.assets)
-                            Divider()
-                            Stat(name: "负债", value: -l.debts)
+                        // 三个并排在手机上每个只有一百多点宽，数字一到七八位
+                        // 就得缩到看不清。净资产是最该一眼看到的，单独占一行
+                        // 给足宽度；另外两个并排够用。
+                        GlassEffectContainer(spacing: 10) {
+                            VStack(spacing: 10) {
+                                Stat(name: "净资产", value: l.net, emphasize: true)
+                                HStack(spacing: 10) {
+                                    Stat(name: "资产", value: l.assets)
+                                    Stat(name: "负债", value: -l.debts)
+                                }
+                            }
                         }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 8,
+                                                  bottom: 8, trailing: 8))
+                        .listRowBackground(Color.clear)
                     }
                     Section("账户") {
                         ForEach(l.accounts) { a in
                             HStack {
-                                Text(a.name).font(.callout).lineLimit(1)
-                                Spacer()
+                                Text(a.name)
+                                    .font(.callout).lineLimit(1)
+                                    .truncationMode(.head)  // 账户名前缀重复，砍前面
+                                Spacer(minLength: 8)
                                 Text(money(a.balance))
                                     .font(.callout.monospacedDigit())
+                                    .lineLimit(1).minimumScaleFactor(0.7)
                                     .foregroundStyle(a.balance < 0 ? Color.red : Color.primary)
                             }
                         }
@@ -228,14 +241,16 @@ struct LedgerTab: View {
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
                                 Text(t.payee).lineLimit(1)
-                                Spacer()
-                                Text(money(t.amount)).font(.callout.monospacedDigit())
+                                Spacer(minLength: 8)
+                                Text(money(t.amount))
+                                    .font(.callout.monospacedDigit())
+                                    .lineLimit(1).minimumScaleFactor(0.7)
                             }
                         }
                     }
                 }
             } else {
-                EmptyHint(show: true, text: "没有账本")
+                EmptyHint(show: !store.loading, text: "没有账本")
             }
         }
         .navigationTitle("财务")
@@ -252,17 +267,71 @@ struct Stat: View {
     var emphasize = false
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 4) {
             Text(name).font(.caption).foregroundStyle(.secondary)
-            Text(money(value))
-                .font(emphasize ? .headline.monospacedDigit() : .callout.monospacedDigit())
+            Text(moneyRound(value))
+                .font(emphasize ? .largeTitle.bold().monospacedDigit()
+                                : .title3.monospacedDigit())
+                .foregroundStyle(emphasize ? AnyShapeStyle(Brand.sheen)
+                                           : AnyShapeStyle(Color.primary))
+                .lineLimit(1)
+                .minimumScaleFactor(0.4)
         }
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
+        // 净资产是这页最该先看到的，给它一点色，另外两个保持素净。
+        .glassEffect(emphasize ? .regular.tint(Brand.soft) : .regular,
+                     in: .rect(cornerRadius: Brand.radius))
     }
 }
 
+/// 列表里的金额：千分位分组、两位小数。
+/// v == 0 那下是把 -0.00 拍平成 0.00。
 func money(_ v: Double) -> String {
-    String(format: "%.2f", v == 0 ? 0 : v) // 把 -0.00 拍平成 0.00
+    let n = v == 0 ? 0 : v
+    return Formatter.money2.string(from: NSNumber(value: n))
+        ?? String(format: "%.2f", n)
+}
+
+/// 概览上那三个数字用这个：千分位分组、不要小数。
+///
+/// 分组是为了一眼数得清位数——231891 和 23189 不分组扫一眼分不出差一个零。
+/// 小数在概览里没意义，还白占宽度，精确到分的数字在下面账户列表里。
+/// 概览那几个数字用这个：大了自动换成万、亿。
+///
+/// 12,504,569 得一位一位数着看才知道量级；写成 1250.46万 扫一眼就清楚。
+/// 概览要的正是量级，精确到分的数字在下面账户列表里。
+func moneyRound(_ v: Double) -> String {
+    let n = v == 0 ? 0 : v
+    let a = abs(n)
+    if a >= 1e8 { return trimZeros(n / 1e8) + "亿" }
+    if a >= 1e4 { return trimZeros(n / 1e4) + "万" }
+    return Formatter.moneyGrouping.string(from: NSNumber(value: n.rounded()))
+        ?? String(format: "%.0f", n)
+}
+
+/// 两位小数，末尾的零去掉：1250.46 / 3.5 / 12（而不是 12.00）。
+private func trimZeros(_ v: Double) -> String {
+    var s = String(format: "%.2f", v)
+    if s.contains(".") {
+        while s.hasSuffix("0") { s.removeLast() }
+        if s.hasSuffix(".") { s.removeLast() }
+    }
+    return s
+}
+
+extension Formatter {
+    static let moneyGrouping = decimal(fraction: 0)
+    static let money2 = decimal(fraction: 2)
+
+    private static func decimal(fraction: Int) -> NumberFormatter {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = fraction
+        f.maximumFractionDigits = fraction
+        f.groupingSeparator = ","
+        return f
+    }
 }
 
 // MARK: - 对话
@@ -274,24 +343,25 @@ struct ChatView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            transcript
-            inputBar
-        }
-        .navigationTitle("Jarvis")
-        .navigationBarTitleDisplayMode(.inline)
-        // 秘书要做收不回来的事（比如发信）会停在这儿等。
-        .sheet(item: $store.pending) { ConfirmSheet(ask: $0) }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { store.clearChat() } label: {
-                    Image(systemName: "trash")
+        // 输入区用 safeAreaInset 浮在内容之上，不是拿 VStack 摞在下面。
+        // 摞着的话玻璃背后什么都没有，只能是一块白板——跟别的页面里
+        // 内容从标签栏底下穿过去的样子对不上，看着很突兀。
+        transcript
+            .safeAreaInset(edge: .bottom, spacing: 0) { inputBar }
+            .navigationTitle("Jarvis")
+            .navigationBarTitleDisplayMode(.inline)
+            // 秘书要做收不回来的事（比如发信）会停在这儿等。
+            .sheet(item: $store.pending) { ConfirmSheet(ask: $0) }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { store.clearChat() } label: {
+                        Image(systemName: "trash")
+                    }
+                    .disabled(store.messages.isEmpty)
+                    .accessibilityLabel("清空")
                 }
-                .disabled(store.messages.isEmpty)
-                .accessibilityLabel("清空")
+                SettingsLink()
             }
-            SettingsLink()
-        }
     }
 
     // MARK: - 对话记录
@@ -327,8 +397,12 @@ struct ChatView: View {
             // 一开始滚就收键盘。.interactively 要手指往下拖着才收，
             // 而这里想要的是「去看上面说了什么」，滚动本身就是意思。
             .scrollDismissesKeyboard(.immediately)
-            // 恢复出来的对话直接落在底部，不然打开看到的是最早那几句。
-            .defaultScrollAnchor(.bottom)
+            // 内容滚到输入区底下时柔和淡出，不然是硬生生被玻璃切一刀。
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            // 恢复出来的对话落在底部，不然打开看到的是最早那几句。
+            // 但空着的时候要顶到上面——否则那几句例句会被压到屏幕最下方，
+            // 上面留一大片空白。
+            .defaultScrollAnchor(shownMessages.isEmpty ? .top : .bottom)
             .onChange(of: store.messages.count) { _, _ in toBottom(proxy) }
             .onChange(of: store.steps.count) { _, count in
                 // 开始动手了就把键盘收掉——这会儿是要看它干了什么，
@@ -348,7 +422,6 @@ struct ChatView: View {
 
     private var inputBar: some View {
         VStack(spacing: 0) {
-            Divider()
             if needsKey {
                 Button {
                     openSettings = true
@@ -359,30 +432,36 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 16).padding(.top, 8)
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                // 想说的话可能不止一行，让它自己长，最多六行。
-                TextField("说点什么", text: $draft, axis: .vertical)
-                    .lineLimit(1...6)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 20))
-                    .focused($focused)
+            // 输入区浮在内容之上，不再用一条实心底栏压着——下面的话能透出来，
+            // 屏幕显得高一些。GlassEffectContainer 让挨着的两块玻璃算作一体，
+            // 各自算各自的会在缝隙处叠出一道亮边。
+            GlassEffectContainer(spacing: 8) {
+                HStack(alignment: .bottom, spacing: 8) {
+                    // 想说的话可能不止一行，让它自己长，最多六行。
+                    TextField("说点什么", text: $draft, axis: .vertical)
+                        .lineLimit(1...6)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
+                        .glassEffect(.regular, in: .capsule)
+                        .focused($focused)
 
-                Button(action: submit) {
-                    Image(systemName: store.thinking ? "ellipsis" : "arrow.up")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(canSend ? AnyShapeStyle(Brand.primary)
-                                            : AnyShapeStyle(.quaternary), in: Circle())
+                    Button(action: submit) {
+                        Image(systemName: store.thinking ? "ellipsis" : "arrow.up")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(canSend ? Color.white : Color.secondary)
+                            .frame(width: 38, height: 38)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .glassEffect(canSend ? .regular.tint(Brand.primary).interactive()
+                                         : .regular,
+                                 in: .circle)
+                    .disabled(!canSend)
+                    .animation(.easeInOut(duration: 0.18), value: canSend)
                 }
-                .disabled(!canSend)
-                .animation(.easeInOut(duration: 0.15), value: canSend)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
-        .background(.bar)
         .sheet(isPresented: $openSettings) { SettingsView() }
     }
 
@@ -436,10 +515,10 @@ struct Starters: View {
                     Text(e)
                         .font(.callout)
                         .foregroundStyle(Brand.onSoft)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Brand.soft, in: Capsule())
+                        .padding(.horizontal, 14).padding(.vertical, 9)
                 }
                 .buttonStyle(.plain)
+                .glassEffect(.regular.tint(Brand.soft).interactive(), in: .capsule)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -558,12 +637,14 @@ struct ConfirmSheet: View {
 
                 HStack(spacing: 12) {
                     Button("算了") { store.answerPending(false) }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.glass)
+                        .controlSize(.large)
                         .frame(maxWidth: .infinity)
                     Button(ask.irreversible ? "确认发出" : "去吧") {
                         store.answerPending(true)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.large)
                     .tint(ask.irreversible ? .orange : Brand.primary)
                     .frame(maxWidth: .infinity)
                 }
@@ -604,8 +685,10 @@ struct ErrorBar: View {
             }
             .font(.caption)
             .foregroundStyle(.white)
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(Color.red.opacity(0.9))
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .glassEffect(.regular.tint(.red), in: .rect(cornerRadius: Brand.smallRadius))
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
         }
     }
 }
