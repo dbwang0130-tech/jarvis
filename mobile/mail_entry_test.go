@@ -24,7 +24,7 @@ func mailCall(t *testing.T, in MailInput) MailOutput {
 func TestMailListIsOfflineAndSafe(t *testing.T) {
 	dir := t.TempDir()
 	out := mailCall(t, MailInput{
-		Op: "list", Dir: dir,
+		Op: "list", IndexDir: dir,
 		Accounts: []MailAccount{{Name: "工作", Host: "imap.example.com", User: "me"}},
 	})
 	if out.Error != "" {
@@ -52,9 +52,9 @@ func TestMailBadInput(t *testing.T) {
 		want string
 	}{
 		{"没给目录", MailInput{Op: "list"}, "邮件库"},
-		{"不认识的动作", MailInput{Op: "跳舞", Dir: dir}, "不认识"},
-		{"读的引用不合法", MailInput{Op: "read", Dir: dir, Key: "没有冒号"}, "不合法"},
-		{"没配邮箱就同步", MailInput{Op: "sync", Dir: dir}, "还没配邮箱"},
+		{"不认识的动作", MailInput{Op: "跳舞", IndexDir: dir}, "不认识"},
+		{"读的引用不合法", MailInput{Op: "read", IndexDir: dir, Key: "没有冒号"}, "不合法"},
+		{"没配邮箱就同步", MailInput{Op: "sync", IndexDir: dir}, "还没配邮箱"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

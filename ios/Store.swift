@@ -266,31 +266,40 @@ final class Store: ObservableObject, AskEvents {
         }
     }
 
-    /// 邮件库放这台设备上，不进 iCloud——体积大、变化频繁，塞进去只会
-    /// 拖慢同步还容易撞车。
-    nonisolated var mailDir: String {
-        let base = (try? FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: true))
-        return (base ?? URL(fileURLWithPath: NSTemporaryDirectory()))
-            .appendingPathComponent("mail").path
+    /// 索引跟着 iCloud 走，正文留本地。
+    ///
+    /// 索引里的分拣结论是花过模型调用才得到的，丢了要重新判一遍——值得放到
+    /// 能扛住重装、将来也能跟电脑共用的地方。正文大但随时能从服务器重拉，
+    /// 塞进 iCloud 只会拖慢同步、多出冲突副本。
+    nonisolated var mailIndexDir: String {
+        if let root = vault.root {
+            return root.appendingPathComponent("mail").path
+        }
+        return Paths.support.appendingPathComponent("mail").path
+    }
+
+    nonisolated var mailBodyDir: String {
+        Paths.support.appendingPathComponent("mail-body").path
     }
 
     /// 只读本地那一下，不连网，所以可以同步调——打开页面要秒开。
     func mail(op: String, key: String = "", keys: [String] = []) -> MailResult {
-        Bridge.mail(op: op, dir: mailDir, accounts: settings.mailAccounts(),
+        Bridge.mail(op: op, indexDir: mailIndexDir, bodyDir: mailBodyDir,
+                    accounts: settings.mailAccounts(),
                     model: modelWithKey, profile: settings.profile,
                     key: key, keys: keys)
     }
 
     /// 要连服务器的那几下，挪到后台。
     func mailAsync(op: String, key: String = "", keys: [String] = []) async -> MailResult {
-        let dir = mailDir
+        let indexDir = mailIndexDir
+        let bodyDir = mailBodyDir
         let accounts = settings.mailAccounts()
         let model = modelWithKey
         let profile = settings.profile
         return await Task.detached(priority: .userInitiated) {
-            Bridge.mail(op: op, dir: dir, accounts: accounts, model: model,
+            Bridge.mail(op: op, indexDir: indexDir, bodyDir: bodyDir,
+                        accounts: accounts, model: model,
                         profile: profile, key: key, keys: keys)
         }.value
     }

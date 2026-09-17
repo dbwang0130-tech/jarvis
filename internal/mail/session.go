@@ -600,3 +600,16 @@ func (s *Session) Body(no int) (string, error) {
 	it.Msg.Snippet = full.Snippet
 	return full.Snippet, nil
 }
+
+// Raw 取回一封邮件的原始字节，供展示用的解析。
+func (s *Session) Raw(no int) ([]byte, error) {
+	it, err := s.Item(no)
+	if err != nil {
+		return nil, err
+	}
+	c, err := s.client(it.Msg.Account)
+	if err != nil {
+		return nil, err
+	}
+	return c.ReadRaw(it.Msg.UID)
+}

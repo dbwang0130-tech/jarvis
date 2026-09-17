@@ -55,26 +55,38 @@ type Record struct {
 // Key 是一封邮件在存储里的身份。UID 只在单个邮箱内唯一，得带上账号。
 func (r Record) Key() string { return r.Account + ":" + fmt.Sprint(r.UID) }
 
-// Store 是本地邮件库。
+// Store 是邮件库。索引和正文分开放，因为它们的取舍相反：
+//
+//   - 索引小（每封几百字节），但里面的分拣结论是**花过模型调用才得到的**，
+//     丢了要重新判一遍。值得放到能跨设备、能扛住重装的地方。
+//   - 正文大（一封可能几百 KB），但随时能从服务器重新拉。放本地就好，
+//     塞进 iCloud 只会拖慢同步、多出冲突副本。
 type Store struct {
-	dir string
-	mu  sync.Mutex
+	indexDir string
+	bodyDir  string
+	mu       sync.Mutex
 }
 
 // New 打开（必要时建立）一个邮件库。
-func New(dir string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Join(dir, "body"), 0o700); err != nil {
-		return nil, fmt.Errorf("建不了邮件库目录：%w", err)
+// bodyDir 留空就跟索引放一块——测试和单机场景用。
+func New(indexDir, bodyDir string) (*Store, error) {
+	if bodyDir == "" {
+		bodyDir = filepath.Join(indexDir, "body")
 	}
-	return &Store{dir: dir}, nil
+	for _, d := range []string{indexDir, bodyDir} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			return nil, fmt.Errorf("建不了邮件库目录 %s：%w", d, err)
+		}
+	}
+	return &Store{indexDir: indexDir, bodyDir: bodyDir}, nil
 }
 
 func (s *Store) indexPath(account string) string {
-	return filepath.Join(s.dir, safeName(account)+".json")
+	return filepath.Join(s.indexDir, safeName(account)+".json")
 }
 
 func (s *Store) bodyPath(account string, uid uint32) string {
-	return filepath.Join(s.dir, "body", fmt.Sprintf("%s-%d.txt", safeName(account), uid))
+	return filepath.Join(s.bodyDir, fmt.Sprintf("%s-%d.txt", safeName(account), uid))
 }
 
 // safeName 把账号名压成能当文件名的样子。账号名是用户起的，

@@ -78,17 +78,18 @@ struct MailDetail: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(verdict.tint)
             }
-            // 分拣理由排在主题前面——它说的是「这封信是怎么回事」，
-            // 而主题常常是「Re: Re: FW:」。
-            if !mail.reason.isEmpty {
-                Text(mail.reason)
-                    .font(.title3.weight(.semibold))
-                    .textSelection(.enabled)
-            }
-            Text(mail.subject)
-                .font(mail.reason.isEmpty ? .title3.weight(.semibold) : .callout)
-                .foregroundStyle(mail.reason.isEmpty ? Color.primary : .secondary)
+            Text(mail.subject.isEmpty ? "（没有主题）" : mail.subject)
+                .font(.title3.weight(.semibold))
                 .textSelection(.enabled)
+
+            // Jarvis 的判断单独一行并标出来，别让人误以为是原文里的话。
+            if !mail.reason.isEmpty {
+                HStack(alignment: .top, spacing: 5) {
+                    Image(systemName: "sparkles").font(.caption2)
+                    Text(mail.reason).font(.callout)
+                }
+                .foregroundStyle(verdict.tint)
+            }
         }
         .padding(.vertical, 4)
     }

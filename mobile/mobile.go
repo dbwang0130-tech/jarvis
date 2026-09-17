@@ -28,6 +28,8 @@ import (
 	"github.com/dabao/jarvis/internal/agenda"
 	"github.com/dabao/jarvis/internal/ledger"
 	"github.com/dabao/jarvis/internal/org"
+	"os"
+	"path/filepath"
 )
 
 // SnapshotInput 是 Snapshot 的入参。
@@ -103,6 +105,21 @@ var (
 // 而数据竞争是未定义行为，不是「顶多算错一次」。手机上下拉刷新和点开详情
 // 是真会同时跑的。时区在一次运行里不会变，设一次就够；真跨了时区，
 // 重开一次 app 就好。
+// SetDataDir 告诉 Go 可以往哪儿写自己的东西（邮件同步进度这类）。
+// **必须在任何别的调用之前调一次**，界面在 app 启动时调。
+//
+// 不设的话，config.Dir() 会算出 ~/.config/jarvis——而 iOS 上 ~ 是容器
+// 根目录，**根目录不可写**，只有 Documents/ Library/ tmp/ 能写。结果是
+// 同步进度一直存不下来，每次收信都当成第一次，全量重拉。
+// 而且它是静默失败：写不进去只是返回个错误，没人看。
+func SetDataDir(dir string) {
+	if strings.TrimSpace(dir) == "" {
+		return
+	}
+	// config.Path() 认这个环境变量，设了它整条链路（进度、配置）都跟着走。
+	_ = os.Setenv("JARVIS_CONFIG", filepath.Join(dir, "config.json"))
+}
+
 func SetTimeZone(name string) {
 	if name == "" {
 		return

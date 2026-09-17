@@ -7,12 +7,7 @@ import Foundation
 enum SessionStore {
     /// 存 Application Support 而不是 Documents——后者开了文件共享会露在
     /// 「文件」app 里，对话记录没必要给人翻。
-    private static var url: URL? {
-        guard let dir = try? FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: true) else { return nil }
-        return dir.appendingPathComponent("session.json")
-    }
+    private static var url: URL? { Paths.support.appendingPathComponent("session.json") }
 
     /// 存档上限。history 里带着工具调用的完整结果，一轮下来可能几十 KB，
     /// 不设限就会一路涨到读写都卡。

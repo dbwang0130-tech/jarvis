@@ -9,6 +9,7 @@ import (
 
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/mail"
+	"github.com/dabao/jarvis/internal/mailbox"
 	"github.com/dabao/jarvis/internal/mailstore"
 )
 
@@ -16,8 +17,11 @@ import (
 type MailInput struct {
 	// Op：list 看本地存的 / sync 拉新的并分拣 / read 读正文 / clean 清理。
 	Op string `json:"op"`
-	// Dir 是本地邮件库放哪儿，由界面给——Go 不猜路径。
-	Dir      string        `json:"dir"`
+	// IndexDir 放索引（含分拣结论），BodyDir 放正文。分开是因为取舍相反：
+	// 索引小但重算要花模型调用，正文大但随时能重拉。路径由界面给，
+	// Go 不猜——iOS 上能写的地方就那几个。
+	IndexDir string        `json:"index_dir"`
+	BodyDir  string        `json:"body_dir"`
 	Accounts []MailAccount `json:"accounts"`
 	Model    ModelConfig   `json:"model"`
 	Profile  string        `json:"profile"`
@@ -44,10 +48,31 @@ type MailItem struct {
 }
 
 type MailOutput struct {
-	Items   []MailItem `json:"items"`
-	Body    string     `json:"body,omitempty"`
-	Message string     `json:"message"`
-	Error   string     `json:"error,omitempty"`
+	Items []MailItem `json:"items"`
+	// Body 是展示用的原文：HTML 优先，没有才用纯文本。
+	Body *MailBody `json:"body,omitempty"`
+	// Draft 是起草出来的回信。
+	Message string `json:"message"`
+	Error   string `json:"error,omitempty"`
+}
+
+// MailBody 是一封邮件的原文。
+//
+// 账单、验证码、活动通知这类信的内容全在 HTML 的排版里，压成纯文本就只剩
+// 一堆散字——所以 HTML 要原样留着，内联图片也要嵌进去。
+type MailBody struct {
+	HTML string `json:"html"`
+	Text string `json:"text"`
+	// Attachments 只给清单不给内容：几 MB 的东西过一次 JSON 桥没有意义。
+	Attachments []MailAttachment `json:"attachments"`
+	// InlineDropped 是因为太大没嵌进来的内联图片数，让人知道有图没显示。
+	InlineDropped int `json:"inline_dropped"`
+}
+
+type MailAttachment struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Size int    `json:"size"`
 }
 
 func (o *MailOutput) normalize() {
@@ -67,10 +92,10 @@ func Mail(inputJSON string) string {
 	}
 	SetTimeZone(in.TZ)
 
-	if strings.TrimSpace(in.Dir) == "" {
+	if strings.TrimSpace(in.IndexDir) == "" {
 		return marshal(&MailOutput{Error: "没说邮件库放哪儿"})
 	}
-	store, err := mailstore.New(in.Dir)
+	store, err := mailstore.New(in.IndexDir, in.BodyDir)
 	if err != nil {
 		return marshal(&MailOutput{Error: err.Error()})
 	}
@@ -193,8 +218,11 @@ func mailRead(store *mailstore.Store, in MailInput) string {
 	if !ok {
 		return marshal(&MailOutput{Error: fmt.Sprintf("引用 %q 不合法", in.Key)})
 	}
-	if body, ok := store.Body(acct, uid); ok {
-		return marshal(&MailOutput{Body: body})
+
+	// 本地存的是整封原始字节，解析每次现做——解析结果（嵌了图的 HTML）
+	// 比原始字节还大，存它不划算。
+	if raw, ok := store.Body(acct, uid); ok {
+		return marshal(&MailOutput{Body: parseMailBody([]byte(raw))})
 	}
 
 	sess := mailSessionFor(in.Accounts)
@@ -206,12 +234,30 @@ func mailRead(store *mailstore.Store, in MailInput) string {
 		return marshal(&MailOutput{
 			Error: "本地没存正文，这封也不在这次拉下来的清单里——先同步一下"})
 	}
-	body, err := sess.Body(no)
+	raw, err := sess.Raw(no)
 	if err != nil {
 		return marshal(&MailOutput{Error: "读不出来：" + err.Error()})
 	}
-	_ = store.SetBody(acct, uid, body)
-	return marshal(&MailOutput{Body: body})
+	_ = store.SetBody(acct, uid, string(raw))
+	return marshal(&MailOutput{Body: parseMailBody(raw)})
+}
+
+func parseMailBody(raw []byte) *MailBody {
+	full, err := mailbox.ParseBody(raw)
+	if err != nil || full == nil {
+		// 解析不了也别空着手回去——原样给出来总比什么都没有强。
+		return &MailBody{Text: string(raw), Attachments: []MailAttachment{}}
+	}
+	out := &MailBody{
+		HTML: full.HTML, Text: full.Text,
+		InlineDropped: full.InlineDropped,
+		Attachments:   make([]MailAttachment, 0, len(full.Attachments)),
+	}
+	for _, a := range full.Attachments {
+		out.Attachments = append(out.Attachments,
+			MailAttachment{Name: a.Name, Type: a.Type, Size: a.Size})
+	}
+	return out
 }
 
 func mailClean(store *mailstore.Store, in MailInput) string {

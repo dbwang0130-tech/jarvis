@@ -202,9 +202,13 @@ struct MailTab: View {
     }
 }
 
-/// 一行。主角是那句处置理由，主题排在下面。
+/// 一行：主题是标题，发件人和 Jarvis 的判断排在下面。
 struct MailRow: View {
     let mail: MailItem
+
+    private var verdictTint: Color {
+        (Verdict(rawValue: mail.verdict) ?? .unjudged).tint
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -214,21 +218,24 @@ struct MailRow: View {
                 .padding(.top, 6)
 
             VStack(alignment: .leading, spacing: 3) {
-                // 有分拣理由就拿它当主行——那是「这封信是怎么回事」，
-                // 比主题有用。没判过才退回主题。
-                Text(mail.reason.isEmpty ? mail.subject : mail.reason)
+                // 主题当标题。之前拿分拣理由顶上来，结果一眼认不出是哪封信——
+                // 主题再烂也是这封信的身份，理由只是「它是怎么回事」。
+                Text(mail.subject.isEmpty ? "（没有主题）" : mail.subject)
                     .font(.callout)
+                    .fontWeight(mail.unread ? .semibold : .regular)
                     .lineLimit(2)
 
-                HStack(spacing: 6) {
-                    Text(mail.from).lineLimit(1)
-                    if !mail.reason.isEmpty, !mail.subject.isEmpty {
-                        Text("·").foregroundStyle(.tertiary)
-                        Text(mail.subject).lineLimit(1)
+                Text(mail.from).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+
+                // 摘要另起一行，带个小标记表明这是 Jarvis 的判断，不是原文。
+                if !mail.reason.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles").font(.system(size: 9))
+                        Text(mail.reason).lineLimit(2)
                     }
+                    .font(.caption2)
+                    .foregroundStyle(verdictTint)
                 }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 6)

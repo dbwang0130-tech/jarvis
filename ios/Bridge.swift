@@ -92,11 +92,13 @@ enum Bridge {
     }
 
     /// 邮件。list 只读本地不连网，sync 才去拉。
-    static func mail(op: String, dir: String, accounts: [MailAccountInput],
+    static func mail(op: String, indexDir: String, bodyDir: String,
+                     accounts: [MailAccountInput],
                      model: ModelConfig? = nil, profile: String = "",
                      key: String = "", keys: [String] = []) -> MailResult {
         var input: [String: Any] = [
-            "op": op, "dir": dir, "key": key, "keys": keys,
+            "op": op, "index_dir": indexDir, "body_dir": bodyDir,
+            "key": key, "keys": keys,
             "profile": profile, "tz": TimeZone.current.identifier,
         ]
         if let data = try? JSONEncoder().encode(accounts),

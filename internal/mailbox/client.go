@@ -624,3 +624,26 @@ func (cl *Client) UIDValidity() (uint32, error) {
 	}
 	return sel.UIDValidity, nil
 }
+
+// ReadRaw 取回整封原始邮件（RFC 822 字节）。
+//
+// 跟 ReadFull 的分工：那个只挑一段文本压成摘要喂给模型，这个是给人看的，
+// HTML、内联图片、附件都要留着，所以得把整封拿下来自己解析。
+func (cl *Client) ReadRaw(uid imap.UID) ([]byte, error) {
+	if _, err := cl.c.Select("INBOX", nil).Wait(); err != nil {
+		return nil, fmt.Errorf("打开 INBOX 失败: %w", err)
+	}
+	// Peek 是要紧的：不加的话光看一眼就把服务器上的未读标记抹了，
+	// 而用户可能只是想扫一下原文。
+	msgs, err := cl.c.Fetch(imap.UIDSetNum(uid), &imap.FetchOptions{
+		UID:         true,
+		BodySection: []*imap.FetchItemBodySection{{Peek: true}},
+	}).Collect()
+	if err != nil {
+		return nil, fmt.Errorf("取邮件 %d 失败: %w", uid, err)
+	}
+	if len(msgs) == 0 || len(msgs[0].BodySection) == 0 {
+		return nil, fmt.Errorf("邮件 %d 不存在（可能已被移走）", uid)
+	}
+	return msgs[0].BodySection[0].Bytes, nil
+}

@@ -10,7 +10,7 @@ import (
 
 func newStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := New(t.TempDir())
+	s, err := New(t.TempDir(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestAccountNameIsSafeAsFilename(t *testing.T) {
 			t.Fatalf("账号名 %q 存不了：%v", name, err)
 		}
 		p := s.indexPath(name)
-		if filepath.Dir(p) != s.dir {
+		if filepath.Dir(p) != s.indexDir {
 			t.Errorf("账号名 %q 把文件写到了别处：%s", name, p)
 		}
 	}
