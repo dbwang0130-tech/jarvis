@@ -456,3 +456,40 @@ func TestDetailReadsLogbook(t *testing.T) {
 		t.Errorf("状态变更没说清楚：%q", state.Text)
 	}
 }
+
+// 待办要能按时间分组，就得知道每条归到哪一天、还剩几天。
+// 不给的话界面只能摊成一长条，「今天该干的」和「下个月才到期的」混在一起。
+func TestTodosCarryDue(t *testing.T) {
+	org := `* TODO 明天截止
+  DEADLINE: <2026-09-18 五>
+* TODO 早就过期了
+  DEADLINE: <2026-09-01 二>
+* TODO 只是计划
+  SCHEDULED: <2026-09-20 日>
+* TODO 没排期
+`
+	out := snapshot(t, SnapshotInput{
+		Files: map[string]string{"a.org": org},
+		Now:   "2026-09-17T09:00:00+08:00", TZ: "Asia/Shanghai",
+	})
+
+	byTitle := map[string]Item{}
+	for _, it := range out.Todos {
+		byTitle[it.Title] = it
+	}
+
+	if got := byTitle["明天截止"]; got.Due != "2026-09-18" || got.DueKind != "deadline" {
+		t.Errorf("截止那条不对：due=%q kind=%q", got.Due, got.DueKind)
+	}
+	if got := byTitle["只是计划"]; got.Due != "2026-09-20" || got.DueKind != "scheduled" {
+		t.Errorf("计划那条不对：due=%q kind=%q", got.Due, got.DueKind)
+	}
+	// 没排期的不能编一个日期出来——界面靠空串把它们归到「没排期」。
+	if got := byTitle["没排期"]; got.Due != "" || got.DueKind != "" {
+		t.Errorf("没排期的却带了日期：due=%q kind=%q", got.Due, got.DueKind)
+	}
+	// 过期的天数要是负的，界面靠这个把它挑进「逾期」。
+	if got := byTitle["早就过期了"]; got.DueIn >= 0 {
+		t.Errorf("过期的剩余天数该是负的，实际 %d", got.DueIn)
+	}
+}

@@ -194,6 +194,12 @@ struct ItemRow: View {
                 Text(item.time)
                     .font(.caption.monospacedDigit().weight(.medium))
                     .foregroundStyle(look.color)
+            } else if !item.dueText.isEmpty {
+                // 「今天」「明天」「逾期 3 天」比「待办」两个字有用得多，
+                // 也比「2026-09-20」省一次心算。
+                Text(item.dueText)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(look.color)
             } else {
                 Text(look.label).font(.caption).foregroundStyle(look.color)
             }

@@ -152,6 +152,15 @@ type Item struct {
 	Overdue  bool     `json:"overdue"`
 	Category string   `json:"category"`
 
+	// Due 是这条归到哪一天（截止优先于计划），空表示没排期。
+	// DueIn 是距今几天，负数是已经过去了。
+	//
+	// 待办列表靠这两项分组。没有的话界面只能摊成一长条，
+	// 「今天该干的」和「下个月才到期的」混在一起，等于没排序。
+	Due     string `json:"due"`
+	DueIn   int    `json:"due_in"`
+	DueKind string `json:"due_kind"` // deadline / scheduled / 空
+
 	// HasNotes 只说有没有正文，正文本身走 Detail 单独取。
 	// 正文和勾选项挂在每一条上的话，单条从约 180 字节涨到 900——
 	// 五千条就是 4.5MB，每次刷新都要过一遍 gomobile 的桥。
@@ -528,6 +537,17 @@ func toItem(it agenda.Item) Item {
 	}
 	out.Overdue = it.Kind == agenda.KindOverdue ||
 		(it.Kind == agenda.KindDeadline && it.DaysLeft <= 0)
+
+	if !it.At.IsZero() {
+		out.Due = it.At.Format("2006-01-02")
+		out.DueIn = it.DaysLeft
+	}
+	switch {
+	case n.Deadline != nil:
+		out.DueKind = "deadline"
+	case n.Scheduled != nil:
+		out.DueKind = "scheduled"
+	}
 
 	out.File = it.Doc.Path
 	// 正文本身不带，只说有没有——详情走 Detail 单独取。

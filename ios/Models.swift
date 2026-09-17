@@ -18,6 +18,12 @@ struct Item: Codable, Identifiable, Hashable {
     var overdue: Bool
     var category: String
 
+    /// 归到哪一天（截止优先于计划），空表示没排期；距今几天，负数是过去了。
+    /// 待办列表靠这两项分组。
+    var due = ""
+    var dueIn = 0
+    var dueKind = ""   // deadline / scheduled / 空
+
     /// 只说有没有正文，正文本身点开详情时才取——正文和勾选项挂在每一条上，
     /// 单条要从约 180 字节涨到 900，五千条就是几 MB 每次刷新都过一遍桥。
     var hasNotes = false
@@ -29,6 +35,9 @@ struct Item: Codable, Identifiable, Hashable {
         case ref, kind, time, state, priority, title, parents, tags, done, total
         case repeatRule = "repeat"
         case overdue, category
+        case due
+        case dueIn = "due_in"
+        case dueKind = "due_kind"
         case hasNotes = "has_notes"
         case file
     }
@@ -39,6 +48,24 @@ struct Item: Codable, Identifiable, Hashable {
     }
 
     var isDone: Bool { state == "DONE" }
+
+    /// 一句话说清它什么时候到期：今天、明天、过期 3 天、9/20。
+    /// 「2026-09-20」要在脑子里减一次才知道远近，「后天」不用。
+    var dueText: String {
+        guard !due.isEmpty else { return "" }
+        let what = dueKind == "deadline" ? "截止" : ""
+        let when: String
+        switch dueIn {
+        case ..<(-1): when = "逾期 \(-dueIn) 天"
+        case -1:      when = "昨天"
+        case 0:       when = "今天"
+        case 1:       when = "明天"
+        case 2:       when = "后天"
+        case 3...6:   when = "\(dueIn) 天后"
+        default:      when = String(due.suffix(5).replacingOccurrences(of: "-", with: "/"))
+        }
+        return what.isEmpty ? when : when + what
+    }
 }
 
 struct Checkbox: Codable, Hashable, Identifiable {
@@ -65,6 +92,9 @@ extension Item {
         repeatRule = try c.decodeIfPresent(String.self, forKey: .repeatRule) ?? ""
         overdue = try c.decodeIfPresent(Bool.self, forKey: .overdue) ?? false
         category = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
+        due = try c.decodeIfPresent(String.self, forKey: .due) ?? ""
+        dueIn = try c.decodeIfPresent(Int.self, forKey: .dueIn) ?? 0
+        dueKind = try c.decodeIfPresent(String.self, forKey: .dueKind) ?? ""
         hasNotes = try c.decodeIfPresent(Bool.self, forKey: .hasNotes) ?? false
         file = try c.decodeIfPresent(String.self, forKey: .file) ?? ""
     }

@@ -173,32 +173,96 @@ struct AgendaView: View {
 
 // MARK: - 待办
 
+/// 待办按「什么时候要做」分组。
+///
+/// 原来是一长条，今天该干的和下个月才到期的混在一起——名义上按优先级排过，
+/// 但一条 C 级的今天要交，排在一条 A 级的下月任务后面，等于没排。
+enum TodoBucket: Int, CaseIterable {
+    case overdue, today, tomorrow, week, later, someday
+
+    var title: String {
+        switch self {
+        case .overdue:  return "逾期"
+        case .today:    return "今天"
+        case .tomorrow: return "明天"
+        case .week:     return "这周内"
+        case .later:    return "以后"
+        case .someday:  return "没排期"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .overdue:  return .red
+        case .today:    return .orange
+        case .tomorrow: return .blue
+        default:        return .secondary
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .overdue:  return "exclamationmark.triangle.fill"
+        case .today:    return "sun.max.fill"
+        case .tomorrow: return "sunrise.fill"
+        case .week:     return "calendar"
+        case .later:    return "calendar.badge.clock"
+        case .someday:  return "tray"
+        }
+    }
+
+    static func of(_ item: Item) -> TodoBucket {
+        guard !item.due.isEmpty else { return .someday }
+        switch item.dueIn {
+        case ..<0:  return .overdue
+        case 0:     return .today
+        case 1:     return .tomorrow
+        case 2...6: return .week
+        default:    return .later
+        }
+    }
+}
+
 struct TodosView: View {
     @EnvironmentObject var store: Store
     @State private var keyword = ""
-    @State private var shown: [Item] = []
+    @State private var groups: [(bucket: TodoBucket, items: [Item])] = []
     @State private var selected: Item?
 
     var body: some View {
-        List(shown) { item in
-            Button { selected = item } label: { ItemRow(item: item) }
-                .buttonStyle(.plain)
-                .itemSwipeActions(item)
+        List {
+            ForEach(groups, id: \.bucket) { group in
+                Section {
+                    ForEach(group.items) { item in
+                        Button { selected = item } label: { ItemRow(item: item) }
+                            .buttonStyle(.plain)
+                            .itemSwipeActions(item)
+                    }
+                } header: {
+                    HStack(spacing: 6) {
+                        Image(systemName: group.bucket.icon).font(.caption2)
+                        Text(group.bucket.title)
+                        Text("\(group.items.count)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    .foregroundStyle(group.bucket.tint)
+                }
+            }
         }
         .searchable(text: $keyword, prompt: "找点什么")
         .navigationTitle("待办")
         .refreshable { await store.reload() }
-        .overlay { EmptyHint(show: shown.isEmpty && !store.loading, text: "没有待办") }
-        .toolbar { QuickAddButton() }
-        .overlay { LoadingHint(isEmpty: shown.isEmpty) }
+        .overlay { EmptyHint(show: groups.isEmpty && !store.loading, text: "没有待办") }
+        .overlay { LoadingHint(isEmpty: groups.isEmpty) }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .safeAreaInset(edge: .bottom) { truncatedHint }
-        .toolbar { SettingsLink() }
+        .toolbar { QuickAddButton() }
         .sheet(item: $selected) { ItemDetail(item: $0) }
-        // 过滤放进 task：写成计算属性的话，每次 body 重算都要把整份待办
-        // 再过一遍。id 变了旧任务会被取消，顺带就是输入防抖。
+        // 过滤和分组放进 task：写成计算属性的话，每次 body 重算都要把整份
+        // 待办再过一遍。id 变了旧任务会被取消，顺带就是输入防抖。
         .task(id: FilterKey(keyword: keyword, count: store.snapshot.todos.count)) {
-            await refilter()
+            await regroup()
         }
     }
 
@@ -207,19 +271,41 @@ struct TodosView: View {
         var count: Int
     }
 
-    private func refilter() async {
+    private func regroup() async {
         let k = keyword.trimmingCharacters(in: .whitespaces)
         if !k.isEmpty {
             // 打字没停就别急着过滤；被取消了就什么都不做。
             try? await Task.sleep(for: .milliseconds(180))
             if Task.isCancelled { return }
         }
-        let all = store.snapshot.todos
-        guard !k.isEmpty else { shown = all; return }
-        shown = all.filter {
-            $0.title.localizedCaseInsensitiveContains(k)
-                || $0.tags.contains { $0.localizedCaseInsensitiveContains(k) }
+        var shown = store.snapshot.todos
+        if !k.isEmpty {
+            shown = shown.filter {
+                $0.title.localizedCaseInsensitiveContains(k)
+                    || $0.tags.contains { $0.localizedCaseInsensitiveContains(k) }
+                    || $0.category.localizedCaseInsensitiveContains(k)
+            }
         }
+        var byBucket: [TodoBucket: [Item]] = [:]
+        for item in shown {
+            byBucket[TodoBucket.of(item), default: []].append(item)
+        }
+        groups = TodoBucket.allCases.compactMap { b in
+            guard let items = byBucket[b], !items.isEmpty else { return nil }
+            // 组内先按优先级，同级按日期近的在前。Go 那边已经按优先级排过，
+            // 这里只需在同级里把日期理顺。
+            return (b, items.sorted { a, c in
+                let pa = priorityRank(a.priority), pc = priorityRank(c.priority)
+                if pa != pc { return pa < pc }
+                if a.due.isEmpty != c.due.isEmpty { return !a.due.isEmpty }
+                return a.due < c.due
+            })
+        }
+    }
+
+    /// A 最急，没标的排最后。
+    private func priorityRank(_ p: String) -> Int {
+        p.isEmpty ? 99 : Int(p.unicodeScalars.first!.value)
     }
 
     /// 待办被截断时说清楚，否则找不到某一条会以为是丢了。
