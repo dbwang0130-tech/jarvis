@@ -10,7 +10,7 @@ struct MailDetail: View {
     @Environment(\.dismiss) private var dismiss
     let mail: MailItem
 
-    @State private var body_: String?
+    @State private var content: MailBody?
     @State private var loading = false
     @State private var showRaw = false
 
@@ -44,10 +44,23 @@ struct MailDetail: View {
                     }
                     .buttonStyle(.plain)
 
-                    if showRaw, let text = body_ {
-                        Text(text)
-                            .font(.footnote)
-                            .textSelection(.enabled)
+                    if showRaw, let content {
+                        MailBodyView(content: content)
+                    }
+                }
+
+                if let atts = content?.attachments, !atts.isEmpty {
+                    Section("附件") {
+                        ForEach(atts) { a in
+                            HStack {
+                                Image(systemName: "paperclip").foregroundStyle(.secondary)
+                                Text(a.name).lineLimit(1)
+                                Spacer()
+                                Text(a.sizeText)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
 
@@ -96,15 +109,17 @@ struct MailDetail: View {
 
     /// 正文优先读本地。存过就不再连服务器——同步过一次就该一直看得到。
     private func load() {
-        guard body_ == nil, !loading else { return }
+        guard content == nil, !loading else { return }
         loading = true
         Task {
             let r = await store.mailAsync(op: "read", key: mail.key)
             loading = false
             if let err = r.error, !err.isEmpty {
-                body_ = "读不出来：" + err
+                content = MailBody(text: "读不出来：" + err)
+            } else if let b = r.body, !b.isEmpty {
+                content = b
             } else {
-                body_ = r.body ?? "（这封是空的）"
+                content = MailBody(text: "（这封是空的）")
             }
         }
     }

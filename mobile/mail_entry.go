@@ -9,6 +9,8 @@ import (
 
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/mail"
+	"github.com/emersion/go-imap/v2"
+
 	"github.com/dabao/jarvis/internal/mailbox"
 	"github.com/dabao/jarvis/internal/mailstore"
 )
@@ -272,12 +274,9 @@ func mailRead(store *mailstore.Store, in MailInput) string {
 	if sess == nil {
 		return marshal(&MailOutput{Error: "本地没存正文，而且还没配邮箱"})
 	}
-	no, ok := noForUID(sess, acct, uid)
-	if !ok {
-		return marshal(&MailOutput{
-			Error: "本地没存正文，这封也不在这次拉下来的清单里——先同步一下"})
-	}
-	raw, err := sess.Raw(no)
+	// 按 UID 直接取，不要求这封在「这次拉下来的清单」里——本地索引存着
+	// 账号和 UID，那就够了。
+	raw, err := sess.RawUID(acct, imap.UID(uid))
 	if err != nil {
 		return marshal(&MailOutput{Error: "读不出来：" + err.Error()})
 	}
@@ -309,44 +308,45 @@ func mailClean(store *mailstore.Store, in MailInput) string {
 		return marshal(&MailOutput{Error: "还没配邮箱"})
 	}
 
-	byAccount := map[string][]uint32{}
-	var nos []int
+	byAccount := map[string][]imap.UID{}
 	for _, k := range in.Keys {
 		acct, uid, ok := splitMailKey(k)
 		if !ok {
 			continue
 		}
-		byAccount[acct] = append(byAccount[acct], uid)
-		if no, ok := noForUID(sess, acct, uid); ok {
-			nos = append(nos, no)
-		}
+		byAccount[acct] = append(byAccount[acct], imap.UID(uid))
 	}
-	if len(nos) == 0 {
-		return marshal(&MailOutput{
-			Error: "这些邮件不在这次拉下来的清单里，先同步一下再清理"})
+	if len(byAccount) == 0 {
+		return marshal(&MailOutput{Error: "没说要清哪些"})
 	}
 
-	done, fails := sess.Clean(nos)
+	var done int
+	var fails []string
 	for acct, uids := range byAccount {
-		_ = store.MarkDeleted(acct, uids)
+		if err := sess.CleanUIDs(acct, uids); err != nil {
+			fails = append(fails, acct+"："+err.Error())
+			continue
+		}
+		plain := make([]uint32, len(uids))
+		for i, u := range uids {
+			plain[i] = uint32(u)
+		}
+		_ = store.MarkDeleted(acct, plain)
+		done += len(uids)
 	}
 
+	// 一封都没清成就是失败，不能只在附注里写一句——界面看 error 决定
+	// 要不要报警，只写进 message 的话用户以为清掉了，其实一封没动。
+	if done == 0 && len(fails) > 0 {
+		return marshal(&MailOutput{
+			Items: listLocal(store, in.Accounts),
+			Error: "一封都没清成：" + strings.Join(fails, "；")})
+	}
 	msg := fmt.Sprintf("清掉了 %d 封", done)
 	if len(fails) > 0 {
 		msg += "。没清成的：" + strings.Join(fails, "；")
 	}
 	return marshal(&MailOutput{Items: listLocal(store, in.Accounts), Message: msg})
-}
-
-// noForUID 把「账号 + UID」换成这一轮会话里的编号。
-// 会话是跨轮次留着的，但只装这次拉下来的那些。
-func noForUID(sess *mail.Session, account string, uid uint32) (int, bool) {
-	for _, it := range sess.Items() {
-		if it.Msg.Account == account && uint32(it.Msg.UID) == uid {
-			return it.No, true
-		}
-	}
-	return 0, false
 }
 
 // splitMailKey 拆 "工作:1234"。账号名里可能有冒号，从最后一个切。

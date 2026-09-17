@@ -582,6 +582,51 @@ func (s *Session) Clean(nos []int) (done int, fails []string) {
 	return len(removed), fails
 }
 
+// CleanUIDs 按账号和 UID 直接把邮件移进垃圾箱，不要求它们在当前清单里。
+//
+// Clean 走的是清单编号，那套编号只对「这次拉下来的那批」有效。手机上
+// 邮件存在本地，用户看的是本地那份，里面的邮件多半早就不在当前会话里了——
+// 让他为了清一封信先去同步一次，是拿实现细节为难人。
+func (s *Session) CleanUIDs(account string, uids []imap.UID) error {
+	if len(uids) == 0 {
+		return nil
+	}
+	c, err := s.client(account)
+	if err != nil {
+		return err
+	}
+	junk, err := c.JunkMailbox()
+	if err != nil {
+		return err
+	}
+	if err := c.MoveTo(uids, junk); err != nil {
+		return err
+	}
+	// 清单里如果正好有这几封，一并摘掉，免得界面上还留着。
+	var nos []int
+	for _, it := range s.Items() {
+		if it.Msg.Account != account {
+			continue
+		}
+		for _, u := range uids {
+			if it.Msg.UID == u {
+				nos = append(nos, it.No)
+			}
+		}
+	}
+	s.Remove(nos)
+	return nil
+}
+
+// RawUID 按账号和 UID 直接取原始邮件，同样不要求它在当前清单里。
+func (s *Session) RawUID(account string, uid imap.UID) ([]byte, error) {
+	c, err := s.client(account)
+	if err != nil {
+		return nil, err
+	}
+	return c.ReadRaw(uid)
+}
+
 // Body 拉一封邮件的完整正文。ReadFull 把整封正文放在 Snippet 里
 // （名字有点误导，它平时只装开头几句，读全文时装的是全部）。
 func (s *Session) Body(no int) (string, error) {

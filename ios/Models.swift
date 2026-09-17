@@ -233,9 +233,39 @@ extension MailItem {
 
 struct MailResult: Codable {
     var items: [MailItem] = []
-    var body: String?
+    var body: MailBody?
     var message = ""
     var error: String?
+}
+
+/// 一封邮件的原文。HTML 里的内联图片已经嵌成 data URI。
+struct MailBody: Codable {
+    var html = ""
+    var text = ""
+    var attachments: [MailAttachment] = []
+    /// 因为太大没嵌进来的内联图片数。
+    var inlineDropped = 0
+
+    enum CodingKeys: String, CodingKey {
+        case html, text, attachments
+        case inlineDropped = "inline_dropped"
+    }
+
+    var isEmpty: Bool { html.isEmpty && text.isEmpty }
+}
+
+struct MailAttachment: Codable, Identifiable, Hashable {
+    var name = ""
+    var type = ""
+    var size = 0
+
+    var id: String { name + type + String(size) }
+
+    var sizeText: String {
+        if size < 1024 { return "\(size) B" }
+        if size < 1024 * 1024 { return String(format: "%.0f KB", Double(size) / 1024) }
+        return String(format: "%.1f MB", Double(size) / 1024 / 1024)
+    }
 }
 
 /// 模型连通性自检的结果。

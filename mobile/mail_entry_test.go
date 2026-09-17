@@ -88,3 +88,27 @@ func TestSplitMailKey(t *testing.T) {
 		}
 	}
 }
+
+// 清理和读正文都该只靠本地索引里的「账号 + UID」，不要求这封信在
+// 「这次拉下来的清单」里——用户看的是本地那份，里面的邮件多半早就不在
+// 当前会话里了。让他为了清一封信先同步一次，是拿实现细节为难人。
+func TestMailActionsDoNotNeedFreshFetch(t *testing.T) {
+	dir := t.TempDir()
+	accounts := []MailAccount{{
+		Name: "工作", Host: "127.0.0.1", Port: 1, User: "me", Password: "x",
+	}}
+
+	// 连不上服务器是必然的（端口 1 没人听），要的是**错误话里不再提**
+	// 「先同步一下」——那句说明它还在拿清单编号找邮件。
+	for _, op := range []string{"read", "clean"} {
+		in := MailInput{Op: op, IndexDir: dir, Accounts: accounts,
+			Key: "工作:42", Keys: []string{"工作:42"}}
+		got := mailCall(t, in)
+		if got.Error == "" {
+			t.Fatalf("%s 连不上服务器该报错", op)
+		}
+		if strings.Contains(got.Error, "先同步") {
+			t.Errorf("%s 还在要求先同步：%q", op, got.Error)
+		}
+	}
+}
