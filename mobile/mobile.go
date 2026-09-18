@@ -511,6 +511,10 @@ func Snapshot(inputJSON string) string {
 	coll := collectCached(in.Files)
 	opts := agenda.DefaultOptions()
 	opts.Now = now
+	// 当天做完的也列出来（org 里叫 log mode）。默认不列是给终端省地方的
+	// 老规矩，可手机上一天就那么几条，全划掉的看不见反而像白干了一天。
+	// 天然有界：只有看得见的这几天里完成的才会出现。
+	opts.ShowDone = true
 
 	out := SnapshotOutput{Days: buildDays(coll, now, days, opts)}
 	out.Todos, out.TodosTotal = buildTodos(coll, in.TodoLimit)
@@ -607,8 +611,25 @@ func sameDay(a, b time.Time) bool {
 // 截断了会在 TodosTotal 里说清楚。
 const defaultTodoLimit = 1000
 
+// doneWindow 是清单里「最近完成」往回看几天。
+//
+// 完成项全列出来是没用的——攒上几年谁也不会往下翻。但一条都不列，
+// 做完的事就凭空消失了，看着像白干。一周正好：这几天干了什么还记得住，
+// 再往前就该是归档的事了。
+const doneWindow = 7 * 24 * time.Hour
+
 func buildTodos(c *org.Collection, limit int) (items []Item, total int) {
-	its := agenda.Todos(c, agenda.TodoFilter{})
+	its := agenda.Todos(c, agenda.TodoFilter{IncludeDone: true})
+	// 完成项只留最近这几天的，其余照旧全给。
+	cut := time.Now().Add(-doneWindow)
+	kept := its[:0]
+	for _, it := range its {
+		if it.Node.IsDone() && (it.Node.Closed == nil || it.Node.Closed.Start.Before(cut)) {
+			continue
+		}
+		kept = append(kept, it)
+	}
+	its = kept
 	if limit <= 0 {
 		limit = defaultTodoLimit
 	}

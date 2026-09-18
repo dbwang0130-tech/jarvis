@@ -203,7 +203,8 @@ struct AgendaView: View {
 /// 原来是一长条，今天该干的和下个月才到期的混在一起——名义上按优先级排过，
 /// 但一条 C 级的今天要交，排在一条 A 级的下月任务后面，等于没排。
 enum TodoBucket: Int, CaseIterable {
-    case overdue, today, tomorrow, week, later, someday
+    // done 排在最后：做完的事该往下沉，不能跟还没办的抢位置。
+    case overdue, today, tomorrow, week, later, someday, done
 
     var title: String {
         switch self {
@@ -213,6 +214,7 @@ enum TodoBucket: Int, CaseIterable {
         case .week:     return "这周内"
         case .later:    return "以后"
         case .someday:  return "没排期"
+        case .done:     return "最近完成"
         }
     }
 
@@ -221,6 +223,7 @@ enum TodoBucket: Int, CaseIterable {
         case .overdue:  return .red
         case .today:    return .orange
         case .tomorrow: return .blue
+        case .done:     return .green
         default:        return .secondary
         }
     }
@@ -233,10 +236,13 @@ enum TodoBucket: Int, CaseIterable {
         case .week:     return "calendar"
         case .later:    return "calendar.badge.clock"
         case .someday:  return "tray"
+        case .done:     return "checkmark.circle.fill"
         }
     }
 
     static func of(_ item: Item) -> TodoBucket {
+        // 先看做完没有。做完的按到期日归组没有意义——早就不用管了。
+        if item.isDone { return .done }
         guard !item.due.isEmpty else { return .someday }
         switch item.dueIn {
         case ..<0:  return .overdue
@@ -253,25 +259,49 @@ struct TodosView: View {
     @State private var keyword = ""
     @State private var groups: [(bucket: TodoBucket, items: [Item])] = []
     @State private var selected: Item?
+    @AppStorage("jarvis.todos.showDone") private var showDone = false
+
+    private func header(_ group: (bucket: TodoBucket, items: [Item])) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: group.bucket.icon).font(.caption2)
+            Text(group.bucket.title)
+            Text("\(group.items.count)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .foregroundStyle(group.bucket.tint)
+    }
 
     var body: some View {
         List {
             ForEach(groups, id: \.bucket) { group in
                 Section {
-                    ForEach(Array(group.items.enumerated()), id: \.offset) { _, item in
-                        Button { selected = item } label: { ItemRow(item: item) }
-                            .buttonStyle(.plain)
-                            .itemSwipeActions(item)
+                    if group.bucket != .done || showDone {
+                        ForEach(Array(group.items.enumerated()), id: \.offset) { _, item in
+                            Button { selected = item } label: { ItemRow(item: item) }
+                                .buttonStyle(.plain)
+                                .itemSwipeActions(item)
+                        }
                     }
                 } header: {
-                    HStack(spacing: 6) {
-                        Image(systemName: group.bucket.icon).font(.caption2)
-                        Text(group.bucket.title)
-                        Text("\(group.items.count)")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                    // 「最近完成」默认收起：这一组只是让人确认没白干，
+                    // 展开着会把还没办的挤到看不见的地方。
+                    if group.bucket == .done {
+                        Button {
+                            withAnimation { showDone.toggle() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                header(group)
+                                Spacer(minLength: 0)
+                                Image(systemName: showDone ? "chevron.down" : "chevron.right")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        header(group)
                     }
-                    .foregroundStyle(group.bucket.tint)
                 }
             }
         }

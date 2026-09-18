@@ -16,6 +16,7 @@ IOS = pathlib.Path(__file__).resolve().parent
 FRAMEWORK = "Mobile.xcframework"
 ASSETS = "Assets.xcassets"
 PRIVACY = "PrivacyInfo.xcprivacy"
+LAUNCH = "LaunchScreen.storyboard"
 BUNDLE_ID = "com.dabao.jarvis"
 DEPLOY_TARGET = "26.0"  # Liquid Glass 那套要 26 起；设备是 iPhone 17 Pro，本来就跑 26+
 
@@ -68,6 +69,17 @@ def main() -> None:
         resources.append(f'\t\t\t\t{priv_build} /* {PRIVACY} in Resources */,')
         children.append(f'\t\t\t\t{priv_ref} /* {PRIVACY} */,')
 
+    # 启动屏。也是资源，编译成 storyboardc 进 bundle。
+    ls_ref, ls_build = uid("fr:launch"), uid("bf:launch")
+    if (IOS / LAUNCH).is_file():
+        refs.append(f'\t\t{ls_ref} /* {LAUNCH} */ = {{isa = PBXFileReference; '
+                    f'lastKnownFileType = file.storyboard; path = {LAUNCH}; '
+                    f'sourceTree = "<group>"; }};')
+        builds.append(f'\t\t{ls_build} /* {LAUNCH} in Resources */ = '
+                      f'{{isa = PBXBuildFile; fileRef = {ls_ref} /* {LAUNCH} */; }};')
+        resources.append(f'\t\t\t\t{ls_build} /* {LAUNCH} in Resources */,')
+        children.append(f'\t\t\t\t{ls_ref} /* {LAUNCH} */,')
+
     fw_ref, fw_build, fw_embed = uid("fr:fw"), uid("bf:fw"), uid("bf:fwembed")
     refs.append(f'\t\t{fw_ref} /* {FRAMEWORK} */ = {{isa = PBXFileReference; '
                 f'lastKnownFileType = wrapper.xcframework; path = {FRAMEWORK}; '
@@ -108,7 +120,7 @@ def main() -> None:
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait";
 				LD_RUNPATH_SEARCH_PATHS = (
