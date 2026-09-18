@@ -51,6 +51,16 @@ type Quantity struct {
 	Code   string  `json:"code,omitempty"`
 }
 
+// Identifier 是这条记录在**别的系统里**的身份。
+//
+// 从 Apple 健康导进来的每一条都带上那边的 UUID：导第二次时靠它认出
+// 「这条已经有了」。不记的话，每导一次就多一份，看趋势的图上一个点
+// 变成三个点，而且删不掉——文件是只追加的。
+type Identifier struct {
+	System string `json:"system,omitempty"`
+	Value  string `json:"value,omitempty"`
+}
+
 // Reference 是指向别的资源。
 type Reference struct {
 	Reference string `json:"reference,omitempty"`
@@ -69,8 +79,9 @@ type Component struct {
 // 字段还高度重合。**一个结构体加 omitempty**，序列化出来跟分开写一模一样，
 // 读的时候也不用先看 resourceType 再挑类型。
 type Resource struct {
-	ResourceType string `json:"resourceType"`
-	ID           string `json:"id,omitempty"`
+	ResourceType string       `json:"resourceType"`
+	ID           string       `json:"id,omitempty"`
+	Identifier   []Identifier `json:"identifier,omitempty"`
 
 	// Patient
 	BirthDate string `json:"birthDate,omitempty"`
@@ -120,25 +131,27 @@ type vital struct {
 // 键用中文，因为用户和模型说的都是中文；LOINC 码在值里，不外露。
 // 加一种体征就往这张表里加一行——别在别处再写一遍 if。
 var vitals = map[string]vital{
-	"体重":  {"29463-7", "Body weight", "kg", "kg", "vital-signs", 2, 400},
-	"身高":  {"8302-2", "Body height", "cm", "cm", "vital-signs", 30, 260},
-	"体温":  {"8310-5", "Body temperature", "℃", "Cel", "vital-signs", 30, 45},
-	"心率":  {"8867-4", "Heart rate", "次/分", "/min", "vital-signs", 20, 250},
-	"呼吸":  {"9279-1", "Respiratory rate", "次/分", "/min", "vital-signs", 4, 80},
-	"血氧":  {"59408-5", "Oxygen saturation in Arterial blood by Pulse oximetry", "%", "%", "vital-signs", 50, 100},
-	"腰围":  {"56086-2", "Waist Circumference", "cm", "cm", "vital-signs", 30, 250},
-	"血糖":  {"15074-8", "Glucose [Moles/volume] in Blood", "mmol/L", "mmol/L", "laboratory", 1, 40},
-	"步数":  {"41950-7", "Number of steps in 24 hour Measured", "步", "{steps}", "activity", 0, 200000},
-	"睡眠":  {"93832-4", "Sleep duration", "小时", "h", "activity", 0, 24},
-	"BMI": {"39156-5", "Body mass index (BMI) [Ratio]", "kg/m²", "kg/m2", "vital-signs", 5, 100},
-	"血压":  {"85354-9", "Blood pressure panel with all children optional", "mmHg", "mm[Hg]", "vital-signs", 0, 0},
-	"收缩压": {"8480-6", "Systolic blood pressure", "mmHg", "mm[Hg]", "vital-signs", 50, 300},
-	"舒张压": {"8462-4", "Diastolic blood pressure", "mmHg", "mm[Hg]", "vital-signs", 20, 200},
+	"体重":   {"29463-7", "Body weight", "kg", "kg", "vital-signs", 2, 400},
+	"身高":   {"8302-2", "Body height", "cm", "cm", "vital-signs", 30, 260},
+	"体温":   {"8310-5", "Body temperature", "℃", "Cel", "vital-signs", 30, 45},
+	"心率":   {"8867-4", "Heart rate", "次/分", "/min", "vital-signs", 20, 250},
+	"呼吸":   {"9279-1", "Respiratory rate", "次/分", "/min", "vital-signs", 4, 80},
+	"血氧":   {"59408-5", "Oxygen saturation in Arterial blood by Pulse oximetry", "%", "%", "vital-signs", 50, 100},
+	"腰围":   {"56086-2", "Waist Circumference", "cm", "cm", "vital-signs", 30, 250},
+	"血糖":   {"15074-8", "Glucose [Moles/volume] in Blood", "mmol/L", "mmol/L", "laboratory", 1, 40},
+	"步数":   {"41950-7", "Number of steps in 24 hour Measured", "步", "{steps}", "activity", 0, 200000},
+	"睡眠":   {"93832-4", "Sleep duration", "小时", "h", "activity", 0, 24},
+	"BMI":  {"39156-5", "Body mass index (BMI) [Ratio]", "kg/m²", "kg/m2", "vital-signs", 5, 100},
+	"静息心率": {"40443-4", "Heart rate --resting", "次/分", "/min", "vital-signs", 20, 200},
+	"血压":   {"85354-9", "Blood pressure panel with all children optional", "mmHg", "mm[Hg]", "vital-signs", 0, 0},
+	"收缩压":  {"8480-6", "Systolic blood pressure", "mmHg", "mm[Hg]", "vital-signs", 50, 300},
+	"舒张压":  {"8462-4", "Diastolic blood pressure", "mmHg", "mm[Hg]", "vital-signs", 20, 200},
 }
 
 // vitalNames 是给提示和错误话用的顺序，map 遍历是乱的。
 var vitalNames = []string{
-	"体重", "身高", "BMI", "血压", "心率", "体温", "血氧", "呼吸", "血糖", "腰围", "步数", "睡眠",
+	"体重", "身高", "BMI", "血压", "静息心率", "心率", "体温", "血氧", "呼吸",
+	"血糖", "腰围", "步数", "睡眠",
 }
 
 func codeOf(v vital) *CodeableConcept {

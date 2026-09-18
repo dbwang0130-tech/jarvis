@@ -505,13 +505,13 @@ func render(items []*Item) string {
 	// Precedence 这些）就够判了——推广和垃圾的信号全在头里。而正文是私人
 	// 内容，为了给一封信打个标签就把它整段发给模型，代价和收益不成比例。
 	//
-	// 真拿不准的那几封，让模型显式调 read_mail 单独看——那是一次明确的、
-	// 看得见的动作，不是默默把整个收件箱都送出去。
+	// 拿不准的那几封也不给正文——判成 normal 留着就是了，误判一个标签的
+	// 代价，远小于把一封私人邮件整段发出去。
 	//
 	// 正文不发之后，原来那套「前 100 封给详细、后面给简略」的截断也没用了——
 	// 它存在的理由就是控制正文体积，现在每封都只有一行。
-	b.WriteString("\n（只给发件人、主题和群发标记，正文不外发。" +
-		"按这些判断；个别实在拿不准的用 read_mail 单独看那一封。）\n")
+	b.WriteString("\n（只给发件人、主题和群发标记。正文一个字都不外发，" +
+		"也没有任何工具能读到它。就按这些判断；拿不准就判 normal 留着。）\n")
 	return b.String()
 }
 
@@ -598,24 +598,9 @@ func (s *Session) RawUID(account string, uid imap.UID) ([]byte, error) {
 	return c.ReadRaw(uid)
 }
 
-// Body 按清单编号拉一封邮件的完整正文。跟 Clean 一样，只做编号翻译。
-func (s *Session) Body(no int) (string, error) {
-	it, err := s.Item(no)
-	if err != nil {
-		return "", err
-	}
-	raw, err := s.RawUID(it.Msg.Account, it.Msg.UID)
-	if err != nil {
-		return "", err
-	}
-	full, err := mailbox.ParseBody(raw)
-	if err != nil {
-		return "", err
-	}
-	text := full.Text
-	if text == "" {
-		text = full.HTML
-	}
-	it.Msg.Snippet = text
-	return text, nil
-}
+// 这里原来有个 Body(no)：按清单编号拉整封正文，read_mail 靠它。
+// 两个一起删了——正文只经过手机本地和邮件服务器，不经过模型，
+// 留着一个现成的「按编号取正文」摆在这儿，早晚有人把它接回工具表里。
+//
+// 界面要显示原文走的是另一条：mobile 的 Mail(read) → RawUID → 直接过桥
+// 给 Swift 渲染，全程不进模型的上下文。

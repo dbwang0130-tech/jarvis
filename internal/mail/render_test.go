@@ -38,8 +38,11 @@ func TestRenderNeverLeaksBody(t *testing.T) {
 			t.Errorf("清单里少了 %q：\n%s", want, out)
 		}
 	}
-	// 得告诉模型正文为什么不在，免得它以为是漏了。
-	if !strings.Contains(out, "read_mail") {
+	// 得告诉模型正文为什么不在，免得它以为是漏了、转头去找别的路子拿。
+	if !strings.Contains(out, "正文一个字都不外发") {
+		t.Errorf("没说清楚正文为什么不在：\n%s", out)
+	}
+	if !strings.Contains(out, "拿不准就判 normal") {
 		t.Errorf("没说清楚拿不准时该怎么办：\n%s", out)
 	}
 }

@@ -56,7 +56,7 @@ func spec(name, desc string, params map[string]any) agent.ToolSpec {
 // Tools 返回全部邮件工具，按名字索引。
 func Tools() map[string]*Tool {
 	list := []*Tool{
-		toolListMail(), toolReadMail(), toolTriage(), toolRefreshMail(),
+		toolListMail(), toolTriage(), toolRefreshMail(),
 		toolLoadMore(), toolMarkRead(), toolCleanMail(), toolDraftReply(),
 		toolDraftNew(), toolSendDraft(),
 	}
@@ -141,33 +141,15 @@ func toolLoadMore() *Tool {
 	}
 }
 
-func toolReadMail() *Tool {
-	return &Tool{
-		spec: spec("read_mail",
-			"读取某封邮件的完整正文。在起草回信、或摘要不足以判断时使用。",
-			obj(map[string]any{"no": num("邮件编号，对应清单里的 [n]")}, "no")),
-		run: func(s *Session, raw string) (string, error) {
-			var a struct {
-				No int `json:"no"`
-			}
-			if err := json.Unmarshal([]byte(raw), &a); err != nil {
-				return "", err
-			}
-			it, err := s.Item(a.No)
-			if err != nil {
-				return "", err
-			}
-			body, err := s.Body(a.No)
-			if err != nil {
-				return "", err
-			}
-			m := it.Msg
-			return fmt.Sprintf("[%d] 账号:%s\n发件人: %s <%s>\n主题: %s\n时间: %s\n\n%s",
-				it.No, m.Account, m.From(), m.FromAddr, m.Subject,
-				m.Date.Format("2006-01-02 15:04"), body), nil
-		},
-	}
-}
+// 这里原来有个 read_mail，把整封正文交给模型。删掉了。
+//
+// 正文是私人内容，**一个字都不往模型那儿去**。分拣靠发件人、主题和群发头
+// 就够了；真要看原文，用户在邮件页自己看——那条路（Mail 的 read 动作）
+// 只经过手机本地和邮件服务器，不经过模型。
+//
+// 靠提示词说「别读正文」是不够的：工具摆在那儿，模型迟早会在某个它觉得
+// 「实在拿不准」的时候调一次。把工具拿掉，这条路才是真的没有。
+// TestNoToolLeaksTheBody 守着这件事。
 
 func toolTriage() *Tool {
 	return &Tool{
