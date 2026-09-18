@@ -425,7 +425,7 @@ struct ItemDetail: View {
                     // 点下去只会再开一段计时，想收尾只能标完成——
                     // 一件没做完的事因此没有别的出路。
                     ActionButton(op: item.running ? "stop" : "start", item: item)
-                    ActionButton(op: "postpone", item: item)
+                    PostponeButton(item: item)
                     // 「不做了」原先只在列表左滑里有。点进详情看完才决定
                     // 不做的，得先退出去、找到那一行、再左滑——而刚才
                     // 就在这一条上。
@@ -579,6 +579,64 @@ struct CheckboxRow: View {
         .accessibilityLabel(box.text)
         .accessibilityValue(done ? "已勾选" : "未勾选")
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// 推迟。**点一下推一天，按住挑几天。**
+///
+/// 以前这儿写死推一天：想推到周末，要么点五下（每点一下都是一次读盘写盘），
+/// 要么开口跟 Jarvis 说一句。而 Act 本来就收 days，只是界面没把它给出来。
+///
+/// 点一下仍然是推一天——最常用的那下不该多花一步；别的天数收在长按菜单里，
+/// 不占那一行本来就不宽的地方。
+struct PostponeButton: View {
+    @EnvironmentObject var store: Store
+    let item: Item
+
+    @State private var working = false
+
+    /// 挑得最多的几档。「一周后」按 7 天算而不是「下周一」——org 里
+    /// SCHEDULED 是个日期，说七天后最不容易理解错。
+    private let choices: [(String, Int)] = [
+        ("明天", 1), ("后天", 2), ("三天后", 3), ("一周后", 7), ("两周后", 14),
+    ]
+
+    var body: some View {
+        let (title, icon, color) = ItemAction.label("postpone")
+        Menu {
+            ForEach(Array(choices.enumerated()), id: \.offset) { _, c in
+                Button(c.0) { push(c.1) }
+            }
+        } label: {
+            VStack(spacing: 4) {
+                if working {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: icon).font(.system(.subheadline, weight: .semibold))
+                }
+                Text(title).font(.caption2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .foregroundStyle(color)
+        } primaryAction: {
+            // 直接点就是推一天，跟以前一样。
+            push(1)
+        }
+        .buttonStyle(.plain)
+        .disabled(working || store.thinking)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: Brand.smallRadius))
+        .accessibilityLabel("推迟一天")
+        .accessibilityHint("长按可以挑几天")
+    }
+
+    private func push(_ days: Int) {
+        working = true
+        Task {
+            let ok = await store.act("postpone", on: item.ref, days: days)
+            working = false
+            ok ? Haptics.done() : Haptics.failure()
+        }
     }
 }
 

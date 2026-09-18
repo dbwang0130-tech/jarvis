@@ -386,6 +386,9 @@ final class Store: ObservableObject, AskEvents {
         Task.detached(priority: .userInitiated) { Bridge.cancel() }
     }
 
+    /// 手上这些 org 文件的名字，排好序。记一条时可以挑写进哪个。
+    var orgFiles: [String] { files.keys.sorted() }
+
     /// 对一个条目直接做一件事（完成/开始/停止/推迟/取消），不经过模型。
     ///
     /// 走的是跟秘书同一套 orgtools 工具，所以改动的语义、撤销点、循环任务
@@ -393,13 +396,13 @@ final class Store: ObservableObject, AskEvents {
     @discardableResult
     func act(_ op: String, on ref: String, days: Int = 0, title: String = "",
              scheduled: String = "", priority: String = "",
-             index: Int = 0) async -> Bool {
+             index: Int = 0, file: String = "") async -> Bool {
         guard !thinking else { return false }   // 秘书正拿着旧内容干活，别插队
         let f = files
         let r = await Task.detached(priority: .userInitiated) {
             Bridge.act(files: f, ref: ref, op: op, days: days,
                        title: title, scheduled: scheduled, priority: priority,
-                       index: index)
+                       index: index, file: file)
         }.value
 
         if let err = r.error, !err.isEmpty {

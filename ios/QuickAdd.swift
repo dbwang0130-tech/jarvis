@@ -12,6 +12,7 @@ struct QuickAddView: View {
     @State private var when: When = .none
     @State private var at = Date()
     @State private var priority = ""
+    @State private var file = ""
     @State private var saving = false
     @FocusState private var focused: Bool
 
@@ -42,6 +43,21 @@ struct QuickAddView: View {
                     if when == .pick {
                         DatePicker("时间", selection: $at)
                             .datePickerStyle(.compact)
+                    }
+                }
+
+                // 有好几个 org 文件时才问——只有一个的话，问「记到哪儿」
+                // 是明知故问。Act 那边一直收 file，只是界面没给出来，
+                // 于是所有东西都往收件箱里堆。
+                if store.orgFiles.count > 1 {
+                    Section("记到哪儿") {
+                        Picker("", selection: $file) {
+                            Text("收件箱").tag("")
+                            ForEach(store.orgFiles, id: \.self) { f in
+                                Text(f.replacingOccurrences(of: ".org", with: "")).tag(f)
+                            }
+                        }
+                        .labelsHidden()
                     }
                 }
 
@@ -82,7 +98,8 @@ struct QuickAddView: View {
         saving = true
         Task {
             let ok = await store.act("create", on: "", title: text,
-                                     scheduled: scheduledText, priority: priority)
+                                     scheduled: scheduledText, priority: priority,
+                                     file: file)
             saving = false
             if ok {
                 Haptics.done()
