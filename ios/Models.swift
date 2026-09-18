@@ -313,8 +313,18 @@ struct HealthEntry: Codable, Identifiable, Hashable {
     var when = ""
     var ago = ""
     var text = ""
+    /// 精确时刻（RFC3339）。when 是给人看的（「09-18 12:30」），定位不能
+    /// 用它——记错了要标掉时，得拿一个不会因为显示格式变化而漂的东西
+    /// 去找那一条。
+    var at = ""
 
     var id: String { when + text }
+
+    var date: Date? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: at)
+    }
 }
 
 /// 从「健康」App 导数据的结果。

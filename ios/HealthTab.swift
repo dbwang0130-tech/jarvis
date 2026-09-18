@@ -23,6 +23,8 @@ struct HealthTab: View {
 
     @State private var note = ""
     @State private var picked: HealthVital?
+    /// 正在问「这条是不是录错了」的那条饮食。
+    @State private var asking: HealthEntry?
 
     var body: some View {
         ScrollView {
@@ -60,6 +62,16 @@ struct HealthTab: View {
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .refreshable { await store.reload() }
         .sheet(item: $picked) { VitalDetail(vital: $0) }
+        .confirmationDialog("这条录错了？", isPresented: askingBinding,
+                            titleVisibility: .visible) {
+            if let m = asking {
+                Button("标成录错了", role: .destructive) { void(m) }
+            }
+            Button("算了", role: .cancel) {}
+        } message: {
+            Text("记录会留在文件里，只是往后不算数——"
+                 + "医疗记录跟账本一样不改历史。")
+        }
         .toolbar {
             if canImport, !isEmpty {
                 ToolbarItem(placement: .topBarLeading) { importButton }
@@ -107,6 +119,16 @@ struct HealthTab: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                    // 跟体征那边一样：记重了、记错了得有出路。体征在
+                    // 详情页里标，饮食没有详情页，就在这儿长按。
+                    .contextMenu {
+                        if m.date != nil {
+                            Button(role: .destructive) { asking = m } label: {
+                                Label("这条录错了", systemImage: "exclamationmark.triangle")
+                            }
+                        }
+                    }
                 }
             }
             .background(Color(.secondarySystemGroupedBackground),
@@ -115,6 +137,19 @@ struct HealthTab: View {
     }
 
     // MARK: - 从「健康」导入
+
+    private var askingBinding: Binding<Bool> {
+        Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })
+    }
+
+    private func void(_ m: HealthEntry) {
+        asking = nil
+        guard let at = m.date else { return }
+        Task {
+            let ok = await store.voidHealth(kind: "饮食", at: at)
+            ok ? Haptics.warning() : Haptics.failure()
+        }
+    }
 
     private var canImport: Bool { HealthKitImporter.isAvailable }
 

@@ -922,8 +922,8 @@ struct ChatView: View {
                             withAnimation(.smooth(duration: 0.45)) { entered = true }
                         }
                     }
-                    ForEach(Array(shownMessages.enumerated()), id: \.offset) { _, m in
-                        Bubble(message: m)
+                    ForEach(Array(shownMessages.enumerated()), id: \.offset) { i, m in
+                        Bubble(message: m, isLast: i == shownMessages.count - 1)
                     }
                     if store.thinking {
                         ThinkingRow(steps: store.steps)
@@ -1089,6 +1089,9 @@ struct Starters: View {
 struct Bubble: View {
     @EnvironmentObject var store: Store
     let message: Message
+    /// 是不是最后一条。只有最后那条秘书的回答能重答——中间某条重答了，
+    /// 后面的对话就接不上了。
+    var isLast = false
 
     var isUser: Bool { message.role == "user" }
 
@@ -1143,6 +1146,16 @@ struct Bubble: View {
                             Task { await store.send(message.content) }
                         } label: {
                             Label("再问一遍", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(store.thinking)
+                    } else if isLast {
+                        // 答偏了、答得太啰嗦、或者中途被打断只答了一半——
+                        // 以前唯一的办法是把原话重新打一遍。只给最后那条：
+                        // 中间某条重答了，后面的对话就接不上了。
+                        Button {
+                            Task { await store.retryLast() }
+                        } label: {
+                            Label("重答一遍", systemImage: "arrow.clockwise")
                         }
                         .disabled(store.thinking)
                     }

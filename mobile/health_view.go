@@ -59,6 +59,11 @@ type HealthEntry struct {
 	When string `json:"when"`
 	Ago  string `json:"ago"`
 	Text string `json:"text"`
+	// At 是这条的精确时刻（RFC3339）。
+	//
+	// When 是给人看的（「09-18 12:30」），定位不能用它——记错了要标成
+	// 「录错了」时，得拿一个不会因为显示格式变化而漂的东西去找那一条。
+	At string `json:"at"`
 }
 
 func (v *HealthView) normalize() {
@@ -131,6 +136,7 @@ func buildHealth(raw string, now time.Time) *HealthView {
 	for _, m := range st.RecentMeals(now, 7, 30) {
 		v.Meals = append(v.Meals, HealthEntry{
 			When: m.When.Format("01-02 15:04"), Ago: m.Ago, Text: m.Text,
+			At: m.When.Format(time.RFC3339),
 		})
 	}
 	v.normalize()

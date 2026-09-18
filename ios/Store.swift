@@ -145,6 +145,25 @@ final class Store: ObservableObject, AskEvents {
 
     // MARK: - 对话
 
+    /// 让秘书把刚才那句重答一遍。
+    ///
+    /// 答偏了、答得太啰嗦、或者中途被打断只答了一半——以前唯一的办法是
+    /// 把原话重新打一遍（「再问一遍」只在自己说的那条上有）。而这一轮
+    /// 的问题就在上面摆着。
+    ///
+    /// **先把这一轮掐掉再重来**：不摘掉的话，那个答坏了的回答会留在
+    /// 上下文里，模型多半会顺着它再说一遍。
+    func retryLast() async {
+        guard !thinking else { return }
+        // 从后往前找最后一次提问，它之后的全扔掉（回答、还有我们自己
+        // 插的那些提示）。
+        guard let idx = messages.lastIndex(where: { $0.role == "user" }) else { return }
+        let question = messages[idx].content
+        messages = Array(messages.prefix(idx))
+        persist()
+        await send(question)
+    }
+
     func send(_ question: String) async {
         let text = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !thinking else { return }
