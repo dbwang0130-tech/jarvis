@@ -78,9 +78,14 @@ say "编译并签名"
 # 四个字，真正的原因躺在临时文件里没人看见。踩过。
 LOG=$(mktemp)
 STATUS=0
+# **别在命令行上传 PRODUCT_BUNDLE_IDENTIFIER。** 命令行的 build setting
+# 会盖住所有 target，小组件的 com.dabao.jarvis.Widget 也会被冲成主 app 那个，
+# 装的时候 installd 直接拒收：「父 bundle 和子 bundle 同名」。踩过。
+# bundle id 由工程里写着（genproject.py 同样认 BUNDLE_ID 这个环境变量），
+# 要改就改那儿再 make ios-project。
 xcodebuild -project "$PROJ" -scheme Jarvis -configuration Debug \
   -destination "id=$UDID" -allowProvisioningUpdates \
-  DEVELOPMENT_TEAM="$TEAM" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" \
+  DEVELOPMENT_TEAM="$TEAM" \
   build >"$LOG" 2>&1 || STATUS=$?
 cat "$LOG"
 if [ $STATUS -ne 0 ]; then

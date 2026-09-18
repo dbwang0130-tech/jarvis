@@ -74,7 +74,10 @@ def find_team() -> str:
         return ""
     m = re.search(r'teamID\s*=\s*"?([A-Z0-9]{10})"?\s*;', out)
     return m.group(1) if m else ""
-BUNDLE_ID = "com.dabao.jarvis"
+# 跟 install-device.sh 认同一个环境变量。写进工程而不是靠命令行覆盖——
+# 命令行上的 build setting 会盖住**所有** target，小组件那个 .Widget 后缀
+# 也会被冲掉，装的时候报「父 bundle 和子 bundle 同名」。
+BUNDLE_ID = os.environ.get("BUNDLE_ID", "com.dabao.jarvis")
 DEPLOY_TARGET = "26.0"  # Liquid Glass 那套要 26 起；设备是 iPhone 17 Pro，本来就跑 26+
 
 
