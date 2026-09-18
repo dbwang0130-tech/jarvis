@@ -1,8 +1,6 @@
 package health
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -15,26 +13,6 @@ import (
 // 哪个 LOINC 码是体重、血压的两个数在分项里、单位怎么跟着数走。
 // 手机那头再实现一遍，两边迟早对不上——而这份数据的全部意义就在于
 // 它是标准的。
-
-// LoadString 从一份 NDJSON 全文里读记录。手机那边文件内容是过桥传进来的，
-// 不落盘，所以不能走 Load。
-func LoadString(raw string) (*Store, error) {
-	s := &Store{}
-	sc := bufio.NewScanner(strings.NewReader(raw))
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
-		}
-		var r Resource
-		if err := json.Unmarshal([]byte(line), &r); err != nil || r.ResourceType == "" {
-			continue
-		}
-		s.Resources = append(s.Resources, r)
-	}
-	return s, sc.Err()
-}
 
 // ProfileLine 是基础信息那一行，没填就是空串。
 func (s *Store) ProfileLine(now time.Time) string {
@@ -96,7 +74,7 @@ func (s *Store) Summary(now time.Time) []VitalSummary {
 		}
 		last := hist[len(hist)-1]
 		sum := VitalSummary{
-			Kind: name, Value: strings.TrimPrefix(last.label(), name+" "),
+			Kind: name, Value: last.valueText(),
 			When: last.when(), Ago: agoCN(last.when(), now),
 			Unit: vitals[name].Unit, Points: pointsOf(hist, now),
 		}
@@ -114,13 +92,24 @@ func (s *Store) history(name string) []Resource {
 	if !ok {
 		return nil
 	}
-	var out []Resource
-	for _, r := range s.Resources {
-		if r.Code != nil && len(r.Code.Coding) > 0 && r.Code.Coding[0].Code == v.Code {
-			out = append(out, r)
-		}
+	// 走索引，不扫全表。快照要问十三项，全表扫十三遍的话，
+	// 步数一天一条的文件过两年就有感觉了。
+	idx := s.codes()[v.Code]
+	if len(idx) == 0 {
+		return nil
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].when().Before(out[j].when()) })
+	out := make([]Resource, 0, len(idx))
+	sorted := true
+	for _, i := range idx {
+		if len(out) > 0 && s.Resources[i].when().Before(out[len(out)-1].when()) {
+			sorted = false
+		}
+		out = append(out, s.Resources[i])
+	}
+	// 文件是只追加的，绝大多数时候本来就有序——导入补录旧数据才会乱。
+	if !sorted {
+		sort.SliceStable(out, func(i, j int) bool { return out[i].when().Before(out[j].when()) })
+	}
 	return out
 }
 
@@ -134,7 +123,7 @@ func pointsOf(hist []Resource, now time.Time) []Point {
 			continue
 		}
 		switch {
-		case len(r.Component) == 2:
+		case r.isPanel():
 			out = append(out, Point{At: t,
 				V:  r.Component[0].ValueQuantity.Value,
 				V2: r.Component[1].ValueQuantity.Value})
@@ -153,7 +142,7 @@ func pointsOf(hist []Resource, now time.Time) []Point {
 // 血压有两个数，说「+8/-2」而不是只说一个——只报收缩压的话，
 // 舒张压的变化就被藏起来了。
 func trendOf(prev, now Resource) string {
-	if len(prev.Component) == 2 && len(now.Component) == 2 {
+	if prev.isPanel() && now.isPanel() {
 		d1 := now.Component[0].ValueQuantity.Value - prev.Component[0].ValueQuantity.Value
 		d2 := now.Component[1].ValueQuantity.Value - prev.Component[1].ValueQuantity.Value
 		if d1 == 0 && d2 == 0 {

@@ -44,7 +44,7 @@ enum HealthKitImporter {
             .unitDivided(by: .liter())),
     ]
 
-    private static var readTypes: Set<HKObjectType> {
+    private static let readTypes: Set<HKObjectType> = {
         var out = Set<HKObjectType>()
         for q in quantities {
             if let t = HKQuantityType.quantityType(forIdentifier: q.id) { out.insert(t) }
@@ -55,7 +55,7 @@ enum HealthKitImporter {
         }
         if let t = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) { out.insert(t) }
         return out
-    }
+    }()
 
     /// 要一次授权。用户在系统弹窗里逐项勾选。
     static func requestPermission() async -> Bool {
@@ -96,14 +96,25 @@ enum HealthKitImporter {
         let sparseFrom = cal.date(byAdding: .year, value: -20, to: now) ?? now
         let dailyFrom = cal.date(byAdding: .day, value: -dailyDays, to: now) ?? now
 
-        var out: [Sample] = []
-        for q in quantities {
-            out += await quantitySamples(kind: q.kind, id: q.id, unit: q.unit,
-                                         from: sparseFrom, to: now)
+        // 十一趟查询彼此不相干，一起发。串着等的话总耗时是十一次往返相加，
+        // 而用户正盯着「正在读…」——设备上有几年数据时这个和不小。
+        async let bp = bloodPressure(from: sparseFrom, to: now)
+        async let steps = dailySteps(from: dailyFrom, to: now)
+        async let sleep = nightlySleep(from: dailyFrom, to: now)
+        var out = await withTaskGroup(of: [Sample].self) { group in
+            for q in quantities {
+                group.addTask {
+                    await quantitySamples(kind: q.kind, id: q.id, unit: q.unit,
+                                          from: sparseFrom, to: now)
+                }
+            }
+            var acc: [Sample] = []
+            for await part in group { acc += part }
+            return acc
         }
-        out += await bloodPressure(from: sparseFrom, to: now)
-        out += await dailySteps(from: dailyFrom, to: now)
-        out += await nightlySleep(from: dailyFrom, to: now)
+        out += await bp
+        out += await steps
+        out += await sleep
         return out
     }
 

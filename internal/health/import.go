@@ -2,8 +2,6 @@ package health
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -122,19 +120,6 @@ func (s *Store) PrepareImport(samples []Sample) ([]Resource, ImportResult) {
 	return fresh, res
 }
 
-// Lines 把资源序列化成文件里的那几行（各自带换行）。
-func Lines(rs []Resource) (string, error) {
-	var b strings.Builder
-	for _, r := range rs {
-		line, err := marshalLine(r)
-		if err != nil {
-			return "", err
-		}
-		b.WriteString(line)
-	}
-	return b.String(), nil
-}
-
 // importedUIDs 收集已经导进来过的原系统 UUID。
 func (s *Store) importedUIDs() map[string]bool {
 	out := map[string]bool{}
@@ -148,68 +133,27 @@ func (s *Store) importedUIDs() map[string]bool {
 	return out
 }
 
+// toResource 把一条外来读数转成 FHIR。转不了就丢掉——导入这条路上没人
+// 盯着，报错也没地方说；而秤没踩稳、表没贴好冒出来的假读数一旦记进去，
+// 以后看趋势的图就毁了。手记那条路相反，错误要报给模型去跟用户确认。
 func (s *Store) toResource(sp Sample) (Resource, bool) {
-	kind := strings.TrimSpace(sp.Kind)
-	v, ok := vitals[kind]
-	if !ok || kind == "BMI" {
-		// BMI 不导：它是体重除以身高算出来的，从那边搬一份过来，
-		// 万一两边身高不一样就会跟自己算的那条打架。
-		return Resource{}, false
-	}
-	at := sp.At
-	if at.IsZero() {
+	v, ok := vitals[strings.TrimSpace(sp.Kind)]
+	// Derived 的（现在只有 BMI）不从外面导：它是算出来的，搬一份进来，
+	// 万一那边的身高跟这边不一样，就会跟自己算的那条打架。
+	// Sub 的（收缩压/舒张压）只作为血压的分项存在，不单独成一条。
+	if !ok || v.Derived || v.Sub {
 		return Resource{}, false
 	}
 	note := "来自「健康」"
 	if sp.Source != "" {
 		note += " · " + sp.Source
 	}
-
-	var r Resource
-	if kind == "血压" {
-		if rangeCheck("收缩压", sp.Value) != nil || rangeCheck("舒张压", sp.Value2) != nil {
-			return Resource{}, false
-		}
-		r = newBloodPressure(sp.Value, sp.Value2, at, note)
-	} else {
-		if rangeCheck(kind, sp.Value) != nil {
-			return Resource{}, false
-		}
-		r = newObservation(kind, v, sp.Value, at, note)
+	r, err := NewVital(v.Name, sp.Value, sp.Value2, sp.At, note)
+	if err != nil {
+		return Resource{}, false
 	}
 	if sp.UID != "" {
 		r.Identifier = []Identifier{{System: SourceHealthKit, Value: sp.UID}}
 	}
 	return r, true
-}
-
-// AppendAll 一次写多条。
-//
-// 一条一次的话，导三个月的数据就是几百次开文件、写、关文件；更要紧的是
-// 中间失败会留下一半——而这个文件没有「撤销」。攒成一次写下去，
-// 要么整批进去，要么一条都没进。
-func (s *Store) AppendAll(rs []Resource) error {
-	if len(rs) == 0 {
-		return nil
-	}
-	if strings.TrimSpace(s.Path) == "" {
-		return fmt.Errorf("还没配健康记录文件")
-	}
-	text, err := Lines(rs)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o755); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(s.Path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("打开健康记录失败: %w", err)
-	}
-	defer f.Close()
-	if _, err := f.WriteString(text); err != nil {
-		return fmt.Errorf("写入健康记录失败: %w", err)
-	}
-	s.Resources = append(s.Resources, rs...)
-	return nil
 }

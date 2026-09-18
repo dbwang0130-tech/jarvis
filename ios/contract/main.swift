@@ -23,6 +23,21 @@ check("Snapshot") {
     guard items > 0, !s.todos.isEmpty, s.ledger != nil else {
         throw Err("解出来是空的，样例数据或解析有问题")
     }
+    // org 的语义由 Go 投影过来，别在 Swift 侧照着字符串自己判——
+    // CANCELLED 当成没了结，取消掉的事就会跑到「逾期」里去（真发生过）。
+    guard let cancelled = s.todos.first(where: { $0.state == "CANCELLED" }) else {
+        throw Err("样例里没有 CANCELLED 条目，closed 的取值面没被覆盖")
+    }
+    guard cancelled.isDone, cancelled.stateLabel == "已取消" else {
+        throw Err("CANCELLED 没被当成了结：closed=\(cancelled.closed) "
+                  + "label=\(cancelled.stateLabel)")
+    }
+    guard let waiting = s.todos.first(where: { $0.state == "WAITING" }) else {
+        throw Err("样例里没有 WAITING 条目")
+    }
+    guard !waiting.isDone, waiting.stateLabel == "等回复" else {
+        throw Err("WAITING 的中文说法不对：\(waiting.stateLabel)")
+    }
     // 健康是后加的，两端字段对不上同样会让整份快照解不开。
     guard let h = s.health else { throw Err("health 没解出来") }
     guard h.profile.contains("岁"), !h.vitals.isEmpty, !h.meals.isEmpty else {
@@ -86,6 +101,36 @@ for f in ["mail_list", "mail_error"] {
         let r = try dec.decode(MailResult.self, from: try load("\(f).json"))
         return "items=\(r.items.count) err=\(r.error ?? "-")"
     }
+}
+
+// 出参的**必填键**。
+//
+// 别的断言都是「解得开 + 值对不对」，可 Models.swift 全篇
+// `decodeIfPresent ?? 默认值`（为的是旧 framework 不至于整个解不开），
+// 于是「Go 少给了一个键」永远不会让解码失败——契约测试唯一的失败通道
+// 被那条政策堵死了。closed 就是这么漏过去的：Go 加了字段，手机上装的还是
+// 旧 framework，Swift 悄悄走默认值，测试全绿而界面是错的。
+//
+// 所以这儿绕开模型，直接看 JSON 的键。
+check("Snapshot 的必填键") {
+    let obj = try JSONSerialization.jsonObject(with: try load("snapshot.json")) as! [String: Any]
+    let todos = obj["todos"] as! [[String: Any]]
+    guard let first = todos.first else { throw Err("样例里没有待办") }
+    let want = ["category", "closed", "due", "due_in", "due_kind", "done", "file",
+                "has_notes", "kind", "overdue", "parents", "priority", "ref",
+                "repeat", "state", "state_label", "tags", "time", "title", "total"]
+    let missing = want.filter { first[$0] == nil }
+    guard missing.isEmpty else {
+        throw Err("Item 少了这些键：\(missing)——Swift 那边会悄悄走默认值")
+    }
+    guard let h = obj["health"] as? [String: Any],
+          let vs = h["vitals"] as? [[String: Any]], let v0 = vs.first else {
+        throw Err("样例里没有健康数据")
+    }
+    for k in ["kind", "value", "when", "ago", "trend", "unit", "points"] where v0[k] == nil {
+        throw Err("HealthVital 少了键 \(k)")
+    }
+    return "Item \(want.count) 个键 / HealthVital 7 个键"
 }
 
 // AskInput 方向相反，是 Swift 编码给 Go 的，字段名同样得对上。

@@ -8,7 +8,8 @@ import Mobile
 ///
 /// **两个方法都在后台线程上被调用**，`confirm` 还会一直阻塞到用户点了为止。
 protocol AskEvents: AnyObject {
-    func onStep(kind: String, name: String, text: String)
+    func onStep(kind: String, name: String, label: String, text: String)
+    /// tool 是 Go 查好的**中文标签**，直接显示。
     func onConfirm(tool: String, title: String, detail: String, irreversible: Bool) -> Bool
 }
 
@@ -29,8 +30,9 @@ final class MobileHostAdapter: NSObject, MobileHostProtocol {
         super.init()
     }
 
-    func step(_ kind: String?, name: String?, text: String?) {
-        events?.onStep(kind: kind ?? "", name: name ?? "", text: text ?? "")
+    func step(_ kind: String?, name: String?, label: String?, text: String?) {
+        events?.onStep(kind: kind ?? "", name: name ?? "",
+                       label: label ?? "", text: text ?? "")
     }
 
     func confirm(_ tool: String?, title: String?, detail: String?,

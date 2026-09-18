@@ -10,7 +10,9 @@ final class Store: ObservableObject, AskEvents {
     /// 正等着用户拿主意的那件事。发信这类收不回来的动作会走到这儿。
     @Published var pending: PendingAsk?
 
-    @Published var snapshot = Snapshot.empty
+    @Published var snapshot = Snapshot.empty {
+        didSet { overdueCount = snapshot.todos.filter { $0.overdue }.count }
+    }
     @Published var loading = false
     @Published var lastError: String?
 
@@ -42,10 +44,11 @@ final class Store: ObservableObject, AskEvents {
     /// 那一眼的替代品。逾期是从快照里现算的；未读要读一次本地邮件索引，
     /// 不连网，跟打开邮件页是同一条路。
     @Published var mailUnread = 0
-
-    var overdueCount: Int {
-        snapshot.todos.filter { $0.overdue && !$0.isDone }.count
-    }
+    /// 逾期几条。
+    ///
+    /// 存起来而不是每次现算：ToolStrip 坐在 ChatView 的 body 里，
+    /// 秘书干活时每来一步都会带着它重画，而待办上限是一千条。
+    @Published var overdueCount = 0
 
     /// 正在跑的那次刷新。下拉、切回前台、首次打开三条路会撞上，
     /// 撞上就跟着等前一个，而不是各读各的文件最后谁写谁赢。
@@ -83,10 +86,22 @@ final class Store: ObservableObject, AskEvents {
         defer { loading = false }
 
         do {
-            let (f, l, m, h) = try await Task.detached(priority: .userInitiated) { [vault] in
-                (try vault.readOrgFiles(), try vault.readLedger(),
-                 try vault.readMemory(), try vault.readHealth())
+            // 四个文件之间没有任何依赖，各读各的。
+            // 串着读的话最坏情况是四份 iCloud 下载等待相加——
+            // ensureDownloaded 对没下下来的文件最多干等十秒，四个就是四十秒。
+            async let orgs = Task.detached(priority: .userInitiated) { [vault] in
+                try vault.readOrgFiles()
             }.value
+            async let led = Task.detached(priority: .userInitiated) { [vault] in
+                try vault.readLedger()
+            }.value
+            async let mem = Task.detached(priority: .userInitiated) { [vault] in
+                try vault.readMemory()
+            }.value
+            async let hea = Task.detached(priority: .userInitiated) { [vault] in
+                try vault.readHealth()
+            }.value
+            let (f, l, m, h) = try await (orgs, led, mem, hea)
             files = f
             ledger = l
             memory = m
@@ -100,7 +115,8 @@ final class Store: ObservableObject, AskEvents {
                 lastError = err
             }
             await refreshReminders()
-            await refreshMailBadge()
+            // 徽标不参与首屏，别让加载指示器等这趟盘读。
+            Task { await refreshMailBadge() }
         } catch {
             lastError = "读不到 iCloud 里的内容：\(error.localizedDescription)"
         }
@@ -152,39 +168,8 @@ final class Store: ObservableObject, AskEvents {
         // 秘书改了东西就写回 iCloud，然后重新解析一遍。
         if (out.files?.isEmpty == false) || (out.ledger?.isEmpty == false)
             || (out.memory?.isEmpty == false) || (out.health?.isEmpty == false) {
-            do {
-                let changed = out.files ?? [:]
-                let newLedger = out.ledger
-                let newMemory = out.memory
-                let newHealth = out.health
-                // 把动手前那份一起交上去，写之前对一遍——盘上的要是已经变了，
-                // 说明电脑那头也改过，整文件覆盖会把人家的改动抹掉。
-                // 账本和记忆也要带上动手前那份——它们跟 org 文件一样是
-                // 整文件写回，同样会把另一头的改动抹掉。
-                var before = files
-                before["ledger.dat"] = ledger
-                before["memory.md"] = memory
-                before["health.ndjson"] = health
-                let snapshot = before
-                let conflicts = try await Task.detached(priority: .userInitiated) { [vault] in
-                    try vault.write(orgFiles: changed, ledger: newLedger,
-                                    memory: newMemory, health: newHealth,
-                                    expecting: snapshot)
-                }.value
-                if !conflicts.isEmpty {
-                    lastError = conflictNote(conflicts)
-                    await reload()
-                    return
-                }
-
-                for (name, content) in changed { files[name] = content }
-                if let newLedger { ledger = newLedger }
-                if let newMemory { memory = newMemory }
-                if let newHealth { health = newHealth }
-                await reparse()
-            } catch {
-                lastError = "改动没写回去：\(error.localizedDescription)"
-            }
+            await writeBack(org: out.files ?? [:], ledger: out.ledger,
+                            memory: out.memory, health: out.health)
         }
 
         await refreshIfMissed()
@@ -200,8 +185,8 @@ final class Store: ObservableObject, AskEvents {
     }
 
     /// 干完一步就报上来，不用等整轮结束。
-    nonisolated func onStep(kind: String, name: String, text: String) {
-        let step = Step(kind: kind, name: name, text: text)
+    nonisolated func onStep(kind: String, name: String, label: String, text: String) {
+        let step = Step(kind: kind, name: name, label: label, text: text)
         Task { @MainActor [weak self] in self?.steps.append(step) }
     }
 
@@ -287,23 +272,7 @@ final class Store: ObservableObject, AskEvents {
         guard let merged = r.health, !merged.isEmpty else {
             return r.message   // 一条都没新增，不用碰文件
         }
-        do {
-            let before = health
-            let conflicts = try await Task.detached(priority: .userInitiated) { [vault] in
-                try vault.write(orgFiles: [:], ledger: nil, health: merged,
-                                expecting: ["health.ndjson": before])
-            }.value
-            if !conflicts.isEmpty {
-                lastError = conflictNote(conflicts)
-                await reload()
-                return lastError ?? ""
-            }
-            health = merged
-            await reparse()
-        } catch {
-            lastError = "导进来了但没写回去：\(error.localizedDescription)"
-            return lastError ?? ""
-        }
+        guard await writeBack(health: merged) else { return lastError ?? "" }
         return r.message
     }
 
@@ -359,24 +328,9 @@ final class Store: ObservableObject, AskEvents {
             return false
         }
         guard let changed = r.files, !changed.isEmpty else { return true }
-        do {
-            let before = files
-            let conflicts = try await Task.detached(priority: .userInitiated) { [vault] in
-                try vault.write(orgFiles: changed, ledger: nil, expecting: before)
-            }.value
-            if !conflicts.isEmpty {
-                lastError = conflictNote(conflicts)
-                await reload()
-                return false
-            }
-            for (name, content) in changed { files[name] = content }
-            await reparse()
-            await refreshReminders()
-            return true
-        } catch {
-            lastError = "改动没写回去：\(error.localizedDescription)"
-            return false
-        }
+        guard await writeBack(org: changed) else { return false }
+        await refreshReminders()
+        return true
     }
 
     /// 邮件库放本机，**不进 iCloud**。
@@ -432,6 +386,48 @@ final class Store: ObservableObject, AskEvents {
     ///
     /// 说「保存失败」是不够的——人会以为再点一次就好，而再点一次还是撞。
     /// 得让他知道电脑那头改过、这边的改动没保存、刷新之后重来一次。
+
+    /// 把改动写回 iCloud，写之前先对一遍盘上那份。
+    ///
+    /// 乐观写回是这个 app 里唯一防「电脑那头同时也改了」的机制，原先在
+    /// 三个地方各写了一遍（对话、动作、从「健康」导入），三份已经开始
+    /// 不一样了——错误话不同，有的漏了重排提醒。收成一处。
+    ///
+    /// 返回真表示写成功了；撞上冲突或出错返回假，`lastError` 里有话说。
+    private func writeBack(org: [String: String] = [:],
+                           ledger newLedger: String? = nil,
+                           memory newMemory: String? = nil,
+                           health newHealth: String? = nil) async -> Bool {
+        // 动手前那份一起交上去。盘上的要是已经变了，说明另一头也改过，
+        // 整文件覆盖会把人家的改动抹掉。
+        var before = files
+        before["ledger.dat"] = ledger
+        before["memory.md"] = memory
+        before["health.ndjson"] = health
+        let expecting = before
+        do {
+            let conflicts = try await Task.detached(priority: .userInitiated) { [vault] in
+                try vault.write(orgFiles: org, ledger: newLedger,
+                                memory: newMemory, health: newHealth,
+                                expecting: expecting)
+            }.value
+            if !conflicts.isEmpty {
+                lastError = conflictNote(conflicts)
+                await reload()
+                return false
+            }
+        } catch {
+            lastError = "改动没写回去：\(error.localizedDescription)"
+            return false
+        }
+        for (name, content) in org { files[name] = content }
+        if let newLedger { ledger = newLedger }
+        if let newMemory { memory = newMemory }
+        if let newHealth { health = newHealth }
+        await reparse()
+        return true
+    }
+
     private func conflictNote(_ files: [String]) -> String {
         "电脑那头也改了 \(files.joined(separator: "、"))，"
             + "这次的改动没有保存——已经重新读了一遍，请再操作一次。"

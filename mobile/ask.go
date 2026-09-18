@@ -90,7 +90,13 @@ type AskOutput struct {
 type Step struct {
 	Kind string `json:"kind"` // tool / result / error
 	Name string `json:"name"` // 工具名
-	Text string `json:"text"`
+	// Label 是工具名的中文说法，界面直接显示这个。
+	//
+	// 在这边查好再过桥，不让 Swift 自己维护一张对照表——那张表原先确实
+	// 存在，而且已经跟现实脱节了：留着早就删掉的工具、缺着新加的工具，
+	// 两边谁都不知道对方改了什么。
+	Label string `json:"label"`
+	Text  string `json:"text"`
 }
 
 // Ask 把一句话交给秘书处理，返回答复和要写回的文件。

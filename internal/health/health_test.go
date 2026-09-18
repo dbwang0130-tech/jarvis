@@ -244,7 +244,12 @@ func TestDescribeShowsLatestOfEach(t *testing.T) {
 	var b strings.Builder
 	s.Describe(&b)
 	got := b.String()
-	for _, want := range []string{"41 岁", "体重 72.5kg", "血压 120/80", "小米粥", "这一轮对话开始时"} {
+	// 断言的是**内容**不是排版：项目名、值、时间各自在不在。
+	// 钉住整行的话，调一下列宽就红，而那不是这个测试要守的东西。
+	// （旧版这里把项目名印了两遍——`%-6s` 给 name，`%-16s` 给 label，
+	//  而 label 自己就以项目名打头。换成 Summary 之后没这毛病了。）
+	for _, want := range []string{"41 岁", "体重", "72.5kg", "血压", "120/80 mmHg",
+		"小米粥", "这一轮对话开始时"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("快照里少了 %q：\n%s", want, got)
 		}

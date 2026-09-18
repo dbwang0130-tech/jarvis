@@ -39,6 +39,10 @@ func main() {
 * TODO 每周组会
   SCHEDULED: <2026-09-17 四 10:00 +1w>
 * TODO 没有任何标签的待办
+* CANCELLED 取消掉的事
+CLOSED: [2026-09-15 Tue 10:00] DEADLINE: <2026-09-10 Thu>
+* WAITING 等人回话
+DEADLINE: <2026-09-18 Fri>
 `
 	ledger := `2026/09/01 房租
     Expenses:Housing:Rent          3000.00

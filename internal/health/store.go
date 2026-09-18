@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,13 +19,45 @@ import (
 type Store struct {
 	Path      string
 	Resources []Resource
+
+	// byCode 是 LOINC 码 → 在 Resources 里的下标。
+	//
+	// 没有它的话，「某一项最近一次是多少」要把全部记录扫一遍，而快照要问
+	// 十三项，每轮对话就是十三遍全表扫描。步数一天一条，这个文件只会越来越长。
+	byCode map[string][]int
 }
 
-// Load 读一份健康记录。文件不在不算错——第一次用本来就没有。
+// scan 读 NDJSON。
 //
 // **坏行跳过，不整份作废。** 这个文件可能被别的工具追加过、也可能上次
 // 写到一半断电留了半行。为一行坏数据把用户几年的记录全判死，比丢那一行
 // 糟得多。
+//
+// 只此一份：电脑上读文件、手机上读过桥传来的全文，走的必须是同一套规矩，
+// 否则同一个文件两头读出来的东西会不一样。
+func scan(r io.Reader) ([]Resource, error) {
+	sc := bufio.NewScanner(r)
+	// 一行一条资源，正常都很短；给大一点的缓冲防着某条带长附注的。
+	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	var out []Resource
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var res Resource
+		if err := json.Unmarshal([]byte(line), &res); err != nil || res.ResourceType == "" {
+			continue
+		}
+		// 时间在这儿解析一次就够。留给 when() 现解的话，排序比较器、
+		// 过滤、格式化每碰一次就解一次，一个文件能解上几万遍。
+		res.at = res.parseWhen()
+		out = append(out, res)
+	}
+	return out, sc.Err()
+}
+
+// Load 读一份健康记录。文件不在不算错——第一次用本来就没有。
 func Load(path string) (*Store, error) {
 	s := &Store{Path: path}
 	if strings.TrimSpace(path) == "" {
@@ -39,21 +72,40 @@ func Load(path string) (*Store, error) {
 	}
 	defer f.Close()
 
-	sc := bufio.NewScanner(f)
-	// 一行一条资源，正常都很短；给大一点的缓冲防着某条带长附注的。
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
-		}
-		var r Resource
-		if err := json.Unmarshal([]byte(line), &r); err != nil || r.ResourceType == "" {
-			continue
-		}
-		s.Resources = append(s.Resources, r)
+	s.Resources, err = scan(f)
+	s.reindex()
+	return s, err
+}
+
+// LoadString 从一份 NDJSON 全文里读记录。手机那边文件内容是过桥传进来的，
+// 不落盘，所以不能走 Load。
+func LoadString(raw string) (*Store, error) {
+	s := &Store{}
+	var err error
+	s.Resources, err = scan(strings.NewReader(raw))
+	s.reindex()
+	return s, err
+}
+
+// codes 是「LOINC 码 → 下标」，第一次用到时才建。
+//
+// 必须走这个口子，别直接摸 byCode：Store 有好几条不经过 scan 的出生路径
+// （文件不存在、没配路径、New 里读失败兜底的那份），它们的 byCode 是 nil，
+// 直接 append 进去就是空指针 panic——手机上崩一次就是整个 app 挂掉。
+func (s *Store) codes() map[string][]int {
+	if s.byCode == nil {
+		s.reindex()
 	}
-	return s, sc.Err()
+	return s.byCode
+}
+
+func (s *Store) reindex() {
+	s.byCode = make(map[string][]int, len(vitalList))
+	for i := range s.Resources {
+		if c := s.Resources[i].codeValue(); c != "" {
+			s.byCode[c] = append(s.byCode[c], i)
+		}
+	}
 }
 
 // marshalLine 把一条资源序列化成文件里的一行（**带换行**）。
@@ -68,12 +120,54 @@ func marshalLine(r Resource) (string, error) {
 	return string(raw) + "\n", nil
 }
 
+// Lines 把资源序列化成文件里的那几行（各自带换行）。
+func Lines(rs []Resource) (string, error) {
+	var b strings.Builder
+	for _, r := range rs {
+		line, err := marshalLine(r)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(line)
+	}
+	return b.String(), nil
+}
+
+// AppendTo 把几条接到一份已有的全文后面，返回新的全文。
+//
+// 手机上 Go 碰不了 iCloud 里的文件（沙箱授权、占位符、写协调那些讲究都在
+// Swift 那边），所以那条路要的是「并出新全文」而不是落盘。
+// 「一行一条、接之前先确保有换行」这条格式规矩收在这儿，桥那层不用知道。
+func AppendTo(existing string, rs []Resource) (string, error) {
+	lines, err := Lines(rs)
+	if err != nil {
+		return "", err
+	}
+	if lines == "" {
+		return existing, nil
+	}
+	if existing != "" && !strings.HasSuffix(existing, "\n") {
+		existing += "\n"
+	}
+	return existing + lines, nil
+}
+
 // Append 追加一条。
-func (s *Store) Append(r Resource) error {
+func (s *Store) Append(r Resource) error { return s.AppendAll([]Resource{r}) }
+
+// AppendAll 一次写多条。
+//
+// 一条一次的话，导三个月的数据就是几百次开文件、写、关文件；更要紧的是
+// 中间失败会留下一半——而这个文件没有「撤销」。攒成一次写下去，
+// 要么整批进去，要么一条都没进。
+func (s *Store) AppendAll(rs []Resource) error {
+	if len(rs) == 0 {
+		return nil
+	}
 	if strings.TrimSpace(s.Path) == "" {
 		return fmt.Errorf("还没配健康记录文件")
 	}
-	line, err := marshalLine(r)
+	text, err := Lines(rs)
 	if err != nil {
 		return err
 	}
@@ -85,10 +179,16 @@ func (s *Store) Append(r Resource) error {
 		return fmt.Errorf("打开健康记录失败: %w", err)
 	}
 	defer f.Close()
-	if _, err := f.WriteString(line); err != nil {
+	if _, err := f.WriteString(text); err != nil {
 		return fmt.Errorf("写入健康记录失败: %w", err)
 	}
-	s.Resources = append(s.Resources, r)
+	idx := s.codes()
+	for _, r := range rs {
+		if c := r.codeValue(); c != "" {
+			idx[c] = append(idx[c], len(s.Resources))
+		}
+		s.Resources = append(s.Resources, r)
+	}
 	return nil
 }
 
@@ -106,32 +206,37 @@ func (s *Store) Patient() (Resource, bool) {
 
 // Latest 返回某个体征最近一次的记录。
 func (s *Store) Latest(name string) (Resource, bool) {
-	v, ok := vitals[name]
-	if !ok {
+	h := s.history(name)
+	if len(h) == 0 {
 		return Resource{}, false
 	}
-	var best Resource
-	found := false
-	for _, r := range s.Resources {
-		if r.Code == nil || len(r.Code.Coding) == 0 || r.Code.Coding[0].Code != v.Code {
-			continue
-		}
-		if !found || r.when().After(best.when()) {
-			best, found = r, true
-		}
-	}
-	return best, found
+	return h[len(h)-1], true
 }
 
 // Recent 返回最近的记录，新的在前。kind 为空表示不限种类，
 // 也可以是 "饮食" 或某个体征名。
 func (s *Store) Recent(kind string, since time.Time, limit int) []Resource {
+	// 种类规整和查表在循环外做一次。写在循环里的话，每条记录都要
+	// TrimSpace 一遍、查一次 map。
+	kind = strings.TrimSpace(kind)
+	meals := kind == "饮食"
+	code := ""
+	if !meals && kind != "" {
+		v, ok := vitals[kind]
+		if !ok {
+			return nil
+		}
+		code = v.Code
+	}
 	var out []Resource
 	for _, r := range s.Resources {
 		if r.ResourceType == "Patient" {
 			continue
 		}
-		if !matches(r, kind) {
+		if code != "" && !r.hasCode(code) {
+			continue
+		}
+		if meals && r.ResourceType != "NutritionIntake" {
 			continue
 		}
 		if !since.IsZero() && r.when().Before(since) {
@@ -144,21 +249,6 @@ func (s *Store) Recent(kind string, since time.Time, limit int) []Resource {
 		out = out[:limit]
 	}
 	return out
-}
-
-func matches(r Resource, kind string) bool {
-	kind = strings.TrimSpace(kind)
-	if kind == "" {
-		return true
-	}
-	if kind == "饮食" {
-		return r.ResourceType == "NutritionIntake"
-	}
-	v, ok := vitals[kind]
-	if !ok {
-		return false
-	}
-	return r.Code != nil && len(r.Code.Coding) > 0 && r.Code.Coding[0].Code == v.Code
 }
 
 // bmi 按最近的身高算 BMI。没量过身高就算不出来，返回 false——

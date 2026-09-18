@@ -2,6 +2,7 @@ package health
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -55,18 +56,19 @@ func (s *Skill) Describe(b *strings.Builder) {
 
 	// 最近一次的关键指标。这里是模型判断「这次量的数正不正常、
 	// 跟上次比怎么样」的唯一依据——不给的话它只能问用户上次多少。
-	var lines []string
-	for _, name := range vitalNames {
-		r, ok := s.Store.Latest(name)
-		if !ok {
-			continue
-		}
-		lines = append(lines, fmt.Sprintf("  %-6s %-16s %s",
-			name, r.label(), agoCN(r.when(), s.now())))
-	}
-	if len(lines) > 0 {
+	//
+	// 跟界面用的是**同一个投影**（Summary）。各算各的话，「界面上显示的
+	// 最近一次」和「模型看到的最近一次」迟早口径不同，而那种不一致
+	// 最难查——两边都说自己没错。
+	if sums := s.Store.Summary(s.now()); len(sums) > 0 {
 		b.WriteString("最近一次测量（**截至这一轮对话开始时**）：\n")
-		b.WriteString(strings.Join(lines, "\n") + "\n")
+		for _, v := range sums {
+			line := fmt.Sprintf("  %-6s %-16s %s", v.Kind, v.Value, v.Ago)
+			if v.Trend != "" {
+				line += "（较上次 " + v.Trend + "）"
+			}
+			b.WriteString(line + "\n")
+		}
 	}
 
 	if meals := s.Store.Recent("饮食", s.now().AddDate(0, 0, -1), 6); len(meals) > 0 {
@@ -170,7 +172,7 @@ func (s *Skill) toolRecordVital() agent.Tool {
 			}
 			kind := strings.TrimSpace(a.Kind)
 			v, ok := vitals[kind]
-			if !ok {
+			if !ok || v.Sub {
 				return "", false, fmt.Errorf("不认得「%s」，能记的是：%s",
 					kind, strings.Join(vitalNames, "、"))
 			}
@@ -179,42 +181,62 @@ func (s *Skill) toolRecordVital() agent.Tool {
 				return "", false, err
 			}
 
-			if kind == "血压" {
-				if a.Systolic == nil || a.Diastolic == nil {
-					return "", false, fmt.Errorf("血压要同时给 systolic 和 diastolic")
-				}
-				if err := rangeCheck("收缩压", *a.Systolic); err != nil {
-					return "", false, err
-				}
-				if err := rangeCheck("舒张压", *a.Diastolic); err != nil {
-					return "", false, err
-				}
-				r := newBloodPressure(*a.Systolic, *a.Diastolic, at, a.Note)
-				return s.appendAndReport(kind, r)
-			}
-
-			if a.Value == nil {
-				return "", false, fmt.Errorf("要给 value")
-			}
-			if err := rangeCheck(kind, *a.Value); err != nil {
+			v1, v2, err := valuesFor(v, a.Value, a.Systolic, a.Diastolic)
+			if err != nil {
 				return "", false, err
 			}
-			r := newObservation(kind, v, *a.Value, at, a.Note)
-			msg, _, err := s.appendAndReport(kind, r)
-			if err != nil || kind != "体重" {
-				return msg, false, err
-			}
-			// 量了体重顺手把 BMI 也记上。这是**能算准**的派生值
-			// （身高在库里），交给模型自己乘除只会时对时错。
-			if b, ok := s.Store.bmi(*a.Value); ok {
-				bv := vitals["BMI"]
-				if err := s.Store.Append(newObservation("BMI", bv, round1(b), at, "按最近一次身高算")); err == nil {
-					msg += fmt.Sprintf("\nBMI %.1f（按最近一次身高算）", b)
+			r, err := NewVital(kind, v1, v2, at, a.Note)
+			if err != nil {
+				// 范围不对就多说一句「是不是点错了小数点」——手记这条路上
+				// 错误是给模型看的，它该回头跟用户确认，不是默默丢掉。
+				if errors.Is(err, ErrOutOfRange) {
+					return "", false, fmt.Errorf("%w——是不是点错了小数点？"+
+						"确实是这个数的话，跟用户确认一下再记", err)
 				}
+				return "", false, err
 			}
-			return msg, false, nil
+			msg, _, err := s.appendAndReport(kind, r)
+			if err != nil {
+				return "", false, err
+			}
+			return msg + s.deriveBMI(kind, v1, at), false, nil
 		},
 	}
+}
+
+// valuesFor 把入参里的几个可选数摆成 NewVital 要的两个位置。
+//
+// 带分项的（血压）两个都得给；单值的只看 value。
+func valuesFor(v vital, value, systolic, diastolic *float64) (float64, float64, error) {
+	if len(v.Parts) == 2 {
+		if systolic == nil || diastolic == nil {
+			return 0, 0, fmt.Errorf("%s 要同时给 systolic 和 diastolic", v.Name)
+		}
+		return *systolic, *diastolic, nil
+	}
+	if value == nil {
+		return 0, 0, fmt.Errorf("要给 value")
+	}
+	return *value, 0, nil
+}
+
+// deriveBMI 量了体重就顺手把 BMI 也记上，返回要补进回话的那句。
+//
+// 这是**能算准**的派生值（身高在库里），交给模型自己乘除只会时对时错。
+// 没量过身高就算不出来，返回空串——拿个默认身高凑一个数，比不给更糟。
+func (s *Skill) deriveBMI(kind string, weightKg float64, at time.Time) string {
+	if kind != "体重" {
+		return ""
+	}
+	b, ok := s.Store.bmi(weightKg)
+	if !ok {
+		return ""
+	}
+	r, err := NewVital("BMI", round1(b), 0, at, "按最近一次身高算")
+	if err != nil || s.Store.Append(r) != nil {
+		return ""
+	}
+	return fmt.Sprintf("\nBMI %.1f（按最近一次身高算）", b)
 }
 
 // appendAndReport 写进去，并把「上一次是多少」一起说出来。
@@ -277,7 +299,7 @@ func (s *Skill) toolRecordMeal() agent.Tool {
 			if err != nil {
 				return "", false, err
 			}
-			r := newMeal(meal, meal, items, a.Kcal, at, a.Note)
+			r := newMeal(meal, items, a.Kcal, at, a.Note)
 			if err := s.Store.Append(r); err != nil {
 				return "", false, err
 			}
@@ -359,7 +381,7 @@ func (s *Skill) toolListHealth() agent.Tool {
 			}
 			recs := s.Store.Recent(kind, s.now().AddDate(0, 0, -days), limit)
 			if len(recs) == 0 {
-				return fmt.Sprintf("最近 %d 天没有%s记录。\n", days, or(kind, "")), false, nil
+				return fmt.Sprintf("最近 %d 天没有%s记录。\n", days, kind), false, nil
 			}
 			var b strings.Builder
 			fmt.Fprintf(&b, "最近 %d 天共 %d 条：\n", days, len(recs))
@@ -369,23 +391,6 @@ func (s *Skill) toolListHealth() agent.Tool {
 			return b.String(), false, nil
 		},
 	}
-}
-
-// rangeCheck 拦明显不可能的数。
-//
-// 挡的是打错小数点这类事：体重 725 公斤、体温 368 度。这种数一旦记进去，
-// 以后看趋势的图就全毁了，而当时用户多半没注意到。
-func rangeCheck(kind string, v float64) error {
-	spec, ok := vitals[kind]
-	if !ok || (spec.Low == 0 && spec.High == 0) {
-		return nil
-	}
-	if v < spec.Low || v > spec.High {
-		return fmt.Errorf("%s %s%s 不像是真的（正常应在 %s~%s%s）——是不是点错了小数点？"+
-			"确实是这个数的话，跟用户确认一下再记",
-			kind, trimNum(v), spec.Unit, trimNum(spec.Low), trimNum(spec.High), spec.Unit)
-	}
-	return nil
 }
 
 func parseAt(s string, now time.Time) (time.Time, error) {

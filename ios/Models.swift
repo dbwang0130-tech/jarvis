@@ -31,6 +31,9 @@ struct Item: Codable, Identifiable, Hashable {
     /// 别的。这边写死成 `state == "DONE"` 的时候，取消掉的事跑到
     /// 「逾期」里去了。
     var closed = false
+    /// 状态给人看的说法（「待办」「等回复」）。由 Go 给——
+    /// 关键字集合是每份 org 文件用 `#+TODO:` 自己定的，这边不可能知道。
+    var stateLabel = ""
     var category: String
 
     /// 归到哪一天（截止优先于计划），空表示没排期；距今几天，负数是过去了。
@@ -50,6 +53,7 @@ struct Item: Codable, Identifiable, Hashable {
         case ref, kind, time, state, priority, title, parents, tags, done, total
         case repeatRule = "repeat"
         case overdue, closed, category
+        case stateLabel = "state_label"
         case due
         case dueIn = "due_in"
         case dueKind = "due_kind"
@@ -63,24 +67,6 @@ struct Item: Codable, Identifiable, Hashable {
     }
 
     var isDone: Bool { closed }
-
-    /// 状态给人看的说法。
-    ///
-    /// org 里的关键字是英文的（而且文件里用 `#+TODO:` 还能自定义），
-    /// 原样摆在界面上是把文件格式漏给了用户——他要的是「等回复」，
-    /// 不是「WAITING」。认不出来的照原样显示，总比显示空白强。
-    var stateLabel: String {
-        switch state {
-        case "TODO": return "待办"
-        case "NEXT": return "下一步"
-        case "WAITING": return "等回复"
-        case "HOLD": return "搁置"
-        case "SOMEDAY": return "将来"
-        case "DONE": return "已完成"
-        case "CANCELLED", "CANCELED": return "已取消"
-        default: return state
-        }
-    }
 
     /// 一句话说清它什么时候到期：今天、明天、过期 3 天、9/20。
     /// 「2026-09-20」要在脑子里减一次才知道远近，「后天」不用。
@@ -124,7 +110,12 @@ extension Item {
         total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
         repeatRule = try c.decodeIfPresent(String.self, forKey: .repeatRule) ?? ""
         overdue = try c.decodeIfPresent(Bool.self, forKey: .overdue) ?? false
-        closed = try c.decodeIfPresent(Bool.self, forKey: .closed) ?? (state == "DONE")
+        // **不猜。** 这里原先写 `?? (state == "DONE")`，而那正是要修的那段
+        // 错误逻辑——Go 那头一旦是旧的（比如 framework 没重编），CANCELLED
+        // 又悄悄回到逾期里，还没有任何信号指向真正的原因。宁可全都当成
+        // 没了结，那至少是看得见的不对劲。
+        closed = try c.decodeIfPresent(Bool.self, forKey: .closed) ?? false
+        stateLabel = try c.decodeIfPresent(String.self, forKey: .stateLabel) ?? state
         category = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
         due = try c.decodeIfPresent(String.self, forKey: .due) ?? ""
         dueIn = try c.decodeIfPresent(Int.self, forKey: .dueIn) ?? 0
@@ -249,7 +240,12 @@ struct HealthPoint: Codable, Hashable, Identifiable {
 
     var id: String { t }
 
-    var date: Date { HealthPoint.parser.date(from: t) ?? .distantPast }
+    /// 解析好的时刻。
+    ///
+    /// **在解码时解一次**，不做成计算属性。图上可能有几百个点，而每个点
+    /// 在一次 body 里要被读四五遍（过滤、连线、画点、列表）——现算的话
+    /// 就是几万次 ISO8601 解析，切一下区间卡一下。
+    let date: Date
 
     // v2 只有血压才有，Go 那边是 omitempty——绝大多数点根本没这个键。
     // 合成的解码器对非可选字段一律要求键存在（有默认值也不行），
@@ -259,7 +255,10 @@ struct HealthPoint: Codable, Hashable, Identifiable {
         t = try c.decodeIfPresent(String.self, forKey: .t) ?? ""
         v = try c.decodeIfPresent(Double.self, forKey: .v) ?? 0
         v2 = try c.decodeIfPresent(Double.self, forKey: .v2) ?? 0
+        date = HealthPoint.parser.date(from: t) ?? .distantPast
     }
+
+    enum CodingKeys: String, CodingKey { case t, v, v2 }
 
     /// 解析器建一次就够。每个点各建一个的话，一屏几百个点就是几百次
     /// DateFormatter 初始化——那玩意儿出了名的慢。
@@ -555,8 +554,32 @@ struct ToolFunction: Codable, Hashable {
 struct Step: Codable, Identifiable, Hashable {
     var kind: String   // tool / result / error
     var name: String
+    /// 工具名的中文说法，直接显示这个。
+    ///
+    /// 由 Go 查好了送过来。这边原先自己维护着一张对照表，跟桌面端那张
+    /// 无人对账——结果它留着早就删掉的 read_mail、挂着五个根本不存在的
+    /// 工具，而新加的健康那四个一个都没补。表现在只有一份。
+    var label: String = ""
     var text: String
     var id: String { kind + name + text }
+
+    /// 没有标签（旧 framework）就退回工具名，总比空着强。
+    var display: String { label.isEmpty ? name : label }
+
+    init(kind: String, name: String, label: String, text: String) {
+        self.kind = kind
+        self.name = name
+        self.label = label
+        self.text = text
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+    }
 }
 
 struct ModelConfig: Codable {

@@ -9,8 +9,12 @@ import "github.com/dabao/jarvis/internal/agent"
 // 界面那头要把弹窗切到主线程，然后让这个调用等着。
 type Host interface {
 	// Step 报告一步进展。kind 是 tool / result / error。
-	Step(kind, name, text string)
+	// label 是工具名的中文说法（agent.ToolLabel 查好的），界面直接显示。
+	Step(kind, name, label, text string)
 	// Confirm 问用户批不批。返回 false 就是不批，这一步不会执行。
+	//
+	// tool 给的是**中文标签**（agent.ToolLabel 查好的），界面直接显示——
+	// 界面那边不该再维护一张工具名对照表，两份表迟早走散。
 	// irreversible 为真表示做了收不回来（比如发信）。
 	Confirm(tool, title, detail string, irreversible bool) bool
 }
@@ -39,7 +43,7 @@ func hostEmit(host Host, steps *[]Step) func(agent.Event) {
 			}
 			ok := false
 			if host != nil {
-				ok = host.Confirm(p.Tool, p.Title, p.Detail,
+				ok = host.Confirm(agent.ToolLabel(p.Tool), p.Title, p.Detail,
 					p.Risk == agent.RiskIrreversible)
 			}
 			if !ok {
@@ -51,8 +55,9 @@ func hostEmit(host Host, steps *[]Step) func(agent.Event) {
 }
 
 func record(steps *[]Step, host Host, kind, name, text string) {
-	*steps = append(*steps, Step{Kind: kind, Name: name, Text: text})
+	label := agent.ToolLabel(name)
+	*steps = append(*steps, Step{Kind: kind, Name: name, Label: label, Text: text})
 	if host != nil {
-		host.Step(kind, name, text)
+		host.Step(kind, name, label, text)
 	}
 }

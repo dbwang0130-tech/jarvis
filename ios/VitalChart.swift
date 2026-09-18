@@ -11,8 +11,12 @@ struct Sparkline: View {
     var tint: Color = Brand.primary
 
     var body: some View {
-        Chart(points) { p in
-            LineMark(x: .value("时间", p.date), y: .value("值", p.v))
+        // 血压一条记录有两个数，两条线都画——只画收缩压的话，
+        // 卡片上那条小线跟点进去看到的图对不上。
+        let paired = points.contains { $0.v2 > 0 }
+        return Chart(points) { p in
+            LineMark(x: .value("时间", p.date), y: .value("值", p.v),
+                     series: .value("线", "主"))
                 .interpolationMethod(.monotone)
                 .lineStyle(.init(lineWidth: 1.6, lineCap: .round))
             AreaMark(x: .value("时间", p.date), y: .value("值", p.v))
@@ -20,6 +24,13 @@ struct Sparkline: View {
                 .foregroundStyle(
                     LinearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
                                    startPoint: .top, endPoint: .bottom))
+            if paired {
+                LineMark(x: .value("时间", p.date), y: .value("值", p.v2),
+                         series: .value("线", "次"))
+                    .interpolationMethod(.monotone)
+                    .lineStyle(.init(lineWidth: 1.2, lineCap: .round))
+                    .foregroundStyle(tint.opacity(0.5))
+            }
         }
         .foregroundStyle(tint)
         .chartXAxis(.hidden)
@@ -63,7 +74,13 @@ struct VitalDetail: View {
     private var isPaired: Bool { vital.points.contains { $0.v2 > 0 } }
 
     var body: some View {
-        NavigationStack {
+        // **在这儿算一次，往下都传值。** `shown` 和 `isPaired` 都是计算属性，
+        // 写在 chart / stats / readings 里各读一次，就是把整个数组各扫一遍；
+        // 更糟的是把它们写进 ForEach 的闭包里——那会变成每画一个点扫一遍全部点。
+        let pts = shown
+        let paired = isPaired
+        let dot: CGFloat = pts.count > 40 ? 8 : 26
+        return NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Picker("看多久", selection: $span) {
@@ -71,9 +88,9 @@ struct VitalDetail: View {
                     }
                     .pickerStyle(.segmented)
 
-                    if shown.count >= 2 {
-                        chart
-                        stats
+                    if pts.count >= 2 {
+                        chart(pts, paired: paired, dot: dot)
+                        stats(pts)
                     } else {
                         VStack(spacing: 6) {
                             Image(systemName: "chart.xyaxis.line")
@@ -89,7 +106,7 @@ struct VitalDetail: View {
                     }
 
                     SectionLabel(text: "每一次", icon: "list.bullet")
-                    readings
+                    readings(pts, paired: paired)
                 }
                 .padding()
             }
@@ -106,26 +123,26 @@ struct VitalDetail: View {
 
     // MARK: - 图
 
-    private var chart: some View {
+    private func chart(_ pts: [HealthPoint], paired: Bool, dot: CGFloat) -> some View {
         Chart {
-            ForEach(shown) { p in
+            ForEach(pts) { p in
                 LineMark(x: .value("时间", p.date), y: .value(vital.kind, p.v),
                          series: .value("线", "主"))
                     .interpolationMethod(.monotone)
                     .foregroundStyle(Brand.primary)
                 PointMark(x: .value("时间", p.date), y: .value(vital.kind, p.v))
                     .foregroundStyle(Brand.primary)
-                    .symbolSize(pointSize)
+                    .symbolSize(dot)
             }
-            if isPaired {
-                ForEach(shown) { p in
+            if paired {
+                ForEach(pts) { p in
                     LineMark(x: .value("时间", p.date), y: .value("舒张压", p.v2),
                              series: .value("线", "次"))
                         .interpolationMethod(.monotone)
                         .foregroundStyle(Brand.accent)
                     PointMark(x: .value("时间", p.date), y: .value("舒张压", p.v2))
                         .foregroundStyle(Brand.accent)
-                        .symbolSize(pointSize)
+                        .symbolSize(dot)
                 }
             }
         }
@@ -135,7 +152,7 @@ struct VitalDetail: View {
             AxisMarks { v in
                 AxisGridLine()
                 AxisValueLabel {
-                    if let d = v.as(Double.self) { Text(trim(d)) }
+                    if let d = v.as(Double.self) { Text(trimZeros(d)) }
                 }
             }
         }
@@ -158,20 +175,18 @@ struct VitalDetail: View {
             + "再量一次，或者跟 Jarvis 说一句就记上了。"
     }
 
-    /// 点密了就把点收小，不然连成一条粗带子。
-    private var pointSize: CGFloat { shown.count > 40 ? 8 : 26 }
-
     // MARK: - 这段时间的概况
 
-    private var stats: some View {
-        let vs = shown.map(\.v)
+    /// 点密了把点收小（上面那个 dot），不然连成一条粗带子。
+    private func stats(_ pts: [HealthPoint]) -> some View {
+        let vs = pts.map(\.v)
         let first = vs.first ?? 0
         let last = vs.last ?? 0
         return HStack(spacing: 10) {
-            stat("最低", trim(vs.min() ?? 0))
-            stat("最高", trim(vs.max() ?? 0))
-            stat("平均", trim(vs.reduce(0, +) / Double(max(vs.count, 1))))
-            stat("这段变化", (last - first >= 0 ? "+" : "-") + trim(abs(last - first)))
+            stat("最低", trimZeros(vs.min() ?? 0))
+            stat("最高", trimZeros(vs.max() ?? 0))
+            stat("平均", trimZeros(vs.reduce(0, +) / Double(max(vs.count, 1))))
+            stat("这段变化", (last - first >= 0 ? "+" : "-") + trimZeros(abs(last - first)))
         }
     }
 
@@ -189,10 +204,10 @@ struct VitalDetail: View {
 
     // MARK: - 一条条读数
 
-    private var readings: some View {
+    private func readings(_ pts: [HealthPoint], paired: Bool) -> some View {
         VStack(spacing: 0) {
             // 新的在上面：要看的多半是最近这几次。
-            let rows = Array(shown.reversed().enumerated())
+            let rows = Array(pts.reversed().enumerated())
             ForEach(rows, id: \.offset) { i, p in
                 if i > 0 { Divider().padding(.leading, 12) }
                 HStack {
@@ -200,8 +215,8 @@ struct VitalDetail: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(isPaired ? "\(trim(p.v))/\(trim(p.v2)) \(vital.unit)"
-                                  : trim(p.v) + vital.unit)
+                    Text(paired ? "\(trimZeros(p.v))/\(trimZeros(p.v2)) \(vital.unit)"
+                                : trimZeros(p.v) + vital.unit)
                         .font(.subheadline.monospacedDigit())
                 }
                 .padding(.horizontal, 12).padding(.vertical, 9)
@@ -210,11 +225,5 @@ struct VitalDetail: View {
         .glassEffect(.regular, in: .rect(cornerRadius: Brand.radius))
     }
 
-    /// 72.50 写成 72.5、8000.00 写成 8000——步数后面挂两位小数不像步数。
-    private func trim(_ d: Double) -> String {
-        var s = String(format: "%.2f", d)
-        while s.hasSuffix("0") { s.removeLast() }
-        if s.hasSuffix(".") { s.removeLast() }
-        return s
-    }
 }
+

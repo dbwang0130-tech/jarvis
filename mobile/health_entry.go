@@ -3,7 +3,6 @@ package mobile
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/dabao/jarvis/internal/health"
 )
@@ -50,7 +49,9 @@ func ImportHealth(inputJSON string) string {
 	// 没有路径，写盘那条走不通——这里要的是「并出一份新全文」，
 	// 落盘交给 Swift 那边的 Vault（它才知道 iCloud 的讲究）。
 	fresh, res := st.PrepareImport(in.Samples)
-	lines, err := health.Lines(fresh)
+	// 「一行一条、接之前先确保有换行」是 NDJSON 的格式规矩，收在 health
+	// 包里——桥这层不该知道这个文件长什么样。
+	merged, err := health.AppendTo(in.Health, fresh)
 	if err != nil {
 		return marshal(&HealthImportOutput{Error: err.Error()})
 	}
@@ -59,17 +60,7 @@ func ImportHealth(inputJSON string) string {
 		Message: res.Summary(),
 	}
 	if res.Added > 0 {
-		out.Health = ensureNewline(in.Health) + lines
+		out.Health = merged
 	}
 	return marshal(out)
 }
-
-// ensureNewline 保证接着往下写的时候不会跟最后一条挤在同一行。
-func ensureNewline(s string) string {
-	if s == "" || strings.HasSuffix(s, "\n") {
-		return s
-	}
-	return s + "\n"
-}
-
-func (o *HealthImportOutput) normalize() {}

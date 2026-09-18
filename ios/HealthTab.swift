@@ -191,20 +191,3 @@ struct VitalCard: View {
         vital.trend == "持平" ? .secondary : Brand.primary
     }
 }
-
-/// 小标题。日程、财务、健康几处都在用同一个样子。
-struct SectionLabel: View {
-    let text: String
-    var icon: String?
-
-    var body: some View {
-        HStack(spacing: 6) {
-            if let icon {
-                Image(systemName: icon).font(.caption2)
-            }
-            Text(text).font(.subheadline.weight(.semibold))
-        }
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 4)
-    }
-}

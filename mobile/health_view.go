@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"sync"
 	"time"
 
 	"github.com/dabao/jarvis/internal/health"
@@ -68,10 +69,42 @@ func (v *HealthView) normalize() {
 	}
 }
 
+// healthCache 缓存上一次解析出来的记录。
+//
+// 跟 org 那边的 collectCached 同一个理由：下拉刷新、切回前台、每轮对话
+// 之后的重解析——这些时刻健康记录几乎总是**逐字节相同**，重解一遍纯属
+// 白做。步数一天一条，文件只会越长，白做的代价也跟着涨。
+//
+// 不用哈希：org 那边入参是一张 map 才需要摊平成一个键，这里只有一个
+// 字符串，直接比就是了（先比长度再 memcmp，兆字节级也是微秒）。
+var (
+	healthMu    sync.Mutex
+	healthRaw   string
+	healthStore *health.Store
+)
+
+// healthCached 解析一份健康记录，内容没变就复用上次那份。
+//
+// 缓存的是**解析结果**而不是 HealthView：`now` 会变，「3 天前」这类
+// 说法每次都得重算。
+func healthCached(raw string) *health.Store {
+	healthMu.Lock()
+	defer healthMu.Unlock()
+	if healthStore != nil && healthRaw == raw {
+		return healthStore
+	}
+	st, err := health.LoadString(raw)
+	if err != nil {
+		return nil
+	}
+	healthRaw, healthStore = raw, st
+	return st
+}
+
 // buildHealth 把健康记录整理成界面要的样子。
 func buildHealth(raw string, now time.Time) *HealthView {
-	st, err := health.LoadString(raw)
-	if err != nil || st == nil {
+	st := healthCached(raw)
+	if st == nil {
 		return nil
 	}
 	v := &HealthView{Total: len(st.Resources)}

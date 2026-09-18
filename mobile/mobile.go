@@ -180,6 +180,11 @@ type Item struct {
 	Total    int      `json:"total"` //
 	Repeat   string   `json:"repeat"`
 	Overdue  bool     `json:"overdue"`
+	// StateLabel 是 State 给人看的说法（「待办」「等回复」）。
+	//
+	// 翻译放在这边：了结用哪几个关键字、还有哪些自定义状态，是每份 org
+	// 文件用 `#+TODO:` 自己定的，界面那头不可能知道。认不出来的原样给回去。
+	StateLabel string `json:"state_label"`
 	// Closed 表示这条已经了结了——**做完了或者取消了都算**。
 	//
 	// 这件事必须由 Go 说了算：了结用哪几个关键字是每份 org 文件自己定的
@@ -656,6 +661,32 @@ func buildTodos(c *org.Collection, limit int) (items []Item, total int) {
 	return out, total
 }
 
+// stateLabelCN 把 org 的状态关键字翻成人话。
+//
+// 原样摆在界面上等于把文件格式漏给了用户——他要的是「等回复」，
+// 不是「WAITING」。文件里用 `#+TODO:` 自定义的关键字认不出来，
+// 就照原样显示，总比空着强。
+func stateLabelCN(state string) string {
+	switch state {
+	case "TODO":
+		return "待办"
+	case "NEXT":
+		return "下一步"
+	case "WAITING":
+		return "等回复"
+	case "HOLD":
+		return "搁置"
+	case "SOMEDAY":
+		return "将来"
+	case "DONE":
+		return "已完成"
+	case "CANCELLED", "CANCELED":
+		return "已取消"
+	default:
+		return state
+	}
+}
+
 func toItem(it agenda.Item) Item {
 	n := it.Node
 	out := Item{
@@ -668,6 +699,7 @@ func toItem(it agenda.Item) Item {
 		Category: it.Category(),
 		Closed:   n.IsDone(),
 	}
+	out.StateLabel = stateLabelCN(n.TODO)
 	if it.HasTime {
 		out.Time = it.Start.Format("15:04")
 		if it.Time != nil && it.Time.HasEnd() {

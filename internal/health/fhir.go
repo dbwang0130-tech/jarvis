@@ -16,7 +16,9 @@
 package health
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -100,6 +102,11 @@ type Resource struct {
 
 	// NutritionIntake
 	ConsumedItem []ConsumedItem `json:"consumedItem,omitempty"`
+
+	// at 是解析好的时间。不导出所以不进 JSON——它是从 EffectiveTime /
+	// OccurrenceISO 算出来的缓存，不是新数据。读进来时解析一次，
+	// 排序比较器、过滤、格式化就都不用再解了。
+	at time.Time
 }
 
 // Annotation 是附注。
@@ -114,9 +121,13 @@ type ConsumedItem struct {
 	Amount        *Quantity       `json:"amount,omitempty"`
 }
 
-// vital 是一种体征的说明书：中文名对到哪个 LOINC 码、单位是什么、
-// 归到哪一类、合理范围在哪儿。
+// vital 是一种体征的说明书。
+//
+// **关于这种体征的全部事实都写在这儿**，别在调用点上写 if。
+// 之前 `kind == "BMI"`（派生值不从外部导）和 `kind == "血压"`（一条带两个
+// 分项）这两条就散在导入和记录两条路上，加第三条录入路径时又得抄一遍。
 type vital struct {
+	Name    string  // 中文名，用户和模型说的就是这个
 	Code    string  // LOINC
 	Display string  // LOINC 的英文名，导出去别人要看的
 	Unit    string  // 给人看的单位
@@ -124,34 +135,58 @@ type vital struct {
 	Cat     string  // FHIR observation-category
 	Low     float64 // 低于这个数就是明显不对，多半是打错了
 	High    float64
+	// Derived 表示这个值是**算出来的**（现在只有 BMI）。算出来的不从外面导：
+	// 搬一份进来，万一那边的身高跟这边不一样，就会跟自己算的那条打架。
+	Derived bool
+	// Parts 是分项名。非空表示这一项在 FHIR 里是**一条带分项的记录**
+	// （血压就是收缩压 + 舒张压）。分开记两条的话，别的系统读进去
+	// 不知道这两个数是一次量的。
+	Parts []string
+	// Sub 表示它只作为别人的分项存在，自己不单独成一项，
+	// 所以不进展示顺序、不进提示词里那张「认得哪些」的清单。
+	Sub bool
 }
 
-// vitals 是全部认得的体征。
+// vitalList 是全部认得的体征，**顺序就是展示顺序**。
 //
-// 键用中文，因为用户和模型说的都是中文；LOINC 码在值里，不外露。
-// 加一种体征就往这张表里加一行——别在别处再写一遍 if。
-var vitals = map[string]vital{
-	"体重":   {"29463-7", "Body weight", "kg", "kg", "vital-signs", 2, 400},
-	"身高":   {"8302-2", "Body height", "cm", "cm", "vital-signs", 30, 260},
-	"体温":   {"8310-5", "Body temperature", "℃", "Cel", "vital-signs", 30, 45},
-	"心率":   {"8867-4", "Heart rate", "次/分", "/min", "vital-signs", 20, 250},
-	"呼吸":   {"9279-1", "Respiratory rate", "次/分", "/min", "vital-signs", 4, 80},
-	"血氧":   {"59408-5", "Oxygen saturation in Arterial blood by Pulse oximetry", "%", "%", "vital-signs", 50, 100},
-	"腰围":   {"56086-2", "Waist Circumference", "cm", "cm", "vital-signs", 30, 250},
-	"血糖":   {"15074-8", "Glucose [Moles/volume] in Blood", "mmol/L", "mmol/L", "laboratory", 1, 40},
-	"步数":   {"41950-7", "Number of steps in 24 hour Measured", "步", "{steps}", "activity", 0, 200000},
-	"睡眠":   {"93832-4", "Sleep duration", "小时", "h", "activity", 0, 24},
-	"BMI":  {"39156-5", "Body mass index (BMI) [Ratio]", "kg/m²", "kg/m2", "vital-signs", 5, 100},
-	"静息心率": {"40443-4", "Heart rate --resting", "次/分", "/min", "vital-signs", 20, 200},
-	"血压":   {"85354-9", "Blood pressure panel with all children optional", "mmHg", "mm[Hg]", "vital-signs", 0, 0},
-	"收缩压":  {"8480-6", "Systolic blood pressure", "mmHg", "mm[Hg]", "vital-signs", 50, 300},
-	"舒张压":  {"8462-4", "Diastolic blood pressure", "mmHg", "mm[Hg]", "vital-signs", 20, 200},
+// 加一种体征就往这张表里加一行，别处一个字都不用动：提示词里的清单、
+// 界面上的卡片顺序、导入时导不导、要不要拆分项，全从这儿派生。
+var vitalList = []vital{
+	{Name: "体重", Code: "29463-7", Display: "Body weight", Unit: "kg", UCUM: "kg", Cat: "vital-signs", Low: 2, High: 400},
+	{Name: "身高", Code: "8302-2", Display: "Body height", Unit: "cm", UCUM: "cm", Cat: "vital-signs", Low: 30, High: 260},
+	{Name: "BMI", Code: "39156-5", Display: "Body mass index (BMI) [Ratio]", Unit: "kg/m²", UCUM: "kg/m2", Cat: "vital-signs", Low: 5, High: 100, Derived: true},
+	{Name: "血压", Code: "85354-9", Display: "Blood pressure panel with all children optional", Unit: "mmHg", UCUM: "mm[Hg]", Cat: "vital-signs", Parts: []string{"收缩压", "舒张压"}},
+	{Name: "静息心率", Code: "40443-4", Display: "Heart rate --resting", Unit: "次/分", UCUM: "/min", Cat: "vital-signs", Low: 20, High: 200},
+	{Name: "心率", Code: "8867-4", Display: "Heart rate", Unit: "次/分", UCUM: "/min", Cat: "vital-signs", Low: 20, High: 250},
+	{Name: "体温", Code: "8310-5", Display: "Body temperature", Unit: "℃", UCUM: "Cel", Cat: "vital-signs", Low: 30, High: 45},
+	{Name: "血氧", Code: "59408-5", Display: "Oxygen saturation in Arterial blood by Pulse oximetry", Unit: "%", UCUM: "%", Cat: "vital-signs", Low: 50, High: 100},
+	{Name: "呼吸", Code: "9279-1", Display: "Respiratory rate", Unit: "次/分", UCUM: "/min", Cat: "vital-signs", Low: 4, High: 80},
+	{Name: "血糖", Code: "15074-8", Display: "Glucose [Moles/volume] in Blood", Unit: "mmol/L", UCUM: "mmol/L", Cat: "laboratory", Low: 1, High: 40},
+	{Name: "腰围", Code: "56086-2", Display: "Waist Circumference", Unit: "cm", UCUM: "cm", Cat: "vital-signs", Low: 30, High: 250},
+	{Name: "步数", Code: "41950-7", Display: "Number of steps in 24 hour Measured", Unit: "步", UCUM: "{steps}", Cat: "activity", Low: 0, High: 200000},
+	{Name: "睡眠", Code: "93832-4", Display: "Sleep duration", Unit: "小时", UCUM: "h", Cat: "activity", Low: 0, High: 24},
+
+	// 下面两条只作为血压的分项存在。
+	{Name: "收缩压", Code: "8480-6", Display: "Systolic blood pressure", Unit: "mmHg", UCUM: "mm[Hg]", Cat: "vital-signs", Low: 50, High: 300, Sub: true},
+	{Name: "舒张压", Code: "8462-4", Display: "Diastolic blood pressure", Unit: "mmHg", UCUM: "mm[Hg]", Cat: "vital-signs", Low: 20, High: 200, Sub: true},
 }
 
-// vitalNames 是给提示和错误话用的顺序，map 遍历是乱的。
-var vitalNames = []string{
-	"体重", "身高", "BMI", "血压", "静息心率", "心率", "体温", "血氧", "呼吸",
-	"血糖", "腰围", "步数", "睡眠",
+var (
+	// vitals 按中文名查。
+	vitals = map[string]vital{}
+	// vitalNames 是展示和提示词里的顺序，从表里派生——
+	// 手抄第二份清单的话，只加进表里的新体征会「静默半可用」：
+	// 记得下，但提示词里不列、界面上不出卡片。
+	vitalNames []string
+)
+
+func init() {
+	for _, v := range vitalList {
+		vitals[v.Name] = v
+		if !v.Sub {
+			vitalNames = append(vitalNames, v.Name)
+		}
+	}
 }
 
 func codeOf(v vital) *CodeableConcept {
@@ -171,65 +206,95 @@ func category(code, text string) []CodeableConcept {
 	}}
 }
 
-// newObservation 造一条测量记录。
-func newObservation(name string, v vital, value float64, at time.Time, note string) Resource {
+// ErrUnknownVital 表示不认得这种体征。调用方据此决定是报给模型还是默默丢掉。
+var ErrUnknownVital = errors.New("不认得这种体征")
+
+// ErrOutOfRange 表示这个数明显不可能，多半是小数点点错了。
+var ErrOutOfRange = errors.New("这个数不像是真的")
+
+// NewVital 是**造一条体征记录的唯一入口**。
+//
+// 手记（record_vital）和从「健康」导入（toResource）两条路原先各写了一遍
+// 「查表 → 是不是血压 → 分别校验范围 → 选 panel 还是单值」，于是两边的
+// 判断已经开始不一样了。加第三条录入路径（Shortcuts、CSV、桌面端命令）
+// 还得再抄一遍。
+//
+// 两条路真正不同的只有**拿到错误怎么办**：导入是丢掉，手记是报给模型让它
+// 跟用户确认。所以错误分了类型，策略留在调用方。
+func NewVital(kind string, v1, v2 float64, at time.Time, note string) (Resource, error) {
+	v, ok := vitals[strings.TrimSpace(kind)]
+	if !ok {
+		return Resource{}, fmt.Errorf("%w：%s", ErrUnknownVital, kind)
+	}
+	if at.IsZero() {
+		return Resource{}, fmt.Errorf("%s 没有时间", v.Name)
+	}
 	r := Resource{
 		ResourceType:  "Observation",
 		Status:        "final",
-		Category:      category(v.Cat, name),
+		Category:      category(v.Cat, v.Name),
 		Code:          codeOf(v),
 		Subject:       &Reference{Reference: patientRefID},
 		EffectiveTime: at.Format(time.RFC3339),
-		ValueQuantity: qty(value, v),
+		at:            at,
 	}
-	r.Code.Text = name
+	r.Code.Text = v.Name
+
+	if len(v.Parts) == 2 {
+		// 一条带两个分项的记录，不是两条独立记录——分开记的话，
+		// 别的系统读进去不知道这两个数是一次量的。
+		vals := [2]float64{v1, v2}
+		for i, name := range v.Parts {
+			part := vitals[name]
+			if err := rangeCheck(part, vals[i]); err != nil {
+				return Resource{}, err
+			}
+			c := Component{Code: *codeOf(part), ValueQuantity: qty(vals[i], part)}
+			c.Code.Text = part.Name
+			r.Component = append(r.Component, c)
+		}
+	} else {
+		if err := rangeCheck(v, v1); err != nil {
+			return Resource{}, err
+		}
+		r.ValueQuantity = qty(v1, v)
+	}
 	if note != "" {
 		r.Note = []Annotation{{Text: note}}
 	}
-	return r
+	return r, nil
 }
 
-// newBloodPressure 造一条血压。血压在 FHIR 里是一条带两个分项的观察，
-// 不是两条独立记录——分开记的话，别的系统读进去不知道这两个数是一次量的。
-func newBloodPressure(systolic, diastolic float64, at time.Time, note string) Resource {
-	panelV := vitals["血压"]
-	sysV, diaV := vitals["收缩压"], vitals["舒张压"]
-	r := Resource{
-		ResourceType:  "Observation",
-		Status:        "final",
-		Category:      category(panelV.Cat, "血压"),
-		Code:          codeOf(panelV),
-		Subject:       &Reference{Reference: patientRefID},
-		EffectiveTime: at.Format(time.RFC3339),
-		Component: []Component{
-			{Code: *codeOf(sysV), ValueQuantity: qty(systolic, sysV)},
-			{Code: *codeOf(diaV), ValueQuantity: qty(diastolic, diaV)},
-		},
+// rangeCheck 拦明显不可能的数。
+//
+// 挡的是打错小数点这类事：体重 725 公斤、体温 368 度。这种数一旦记进去，
+// 以后看趋势的图就全毁了，而当时用户多半没注意到。
+func rangeCheck(v vital, value float64) error {
+	if v.Low == 0 && v.High == 0 {
+		return nil
 	}
-	r.Code.Text = "血压"
-	r.Component[0].Code.Text = "收缩压"
-	r.Component[1].Code.Text = "舒张压"
-	if note != "" {
-		r.Note = []Annotation{{Text: note}}
+	if value < v.Low || value > v.High {
+		return fmt.Errorf("%w：%s %s%s（正常应在 %s~%s%s）",
+			ErrOutOfRange, v.Name, trimNum(value), v.Unit,
+			trimNum(v.Low), trimNum(v.High), v.Unit)
 	}
-	return r
+	return nil
 }
 
 // newMeal 造一条饮食记录。
 //
 // 用 R5 的 NutritionIntake：R4 里只有 NutritionOrder，那是医嘱「该吃什么」，
 // 拿来记「吃了什么」是用错了资源，导给别的系统会被当成医生开的食谱。
-func newMeal(kind, when string, items []string, kcal float64, at time.Time, note string) Resource {
+func newMeal(kind string, items []string, kcal float64, at time.Time, note string) Resource {
 	r := Resource{
 		ResourceType:  "NutritionIntake",
 		Status:        "completed",
 		Category:      category("dietary", kind),
 		Subject:       &Reference{Reference: patientRefID},
 		OccurrenceISO: at.Format(time.RFC3339),
+		at:            at,
 	}
-	if when != "" {
-		r.Code = &CodeableConcept{Text: when}
-	}
+	r.Code = &CodeableConcept{Text: kind}
 	for _, it := range items {
 		r.ConsumedItem = append(r.ConsumedItem, ConsumedItem{
 			Type:          CodeableConcept{Text: kind},
@@ -259,7 +324,26 @@ func newPatient(birth, gender string) Resource {
 	}
 }
 
+// hasCode 判断这条记录说的是不是某一项。
+//
+// 原先这三行 nil 守卫在 Latest、matches、history 三处各写了一遍——
+// 那是「一个结构体装三种资源」的代价，收进一个方法就只付一次。
+func (r Resource) hasCode(code string) bool {
+	return r.Code != nil && len(r.Code.Coding) > 0 && r.Code.Coding[0].Code == code
+}
+
+// isPanel 判断这条是不是带分项的（血压那种）。
+func (r Resource) isPanel() bool { return len(r.Component) == 2 }
+
+// when 是这条记录说的那个时刻。
 func (r Resource) when() time.Time {
+	if !r.at.IsZero() {
+		return r.at
+	}
+	return r.parseWhen()
+}
+
+func (r Resource) parseWhen() time.Time {
 	s := r.EffectiveTime
 	if s == "" {
 		s = r.OccurrenceISO
@@ -269,6 +353,14 @@ func (r Resource) when() time.Time {
 		return time.Time{}
 	}
 	return t
+}
+
+// codeValue 是这条记录说的是哪一项（LOINC 码），没有就是空串。
+func (r Resource) codeValue() string {
+	if r.Code == nil || len(r.Code.Coding) == 0 {
+		return ""
+	}
+	return r.Code.Coding[0].Code
 }
 
 // label 是这条记录给人看的一行。
@@ -292,16 +384,29 @@ func (r Resource) label() string {
 		}
 		return s
 	default:
-		if len(r.Component) == 2 {
-			return fmt.Sprintf("血压 %.0f/%.0f mmHg",
-				r.Component[0].ValueQuantity.Value, r.Component[1].ValueQuantity.Value)
-		}
-		if r.ValueQuantity == nil || r.Code == nil {
+		if r.Code == nil {
 			return r.ResourceType
 		}
-		return fmt.Sprintf("%s %s%s", r.Code.Text,
-			trimNum(r.ValueQuantity.Value), r.ValueQuantity.Unit)
+		return r.Code.Text + " " + r.valueText()
 	}
+}
+
+// valueText 是这条记录的值，带单位，不带项目名。
+//
+// 摘要卡片上「体重」和「72.5kg」是分开两栏的，原先是拿 label() 拼好再把
+// 「体重 」这个前缀剪回去——从自己刚格式化出来的字符串里反解，改一下
+// label() 的排版就会静默把手机上的数字弄坏。
+func (r Resource) valueText() string {
+	if r.isPanel() {
+		return fmt.Sprintf("%s/%s %s",
+			trimNum(r.Component[0].ValueQuantity.Value),
+			trimNum(r.Component[1].ValueQuantity.Value),
+			r.Component[0].ValueQuantity.Unit)
+	}
+	if r.ValueQuantity == nil {
+		return ""
+	}
+	return trimNum(r.ValueQuantity.Value) + r.ValueQuantity.Unit
 }
 
 func (r Resource) categoryText() string {

@@ -17,24 +17,15 @@ xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1 || die "需要完整 Xcode�
 
 # --- 2. framework ---
 #
-# 不光要在，还得**比 Go 源码新**。
+# **别自己判新旧，问 make。** Makefile 里已经有
+# `ios/Mobile.xcframework: $(GO_SRC) go.mod` 这条规则，它的全部存在理由
+# 就是判这个。这儿抄一份出来的话，两份规则从落地那刻起就开始漂
+# （第一版就漏了 go.mod——换个依赖版本照样装旧桥）。
 #
-# 踩过：直接跑这个脚本（不走 make ios-install）时，Go 那边的改动根本没有
-# 重新编进 framework。Swift 照常编过、照常装上、照常跑起来，只是桥那头
-# 还是旧的——出参里少了刚加的字段，界面拿默认值顶上，看着一切正常，
-# 实际上改的东西一点没生效。查了半天才发现装的是旧 Go。
-#
-# 所以这儿自己判、自己补，别指望每次都记得先跑 make。
-[ -d ios/Mobile.xcframework ] || NEED_FW=1
-if [ -z "$NEED_FW" ]; then
-	NEWER=$(find . -name '*.go' -not -path './ios/*' -not -name '*_test.go' \
-	        -newer ios/Mobile.xcframework -print -quit 2>/dev/null)
-	[ -n "$NEWER" ] && NEED_FW=1
-fi
-if [ -n "$NEED_FW" ]; then
-	say "Go 改过了，重新编 framework"
-	make ios-framework || die "framework 没编出来"
-fi
+# 为什么非判不可：踩过一次，而且很难发现。直接跑这个脚本时 Go 的改动
+# 根本没编进 framework，Swift 照常编过、照常装上、照常跑起来，只是桥那头
+# 还是旧的——出参里少了刚加的字段，界面拿默认值顶上，看着一切正常。
+make ios/Mobile.xcframework || die "framework 没编出来"
 
 # --- 3. Team ID ---
 # 证书不用预先存在：第一次带 -allowProvisioningUpdates 签名构建时，

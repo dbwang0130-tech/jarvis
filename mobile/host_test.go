@@ -13,8 +13,8 @@ type fakeHost struct {
 	asked  []string
 }
 
-func (h *fakeHost) Step(kind, name, text string) {
-	h.steps = append(h.steps, kind+":"+name)
+func (h *fakeHost) Step(kind, name, label, text string) {
+	h.steps = append(h.steps, kind+":"+name+":"+label)
 }
 
 func (h *fakeHost) Confirm(tool, title, detail string, irreversible bool) bool {
