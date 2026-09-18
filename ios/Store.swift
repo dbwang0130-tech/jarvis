@@ -15,7 +15,24 @@ final class Store: ObservableObject, AskEvents {
         didSet { overdueCount = snapshot.todos.filter { $0.overdue }.count }
     }
     @Published var loading = false
-    @Published var lastError: String?
+    @Published var lastError: String? {
+        // 新的一条盖上来时，旧的那个重试办法就不作数了——照着它再试一次，
+        // 试的是上一件事。谁报错谁顺手设 retry（`fail(_:retry:)`）。
+        didSet { if lastError == nil { retry = nil } }
+    }
+
+    /// 出错了怎么再试一次。有的话错误条上会多一颗「重试」。
+    ///
+    /// 以前那条红条子只能关掉：读 iCloud 超时、写回撞上冲突、收信断在
+    /// 半路——看完那句话，人能做的只有关掉它，然后自己找个地方下拉刷新，
+    /// 而错误条出现的地方未必有下拉（比如刚进 app 那一屏）。
+    @Published var retry: (() async -> Void)?
+
+    /// 报个错，顺带说清这事怎么再试一次。
+    func fail(_ message: String, retry again: (() async -> Void)? = nil) {
+        lastError = message
+        retry = again
+    }
 
     /// 对话记录。界面显示用，同时原样带给 Go 做多轮上下文。
     @Published var messages: [Message] = []
@@ -120,7 +137,9 @@ final class Store: ObservableObject, AskEvents {
             // 徽标不参与首屏，别让加载指示器等这趟盘读。
             Task { await refreshMailBadge() }
         } catch {
-            lastError = "读不到 iCloud 里的内容：\(error.localizedDescription)"
+            fail("读不到 iCloud 里的内容：\(error.localizedDescription)") { [weak self] in
+                await self?.reload()
+            }
         }
     }
 
@@ -289,7 +308,7 @@ final class Store: ObservableObject, AskEvents {
     func markRead(_ key: String) async {
         let r = await mailAsync(op: "mark_read", keys: [key])
         if let err = r.error, !err.isEmpty {
-            lastError = err
+            fail(err) { [weak self] in await self?.markRead(key) }
             return
         }
         mailUnread = r.items.filter { $0.unread }.count
@@ -477,7 +496,7 @@ final class Store: ObservableObject, AskEvents {
                 return false
             }
         } catch {
-            lastError = "改动没写回去：\(error.localizedDescription)"
+            fail("改动没写回去：\(error.localizedDescription)")
             return false
         }
         for (name, content) in org { files[name] = content }

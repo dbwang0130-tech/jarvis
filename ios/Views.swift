@@ -1343,8 +1343,25 @@ struct ErrorBar: View {
         if let err = store.lastError, !err.isEmpty {
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
+                    .accessibilityHidden(true)
                 Text(err).lineLimit(3)
                 Spacer(minLength: 0)
+                // 能再试一次的就给一颗。以前这条子只能关掉——读 iCloud
+                // 超时、收信断在半路，看完那句话人能做的只有把它关了，
+                // 然后自己找个地方下拉刷新，而出错的地方未必有下拉。
+                if let again = store.retry {
+                    Button {
+                        store.lastError = nil
+                        Task { await again() }
+                    } label: {
+                        Text("重试")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .frame(height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
                 Button { store.lastError = nil } label: {
                     Image(systemName: "xmark")
                         .frame(width: 30, height: 30)

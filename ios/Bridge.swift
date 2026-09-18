@@ -170,6 +170,24 @@ enum Bridge {
         }
     }
 
+    /// 拿填的这套参数真连一次 IMAP，看通不通。
+    ///
+    /// 服务器地址、端口、授权码三样里错一样都连不上，而填错了要等到点
+    /// 「收信」才发现——那会儿报的是一句 IMAP 的英文错误，也看不出是
+    /// 哪一项填错了。
+    static func checkMail(_ account: MailAccountInput) -> MailCheck {
+        guard let data = try? JSONEncoder().encode(["account": account]),
+              let json = String(data: data, encoding: .utf8) else {
+            return MailCheck(message: "入参编码失败")
+        }
+        let out = callTestMail(json)
+        do {
+            return try JSONDecoder().decode(MailCheck.self, from: Data(out.utf8))
+        } catch {
+            return MailCheck(message: "出参解不开：\(error.localizedDescription)")
+        }
+    }
+
     /// 叫停正在跑的那一轮。已经做完的改动会照常交回来。
     static func cancel() {
         #if canImport(Mobile)
@@ -209,6 +227,14 @@ enum Bridge {
     private static func callTestModel(_ json: String) -> String {
         #if canImport(Mobile)
         return MobileTestModel(json)
+        #else
+        return #"{"ok":false,"message":"Mobile framework 没连上"}"#
+        #endif
+    }
+
+    private static func callTestMail(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileTestMail(json)
         #else
         return #"{"ok":false,"message":"Mobile framework 没连上"}"#
         #endif

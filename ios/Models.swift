@@ -496,6 +496,16 @@ struct ModelCheck: Codable {
     var error: String?
 }
 
+/// 邮箱连通性自检的结果。字段跟 mobile.TestMailOutput 对应。
+struct MailCheck: Codable {
+    var ok = false
+    /// 登录后能看到几个信箱。能列出来说明登录真的成了，不只是连上了。
+    var boxes = 0
+    var millis = 0
+    var message = ""
+    var error: String?
+}
+
 /// 直接操作的结果。files 里只有真变过的那几个。
 struct ActResult: Codable {
     var message = ""

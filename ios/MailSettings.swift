@@ -69,6 +69,9 @@ struct MailAccountEditor: View {
     @State private var smtpPort = ""
     @State private var from = ""
 
+    @State private var checking = false
+    @State private var check: MailCheck?
+
     var body: some View {
         NavigationStack {
             Form {
@@ -83,6 +86,37 @@ struct MailAccountEditor: View {
                     Text("收件 (IMAP)")
                 } footer: {
                     Text("多数邮箱要用「授权码」而不是登录密码。")
+                }
+
+                Section {
+                    // 模型那边早有「测试连接」，邮箱一直没有：服务器、端口、
+                    // 授权码三样里错一样都连不上，而填错了要等到点「收信」
+                    // 才发现，报的还是一句 IMAP 的英文错误。
+                    Button {
+                        Task { await test() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if checking {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "bolt.horizontal.circle")
+                            }
+                            Text(checking ? "连着看看…" : "测一下")
+                            Spacer(minLength: 0)
+                            if let c = check, !checking {
+                                Image(systemName: c.ok ? "checkmark.circle.fill"
+                                                       : "exclamationmark.circle.fill")
+                                    .foregroundStyle(c.ok ? Color.green : Color.orange)
+                            }
+                        }
+                    }
+                    .disabled(checking || host.isEmpty || user.isEmpty || password.isEmpty)
+
+                    if let c = check, !checking {
+                        Text(c.message)
+                            .font(.footnote)
+                            .foregroundStyle(c.ok ? Color.secondary : Color.orange)
+                    }
                 }
 
                 Section("发件 (SMTP)") {
@@ -145,6 +179,27 @@ struct MailAccountEditor: View {
         smtpHost = account.smtpHost
         smtpPort = account.smtpPort == 0 ? "" : String(account.smtpPort)
         from = account.from
+    }
+
+    /// 拿眼下填的这套参数真连一次，不必先保存——填错了当场就知道，
+    /// 不用存下来再去点收信。
+    private func test() async {
+        checking = true
+        check = nil
+        defer { checking = false }
+
+        let input = MailAccountInput(
+            name: name.isEmpty ? user : name,
+            host: host.trimmingCharacters(in: .whitespaces),
+            port: Int(port) ?? 993,
+            user: user.trimmingCharacters(in: .whitespaces),
+            password: password,
+            smtpHost: smtpHost, smtpPort: Int(smtpPort) ?? 0, from: from)
+
+        check = await Task.detached(priority: .userInitiated) {
+            Bridge.checkMail(input)
+        }.value
+        check?.ok == true ? Haptics.success() : Haptics.warning()
     }
 
     private func save() {

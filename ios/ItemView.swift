@@ -426,6 +426,10 @@ struct ItemDetail: View {
                     // 一件没做完的事因此没有别的出路。
                     ActionButton(op: item.running ? "stop" : "start", item: item)
                     ActionButton(op: "postpone", item: item)
+                    // 「不做了」原先只在列表左滑里有。点进详情看完才决定
+                    // 不做的，得先退出去、找到那一行、再左滑——而刚才
+                    // 就在这一条上。
+                    ActionButton(op: "cancel", item: item) { dismiss() }
                 }
             }
         }

@@ -2,11 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- 读系统「健康」里的体重、睡眠这些。只读不写：写回去会让「健康」里
-	     多出一份来路不明的数据，而我们的记录本来就是从那儿来的。 -->
 	<key>com.apple.developer.healthkit</key>
 	<true/>
 	<key>com.apple.developer.healthkit.access</key>
 	<array/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.dabao.jarvis</string>
+	</array>
 </dict>
 </plist>
