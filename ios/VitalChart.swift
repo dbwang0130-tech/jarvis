@@ -12,14 +12,23 @@ struct Sparkline: View {
     /// 累计量（步数、睡眠）画柱子。
     var bars = false
 
+    /// 这条线只有 92pt 宽，塞不下几百个点。
+    ///
+    /// 步数一天一条，一年就是 365 个——柱子平均 0.25pt，糊成一团黑；
+    /// 折线也一样，密到分不出起伏。**只画最近这一段**：卡片上这条线
+    /// 要回答的是「最近在往上还是往下」，半年前的事跟这个问题无关。
+    private var shown: [HealthPoint] { Array(points.suffix(30)) }
+
     var body: some View {
         if bars { barline } else { lineline }
     }
 
     private var barline: some View {
-        Chart(points) { p in
-            BarMark(x: .value("时间", p.date), y: .value("值", p.v))
-                .foregroundStyle(tint.opacity(0.7))
+        Chart(shown) { p in
+            // **按天分箱**。不给 unit 的话 Swift Charts 按连续时间轴算柱宽，
+            // 相邻两天的柱子会互相压上去，看着就是叠在一起的一坨。
+            BarMark(x: .value("时间", p.date, unit: .day), y: .value("值", p.v))
+                .foregroundStyle(tint.opacity(0.75))
         }
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
@@ -31,8 +40,9 @@ struct Sparkline: View {
     private var lineline: some View {
         // 血压一条记录有两个数，两条线都画——只画收缩压的话，
         // 卡片上那条小线跟点进去看到的图对不上。
-        let paired = points.contains { $0.v2 > 0 }
-        return Chart(points) { p in
+        let pts = shown
+        let paired = pts.contains { $0.v2 > 0 }
+        return Chart(pts) { p in
             LineMark(x: .value("时间", p.date), y: .value("值", p.v),
                      series: .value("线", "主"))
                 .interpolationMethod(.monotone)
@@ -160,7 +170,8 @@ struct VitalDetail: View {
     /// 不一样：折线看的是起伏，柱子看的是量。
     private func barChart(_ pts: [HealthPoint]) -> some View {
         Chart(pts) { p in
-            BarMark(x: .value("时间", p.date), y: .value(vital.kind, p.v))
+            // 按天分箱：不给 unit 的话柱宽按连续时间轴算，相邻两天会叠上去。
+            BarMark(x: .value("时间", p.date, unit: .day), y: .value(vital.kind, p.v))
                 .foregroundStyle(tint.gradient)
         }
         .chartYAxis { AxisMarks { v in
