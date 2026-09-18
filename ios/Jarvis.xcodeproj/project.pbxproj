@@ -11,6 +11,7 @@
 		9A53982984734FDED06A13D5 /* AskHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2EC0FABF5C40602546BB919 /* AskHost.swift */; };
 		D57DA02D9B9F2425733C793D /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0F86B84455EAED7A993462 /* Brand.swift */; };
 		939EF22E8168702EA6A3BD9B /* Bridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D07C43188251FCFF33B98AC2 /* Bridge.swift */; };
+		E90E041CB6DA0641EE38EABA /* HealthKitImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E1A3C9E1C97252EEC4D08D /* HealthKitImporter.swift */; };
 		72C6A0D8861565F0A690BB70 /* HealthTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */; };
 		0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F1B6CBE154F3A41E575653 /* ItemView.swift */; };
 		FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED29F84A2C8136AC729D9F6 /* Keychain.swift */; };
@@ -55,6 +56,7 @@
 		B2EC0FABF5C40602546BB919 /* AskHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHost.swift; sourceTree = "<group>"; };
 		FB0F86B84455EAED7A993462 /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
 		D07C43188251FCFF33B98AC2 /* Bridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bridge.swift; sourceTree = "<group>"; };
+		99E1A3C9E1C97252EEC4D08D /* HealthKitImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitImporter.swift; sourceTree = "<group>"; };
 		DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthTab.swift; sourceTree = "<group>"; };
 		E8F1B6CBE154F3A41E575653 /* ItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemView.swift; sourceTree = "<group>"; };
 		EED29F84A2C8136AC729D9F6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
@@ -99,6 +101,7 @@
 				B2EC0FABF5C40602546BB919 /* AskHost.swift */,
 				FB0F86B84455EAED7A993462 /* Brand.swift */,
 				D07C43188251FCFF33B98AC2 /* Bridge.swift */,
+				99E1A3C9E1C97252EEC4D08D /* HealthKitImporter.swift */,
 				DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */,
 				E8F1B6CBE154F3A41E575653 /* ItemView.swift */,
 				EED29F84A2C8136AC729D9F6 /* Keychain.swift */,
@@ -209,6 +212,7 @@
 				9A53982984734FDED06A13D5 /* AskHost.swift in Sources */,
 				D57DA02D9B9F2425733C793D /* Brand.swift in Sources */,
 				939EF22E8168702EA6A3BD9B /* Bridge.swift in Sources */,
+				E90E041CB6DA0641EE38EABA /* HealthKitImporter.swift in Sources */,
 				72C6A0D8861565F0A690BB70 /* HealthTab.swift in Sources */,
 				0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */,
 				FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */,
@@ -282,6 +286,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Jarvis.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -293,6 +298,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "读你在「健康」里记下的体重、睡眠、步数这些，存进你自己的健康记录文件。只读不写，也不上传。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
@@ -316,6 +322,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Jarvis.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -327,6 +334,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "读你在「健康」里记下的体重、睡眠、步数这些，存进你自己的健康记录文件。只读不写，也不上传。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;

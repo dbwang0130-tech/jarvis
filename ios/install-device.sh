@@ -64,12 +64,16 @@ say "编译并签名"
 # （-allowProvisioningUpdates），所以证书不用预先存在。
 # 输出重定向到文件再回放，不走管道：管道的退出码是最后一个命令（tee）的，
 # 编译失败也会被当成成功，然后把上一次的旧包装到手机上。
+#
+# `|| STATUS=$?` 是必需的：脚本开头有 set -e，编译一失败就直接退出了，
+# 下面 cat 日志和那几条对症的说明一个都跑不到——屏幕上只剩「编译并签名」
+# 四个字，真正的原因躺在临时文件里没人看见。踩过。
 LOG=$(mktemp)
+STATUS=0
 xcodebuild -project "$PROJ" -scheme Jarvis -configuration Debug \
   -destination "id=$UDID" -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$TEAM" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" \
-  build >"$LOG" 2>&1
-STATUS=$?
+  build >"$LOG" 2>&1 || STATUS=$?
 cat "$LOG"
 if [ $STATUS -ne 0 ]; then
 	# 几个第一次装必踩的，直接说清楚怎么办，别让人去翻 xcodebuild 的输出。
@@ -81,6 +85,21 @@ if [ $STATUS -ne 0 ]; then
   设置 → 隐私与安全性 → 开发者模式 → 打开 → 按提示重启手机
 
 重启解锁后会再弹一个确认框，点「打开」。然后再跑一次。"
+	fi
+	if grep -q "doesn.t include the .* capability" "$LOG"; then
+		WHAT=$(sed -n "s/.*doesn't include the \(.*\) capability.*/\1/p" "$LOG" | head -1)
+		rm -f "$LOG"
+		die "描述文件里还没有 $WHAT 这项能力。
+
+加一项能力要跟 Apple 那边打个照面，而命令行拿不到 Xcode 里登的账号
+（它会报 No Accounts）。所以这一步得在 Xcode 里点一次，只用点一次：
+
+  1. open ios/Jarvis.xcodeproj
+  2. 左边选 Jarvis target → Signing & Capabilities
+  3. 左上角 + Capability，双击 $WHAT
+  4. 等它把描述文件刷新好（签名那一栏不再报红）
+
+然后关掉 Xcode，再跑一次这个脚本。"
 	fi
 	if grep -q "no devices from which to generate" "$LOG"; then
 		rm -f "$LOG"

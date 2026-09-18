@@ -221,6 +221,17 @@ struct HealthEntry: Codable, Identifiable, Hashable {
     var id: String { when + text }
 }
 
+/// 从「健康」App 导数据的结果。
+struct HealthImport: Codable {
+    /// 只在真有新增时才有——一条都没加就别让界面白写一遍文件。
+    var health: String?
+    var added = 0
+    var skipped = 0
+    var bad = 0
+    var message = ""
+    var error: String?
+}
+
 struct Snapshot: Codable {
     var days: [Day]
     var todos: [Item]

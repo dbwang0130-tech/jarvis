@@ -56,12 +56,24 @@ func Load(path string) (*Store, error) {
 	return s, sc.Err()
 }
 
+// marshalLine 把一条资源序列化成文件里的一行（**带换行**）。
+//
+// 一行一条是这个格式的全部规矩，所以换行跟序列化绑在一处——
+// 谁写文件都从这儿拿，不会有人忘了加。
+func marshalLine(r Resource) (string, error) {
+	raw, err := json.Marshal(r)
+	if err != nil {
+		return "", err
+	}
+	return string(raw) + "\n", nil
+}
+
 // Append 追加一条。
 func (s *Store) Append(r Resource) error {
 	if strings.TrimSpace(s.Path) == "" {
 		return fmt.Errorf("还没配健康记录文件")
 	}
-	raw, err := json.Marshal(r)
+	line, err := marshalLine(r)
 	if err != nil {
 		return err
 	}
@@ -73,7 +85,7 @@ func (s *Store) Append(r Resource) error {
 		return fmt.Errorf("打开健康记录失败: %w", err)
 	}
 	defer f.Close()
-	if _, err := f.Write(append(raw, '\n')); err != nil {
+	if _, err := f.WriteString(line); err != nil {
 		return fmt.Errorf("写入健康记录失败: %w", err)
 	}
 	s.Resources = append(s.Resources, r)

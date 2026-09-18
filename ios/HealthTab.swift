@@ -14,6 +14,8 @@ struct HealthTab: View {
 
     private var health: HealthView? { store.snapshot.health }
 
+    @State private var note = ""
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
@@ -39,6 +41,7 @@ struct HealthTab: View {
             }
             .padding()
         }
+        .safeAreaInset(edge: .bottom) { importBar }
         .navigationTitle("健康")
         .navigationBarTitleDisplayMode(.inline)
         .overlay { EmptyHint(show: isEmpty && !store.loading, text: emptyText, icon: "heart.text.square") }
@@ -47,13 +50,53 @@ struct HealthTab: View {
         .refreshable { await store.reload() }
     }
 
+    // MARK: - 从「健康」导入
+
+    /// 空着的时候这个按钮尤其要在——第一次进来手里已经有几年的数据了，
+    /// 不该让人从今天开始重新一条条说。
+    @ViewBuilder
+    private var importBar: some View {
+        if HealthKitImporter.isAvailable {
+            VStack(spacing: 6) {
+                if !note.isEmpty {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                }
+                Button {
+                    Task { note = await store.importFromHealthKit() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if store.importingHealth {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "heart.circle")
+                        }
+                        Text(store.importingHealth ? "正在读…" : "从「健康」导入最近 90 天")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.tint(Brand.soft).interactive(), in: .capsule)
+                .disabled(store.importingHealth)
+            }
+            .padding(.bottom, 10)
+        }
+    }
+
     private var isEmpty: Bool {
         guard let h = health else { return true }
         return h.vitals.isEmpty && h.meals.isEmpty
     }
 
     private var emptyText: String {
-        "还没有记录。\n跟 Jarvis 说「体重 72.5」「昨晚睡了 7 小时」「早上吃了小米粥」就行。"
+        HealthKitImporter.isAvailable
+            ? "还没有记录。\n可以从下面把「健康」里的数据导进来，"
+                + "也可以直接跟 Jarvis 说「体重 72.5」「昨晚睡了 7 小时」。"
+            : "还没有记录。\n跟 Jarvis 说「体重 72.5」「昨晚睡了 7 小时」「早上吃了小米粥」就行。"
     }
 
     // MARK: - 指标

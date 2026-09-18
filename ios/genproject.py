@@ -17,6 +17,7 @@ FRAMEWORK = "Mobile.xcframework"
 ASSETS = "Assets.xcassets"
 PRIVACY = "PrivacyInfo.xcprivacy"
 LAUNCH = "LaunchScreen.storyboard"
+ENTITLEMENTS = "Jarvis.entitlements"
 BUNDLE_ID = "com.dabao.jarvis"
 DEPLOY_TARGET = "26.0"  # Liquid Glass 那套要 26 起；设备是 iPhone 17 Pro，本来就跑 26+
 
@@ -107,6 +108,7 @@ def main() -> None:
     appicon = ("\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;"
                if has_assets else "")
     target_common = f'''				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";{appicon}
+				CODE_SIGN_ENTITLEMENTS = {ENTITLEMENTS};
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -118,6 +120,7 @@ def main() -> None:
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "读你在「健康」里记下的体重、睡眠、步数这些，存进你自己的健康记录文件。只读不写，也不上传。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
