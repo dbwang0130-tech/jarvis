@@ -524,6 +524,9 @@ struct DetailData: Codable {
     /// LOGBOOK 里的记录，新的在前。只给「已计时 3 小时」这个总数的话，
     /// 「什么时候做的、做了几回、中间状态怎么变的」全看不出来。
     var log: [LogItem] = []
+    /// 这份文件认得的 TODO 关键字，顺序就是状态循环的顺序。由 Go 给——
+    /// 关键字是每份 org 文件用 `#+TODO:` 自己定的，这边不可能知道。
+    var states: [String] = []
     var error: String?
 
     static let empty = DetailData()

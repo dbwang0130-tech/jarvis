@@ -192,3 +192,54 @@ func TestActCheckBadIndex(t *testing.T) {
 		t.Fatalf("话没说到点上：%s", out.Error)
 	}
 }
+
+// 详情页把状态和优先级摆出来了却改不动——「这事更急了」只能开口说一句。
+func TestActPriorityAndState(t *testing.T) {
+	const org = "* TODO 写周报\n"
+
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": org},
+		Ref:   "a.org:0", Op: "priority", Priority: "A", TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("改不了优先级：%s", out.Error)
+	}
+	if !strings.Contains(out.Files["a.org"], "[#A]") {
+		t.Fatalf("优先级没写上：\n%s", out.Files["a.org"])
+	}
+
+	// 留空是去掉优先级，不是「没说」。
+	out = act(t, ActInput{
+		Files: map[string]string{"a.org": "* TODO [#A] 写周报\n"},
+		Ref:   "a.org:0", Op: "priority", Priority: "", TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("去不掉优先级：%s", out.Error)
+	}
+	if strings.Contains(out.Files["a.org"], "[#A]") {
+		t.Fatalf("优先级还在：\n%s", out.Files["a.org"])
+	}
+
+	out = act(t, ActInput{
+		Files: map[string]string{"a.org": org},
+		Ref:   "a.org:0", Op: "state", State: "NEXT", TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("改不了状态：%s", out.Error)
+	}
+	if !strings.Contains(out.Files["a.org"], "* NEXT 写周报") {
+		t.Fatalf("状态没换：\n%s", out.Files["a.org"])
+	}
+}
+
+// 状态不能不说就改。留空在优先级那边是「去掉」，在状态这边是「没说」——
+// 两个意思，别混着来。
+func TestActStateNeedsValue(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": actOrg},
+		Ref:   "a.org:0", Op: "state", State: "", TZ: "Asia/Shanghai",
+	})
+	if out.Error == "" {
+		t.Fatal("没说改成什么状态，该报错")
+	}
+}

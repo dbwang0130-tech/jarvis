@@ -239,8 +239,14 @@ type DetailOutput struct {
 	Boxes     []Checkbox `json:"boxes"`
 	// Log 是 LOGBOOK 里的记录：每一段计时、状态怎么变的、记过什么笔记。
 	// 只给总时长的话，「这件事什么时候做的、做了几回」全看不出来。
-	Log   []LogItem `json:"log"`
-	Error string    `json:"error,omitempty"`
+	Log []LogItem `json:"log"`
+	// States 是这份文件认得的 TODO 关键字，顺序就是状态循环的顺序。
+	//
+	// **必须由 Go 给**：关键字是每份 org 文件用 `#+TODO:` 自己定的，
+	// 界面那头不可能知道。写死一份「TODO/NEXT/DONE」的话，用了自定义
+	// 状态的人在手机上就只能在别人的状态之间切。
+	States []string `json:"states"`
+	Error  string   `json:"error,omitempty"`
 }
 
 // LogItem 是 LOGBOOK 里的一条，新的排在前面。
@@ -260,6 +266,9 @@ func (o *DetailOutput) normalize() {
 	}
 	if o.Log == nil {
 		o.Log = []LogItem{}
+	}
+	if o.States == nil {
+		o.States = []string{}
 	}
 }
 
@@ -384,6 +393,7 @@ func Detail(inputJSON string) string {
 		out.Boxes = append(out.Boxes, Checkbox{Done: b.Done, Text: b.Text})
 	}
 	out.Log = buildLog(n)
+	out.States = doc.AllKeywords()
 	return marshal(&out)
 }
 

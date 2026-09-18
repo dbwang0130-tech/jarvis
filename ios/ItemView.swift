@@ -330,7 +330,19 @@ struct ItemDetail: View {
 
     @State private var data: DetailData?
 
-    private var look: ItemLook { ItemLook(item) }
+    /// 这一条**现在**的样子。
+    ///
+    /// 传进来的 item 是打开那一刻的拷贝。改完优先级、换了状态之后
+    /// snapshot 会更新，但那份拷贝不会——胶囊上仍显示旧值，看着像没生效。
+    /// 所以按 ref 去 snapshot 里取当前这份，取不到（比如刚被删掉）
+    /// 就退回原来那份。
+    private var live: Item {
+        store.snapshot.todos.first { $0.ref == item.ref }
+            ?? store.snapshot.days.flatMap(\.items).first { $0.ref == item.ref }
+            ?? item
+    }
+
+    private var look: ItemLook { ItemLook(live) }
 
     var body: some View {
         NavigationStack {
@@ -417,19 +429,19 @@ struct ItemDetail: View {
     private var actions: some View {
         GlassEffectContainer(spacing: 8) {
             HStack(spacing: 8) {
-                if item.isDone {
-                    ActionButton(op: "undone", item: item) { dismiss() }
+                if live.isDone {
+                    ActionButton(op: "undone", item: live) { dismiss() }
                 } else {
-                    ActionButton(op: "done", item: item) { dismiss() }
+                    ActionButton(op: "done", item: live) { dismiss() }
                     // 正在走的时候要给的是「停止」。以前这儿永远是「开始」，
                     // 点下去只会再开一段计时，想收尾只能标完成——
                     // 一件没做完的事因此没有别的出路。
-                    ActionButton(op: item.running ? "stop" : "start", item: item)
-                    PostponeButton(item: item)
+                    ActionButton(op: live.running ? "stop" : "start", item: live)
+                    PostponeButton(item: live)
                     // 「不做了」原先只在列表左滑里有。点进详情看完才决定
                     // 不做的，得先退出去、找到那一行、再左滑——而刚才
                     // 就在这一条上。
-                    ActionButton(op: "cancel", item: item) { dismiss() }
+                    ActionButton(op: "cancel", item: live) { dismiss() }
                 }
             }
         }
@@ -437,37 +449,30 @@ struct ItemDetail: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // 状态和优先级**摆出来就该能改**。以前这两块是纯标签：看得见
+            // 「等回复」「优先级 A」，想动它得退出去跟 Jarvis 说一句，
+            // 而人就站在这一条上。
             HStack(spacing: 8) {
                 Image(systemName: look.icon).foregroundStyle(look.color)
                 Text(look.label).font(.subheadline.weight(.medium)).foregroundStyle(look.color)
-                if !item.state.isEmpty {
-                    Text(item.stateLabel)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(.quaternary, in: Capsule())
-                }
-                if !item.priority.isEmpty {
-                    Text("优先级 \(item.priority)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(priorityColor(item.priority), in: Capsule())
-                }
+                StatePicker(item: live, states: data?.states ?? [], data: $data)
+                PriorityPicker(item: live, data: $data)
+                Spacer(minLength: 0)
             }
 
             if !item.parents.isEmpty {
                 Text(item.parents).font(.caption).foregroundStyle(.tertiary)
             }
-            Text(item.title)
+            Text(live.title)
                 .font(.title3.weight(.semibold))
-                .strikethrough(item.isDone, color: .secondary)
+                .strikethrough(live.isDone, color: .secondary)
                 .textSelection(.enabled)
 
-            if item.total > 0 {
+            if live.total > 0 {
                 HStack(spacing: 6) {
-                    ProgressBar(done: item.done, total: item.total, color: look.color)
+                    ProgressBar(done: live.done, total: live.total, color: look.color)
                         .frame(height: 5)
-                    Text("\(item.done)/\(item.total)")
+                    Text("\(live.done)/\(live.total)")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -579,6 +584,118 @@ struct CheckboxRow: View {
         .accessibilityLabel(box.text)
         .accessibilityValue(done ? "已勾选" : "未勾选")
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// 状态那颗胶囊，点开能换。
+///
+/// 可选的关键字由 Go 给（`DetailData.states`）——那是每份 org 文件用
+/// `#+TODO:` 自己定的，写死一份「TODO/NEXT/DONE」的话，用了自定义状态
+/// 的人在手机上只能在别人的状态之间切。
+struct StatePicker: View {
+    @EnvironmentObject var store: Store
+    let item: Item
+    let states: [String]
+    @Binding var data: DetailData?
+
+    var body: some View {
+        // 还没取到关键字表（详情正在读）就先摆个不能点的，别闪。
+        if states.isEmpty {
+            if !item.state.isEmpty { label(item.stateLabel, dim: true) }
+        } else {
+            Menu {
+                ForEach(states, id: \.self) { st in
+                    Button {
+                        change(st)
+                    } label: {
+                        if st == item.state {
+                            Label(st, systemImage: "checkmark")
+                        } else {
+                            Text(st)
+                        }
+                    }
+                }
+            } label: {
+                label(item.state.isEmpty ? "没有状态" : item.stateLabel, dim: false)
+            }
+            .disabled(store.thinking)
+        }
+    }
+
+    private func label(_ text: String, dim: Bool) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.primary))
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(.quaternary, in: Capsule())
+    }
+
+    private func change(_ state: String) {
+        guard state != item.state else { return }
+        Task {
+            let ok = await store.act("state", on: item.ref, state: state)
+            if ok {
+                Haptics.done()
+                data = await store.detail(of: item.ref)
+            } else {
+                Haptics.failure()
+            }
+        }
+    }
+}
+
+/// 优先级那颗胶囊，点开能改，也能去掉。
+struct PriorityPicker: View {
+    @EnvironmentObject var store: Store
+    let item: Item
+    @Binding var data: DetailData?
+
+    var body: some View {
+        Menu {
+            ForEach(["A", "B", "C"], id: \.self) { p in
+                Button {
+                    change(p)
+                } label: {
+                    if p == item.priority {
+                        Label("优先级 \(p)", systemImage: "checkmark")
+                    } else {
+                        Text("优先级 \(p)")
+                    }
+                }
+            }
+            if !item.priority.isEmpty {
+                Divider()
+                Button("去掉优先级", role: .destructive) { change("") }
+            }
+        } label: {
+            if item.priority.isEmpty {
+                Text("定个优先级")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(.quaternary, in: Capsule())
+            } else {
+                Text("优先级 \(item.priority)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(priorityColor(item.priority), in: Capsule())
+            }
+        }
+        .disabled(store.thinking)
+    }
+
+    private func change(_ priority: String) {
+        guard priority != item.priority else { return }
+        Task {
+            let ok = await store.act("priority", on: item.ref, priority: priority)
+            if ok {
+                Haptics.done()
+                data = await store.detail(of: item.ref)
+            } else {
+                Haptics.failure()
+            }
+        }
     }
 }
 

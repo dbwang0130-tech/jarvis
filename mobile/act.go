@@ -23,13 +23,15 @@ type ActInput struct {
 	Files map[string]string `json:"files"`
 	Ref   string            `json:"ref"`
 	// Op 是要做的事：done / start / stop / postpone / cancel / undone /
-	// create / check。
+	// create / check / priority / state。
 	Op string `json:"op"`
 	// Days 给 postpone 用，推迟几天，零值按 1 天算。
 	Days int `json:"days"`
 	// Index 给 check 用：勾正文里的第几个复选框，从 1 数起。
 	// 跟工具那边对外的说法一致——界面和用户说的都是「第二项」。
 	Index int `json:"index"`
+	// State 给 state 用：改成哪个 TODO 关键字（TODO / NEXT / WAITING…）。
+	State string `json:"state"`
 
 	// 下面几项给 create 用。
 	Title     string `json:"title"`
@@ -149,6 +151,22 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 
 	case "stop":
 		return call("clock_out", ref)
+
+	case "priority":
+		// 详情页把优先级摆出来了却改不动——「这事更急了」只能开口说一句。
+		// 留空是去掉优先级，所以不校验非空。
+		return call("set_priority",
+			map[string]any{"ref": in.Ref, "priority": in.Priority})
+
+	case "state":
+		// 状态同理。done/undone 只够表示做没做完，而 org 里的状态是每份
+		// 文件自己定的（`#+TODO:`）——「等回复」「搁置」这些，界面显示得出来，
+		// 却只能靠对话去改。
+		if strings.TrimSpace(in.State) == "" {
+			return "", fmt.Errorf("没说要改成什么状态")
+		}
+		return call("set_todo_state",
+			map[string]any{"ref": in.Ref, "state": in.State})
 
 	case "check":
 		// 勾一个复选框。org 那边一直有这个能力，但工具没接出来，于是
