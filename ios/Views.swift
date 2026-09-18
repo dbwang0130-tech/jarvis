@@ -369,8 +369,7 @@ struct TodosView: View {
 
 struct LedgerTab: View {
     @EnvironmentObject var store: Store
-    /// 展开过就记住——每次进来都要再点一下，比不收起来还烦。
-    @AppStorage("jarvis.ledger.showTxns") private var showTxns = false
+    @State private var showTxns = false
 
     var body: some View {
         Group {
@@ -403,46 +402,24 @@ struct LedgerTab: View {
                                         tint: group.kind.tint)
                         }
                     }
-                    // 流水默认收起来。打开财务页多半是想看「还剩多少」，
-                    // 而流水能有几十上百条，一进来就糊一屏，净资产反倒被挤走了。
-                    Section {
-                        Button {
-                            withAnimation(.snappy) { showTxns.toggle() }
-                        } label: {
-                            HStack {
-                                GroupHeader(text: "最近流水",
-                                            icon: "list.bullet.rectangle", tint: .blue)
-                                Spacer()
-                                Text("\(l.recent.count) 笔")
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                Image(systemName: showTxns ? "chevron.up" : "chevron.down")
-                                    .font(.caption).foregroundStyle(.tertiary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    if showTxns {
-                        // 按天分组。一条一条平铺的话，日期在每行重复一遍，
-                        // 而「今天花了多少」这个最常问的问题反而得自己加。
-                        ForEach(dayGroups(l.recent), id: \.date) { day in
-                            Section {
-                                ForEach(Array(day.items.enumerated()), id: \.offset) { TxnRow(txn: $1) }
-                            } header: {
+                    // 流水点进去看。打开财务页多半是想看「还剩多少」，
+                    // 而流水能有几十上百条，摊在同一页里既把净资产挤走，
+                    // 又让这一页每重画一次就得把整份流水按天归拢一遍。
+                    if !l.recent.isEmpty {
+                        Section {
+                            Button { showTxns = true } label: {
                                 HStack {
-                                    Text(dayTitle(day.date))
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                        .textCase(nil)
+                                    GroupHeader(text: "最近流水",
+                                                icon: "list.bullet.rectangle", tint: .blue)
                                     Spacer()
-                                    if day.spent > 0 {
-                                        Text("支出 " + moneyRound(day.spent))
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                    }
+                                    Text("\(l.recent.count) 笔")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption).foregroundStyle(.tertiary)
                                 }
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -454,6 +431,7 @@ struct LedgerTab: View {
         .refreshable { await store.reload() }
         .overlay { LoadingHint(isEmpty: store.snapshot.ledger == nil) }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
+        .sheet(isPresented: $showTxns) { TxnListView() }
     }
 }
 
@@ -514,6 +492,68 @@ enum AccountKind: String, CaseIterable {
         case .equity:  return "scalemass"
         case .other:   return "square.grid.2x2"
         }
+    }
+}
+
+/// 最近流水单独一页。
+///
+/// 从财务页里搬出来的。财务页要回答的是「还剩多少」——净资产、各个账户
+/// 的余额；流水是「钱去哪儿了」，是另一个问题，也是另一屏东西。搬走之后
+/// 财务页的 body 只碰一个 count，按天归拢、日期换算、几十行的行视图
+/// 都只在点开之后才发生。
+///
+/// **盖一张卡片，不 push。** 这个 app 里翻详情只有这一种手势：邮件点开
+/// 一封、健康点开一项指标、日程点开一条，都是盖上来、往下一划回去。
+/// 只有这儿 push 的话，返回得去左上角找按钮，划一下反而回到了对话。
+///
+/// 数据仍从 store 读，不在打开那一刻定格——切回前台或者下拉都会重读，
+/// 「跟电脑上是同一份」得在这一页也成立。
+struct TxnListView: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+
+    private var txns: [TxnBrief] { store.snapshot.ledger?.recent ?? [] }
+
+    var body: some View {
+        NavigationStack {
+            list
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button { dismiss() } label: { Image(systemName: "xmark") }
+                            .accessibilityLabel("关掉")
+                    }
+                }
+        }
+    }
+
+    private var list: some View {
+        List {
+            // 按天分组。一条一条平铺的话，日期在每行重复一遍，
+            // 而「今天花了多少」这个最常问的问题反而得自己加。
+            ForEach(dayGroups(txns), id: \.date) { day in
+                Section {
+                    ForEach(Array(day.items.enumerated()), id: \.offset) { TxnRow(txn: $1) }
+                } header: {
+                    HStack {
+                        Text(dayTitle(day.date))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .textCase(nil)
+                        Spacer()
+                        if day.spent > 0 {
+                            Text("支出 " + moneyRound(day.spent))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("最近流水")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await store.reload() }
+        .overlay { EmptyHint(show: txns.isEmpty && !store.loading, text: "还没有流水", icon: "list.bullet.rectangle") }
+        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
     }
 }
 
