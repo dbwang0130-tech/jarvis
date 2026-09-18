@@ -615,3 +615,82 @@ func TestDedupeKeepsDifferentItems(t *testing.T) {
 		t.Fatalf("两条不同的事该都在，实际 %d", n)
 	}
 }
+
+// 取消掉的事不能跑到「逾期」里去。
+//
+// 「了结」用哪几个关键字是每份 org 文件自己定的（`#+TODO:` 那一行），
+// 默认 DONE 和 CANCELLED。界面那边曾经照着 `state == "DONE"` 自己判，
+// 于是 CANCELLED 被当成还没办，按到期日归进了逾期那一组——用户真实数据里
+// 有四条这样的。判断由 Go 给，Closed 这个字段就是为这个。
+func TestCancelledCountsAsClosed(t *testing.T) {
+	files := map[string]string{"t.org": `#+TITLE: t
+
+* CANCELLED 订机票
+CLOSED: [2026-09-17 Thu 10:00] DEADLINE: <2026-09-01 Tue>
+* DONE 交房租
+CLOSED: [2026-09-17 Thu 10:00] SCHEDULED: <2026-09-10 Thu>
+* TODO 还没办的事
+DEADLINE: <2026-09-01 Tue>
+`}
+	in, _ := json.Marshal(map[string]any{
+		"files": files, "days": 1,
+		"now": "2026-09-18T09:00:00+08:00", "tz": "Asia/Shanghai",
+	})
+	var out SnapshotOutput
+	if err := json.Unmarshal([]byte(Snapshot(string(in))), &out); err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]bool{"订机票": true, "交房租": true, "还没办的事": false}
+	got := map[string]bool{}
+	for _, it := range out.Todos {
+		got[it.Title] = it.Closed
+	}
+	for title, w := range want {
+		g, ok := got[title]
+		if !ok {
+			t.Errorf("待办里没有 %q：%v", title, got)
+			continue
+		}
+		if g != w {
+			t.Errorf("%q 的 closed = %v，期望 %v", title, g, w)
+		}
+	}
+	// 逾期那面旗归 agenda 算，跟了结与否是两回事——已了结的不该再标逾期。
+	for _, it := range out.Todos {
+		if it.Closed && it.Overdue {
+			t.Errorf("%q 已经了结了还标着逾期", it.Title)
+		}
+	}
+}
+
+// 文件里用 `#+TODO:` 自定义了了结关键字，也得认。
+//
+// 这正是不能在界面那边写死 "DONE" 的原因：了结叫什么由文件说了算。
+func TestCustomDoneKeywordCountsAsClosed(t *testing.T) {
+	files := map[string]string{"t.org": `#+TODO: TODO | 归档 CANCELLED
+
+* 归档 去年的事
+CLOSED: [2026-09-17 Thu 10:00] DEADLINE: <2026-09-01 Tue>
+`}
+	in, _ := json.Marshal(map[string]any{
+		"files": files, "days": 1,
+		"now": "2026-09-18T09:00:00+08:00", "tz": "Asia/Shanghai",
+	})
+	var out SnapshotOutput
+	if err := json.Unmarshal([]byte(Snapshot(string(in))), &out); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, it := range out.Todos {
+		if it.Title == "去年的事" {
+			found = true
+			if !it.Closed {
+				t.Errorf("文件自定义的了结关键字没认出来：%+v", it)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("待办里没有「去年的事」：%+v", out.Todos)
+	}
+}

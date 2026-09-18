@@ -180,7 +180,13 @@ type Item struct {
 	Total    int      `json:"total"` //
 	Repeat   string   `json:"repeat"`
 	Overdue  bool     `json:"overdue"`
-	Category string   `json:"category"`
+	// Closed 表示这条已经了结了——**做完了或者取消了都算**。
+	//
+	// 这件事必须由 Go 说了算：了结用哪几个关键字是每份 org 文件自己定的
+	// （`#+TODO:` 那一行），默认是 DONE 和 CANCELLED。界面那边照着
+	// `state == "DONE"` 判过，结果取消掉的事跑到「逾期」里去了。
+	Closed   bool   `json:"closed"`
+	Category string `json:"category"`
 
 	// Due 是这条归到哪一天（截止优先于计划），空表示没排期。
 	// DueIn 是距今几天，负数是已经过去了。
@@ -660,6 +666,7 @@ func toItem(it agenda.Item) Item {
 		Title:    org.Plain(n.Title),
 		Tags:     n.Tags,
 		Category: it.Category(),
+		Closed:   n.IsDone(),
 	}
 	if it.HasTime {
 		out.Time = it.Start.Format("15:04")

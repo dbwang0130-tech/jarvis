@@ -24,6 +24,13 @@ struct Item: Codable, Identifiable, Hashable {
     var total: Int
     var repeatRule: String
     var overdue: Bool
+    /// 这条了结了没有——**做完了或者取消了都算**。
+    ///
+    /// 由 Go 给，别在这边照着 state 判：了结用哪几个关键字是每份 org 文件
+    /// 自己定的（`#+TODO:` 那一行），默认是 DONE 和 CANCELLED，还能加
+    /// 别的。这边写死成 `state == "DONE"` 的时候，取消掉的事跑到
+    /// 「逾期」里去了。
+    var closed = false
     var category: String
 
     /// 归到哪一天（截止优先于计划），空表示没排期；距今几天，负数是过去了。
@@ -42,7 +49,7 @@ struct Item: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case ref, kind, time, state, priority, title, parents, tags, done, total
         case repeatRule = "repeat"
-        case overdue, category
+        case overdue, closed, category
         case due
         case dueIn = "due_in"
         case dueKind = "due_kind"
@@ -55,7 +62,7 @@ struct Item: Codable, Identifiable, Hashable {
         total > 0 ? "\(done)/\(total)" : nil
     }
 
-    var isDone: Bool { state == "DONE" }
+    var isDone: Bool { closed }
 
     /// 状态给人看的说法。
     ///
@@ -117,6 +124,7 @@ extension Item {
         total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
         repeatRule = try c.decodeIfPresent(String.self, forKey: .repeatRule) ?? ""
         overdue = try c.decodeIfPresent(Bool.self, forKey: .overdue) ?? false
+        closed = try c.decodeIfPresent(Bool.self, forKey: .closed) ?? (state == "DONE")
         category = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
         due = try c.decodeIfPresent(String.self, forKey: .due) ?? ""
         dueIn = try c.decodeIfPresent(Int.self, forKey: .dueIn) ?? 0
