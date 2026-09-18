@@ -114,6 +114,15 @@ func (s *Store) history(name string) []Resource {
 	out := make([]Resource, 0, len(idx))
 	sorted := true
 	for _, i := range idx {
+		// 标了「录错了」的不算数。
+		//
+		// FHIR 里记错的记录不删，是把 status 改成 entered-in-error——
+		// 医疗记录跟账本一样不改历史，那条仍留在文件里，但读的人要当它
+		// 不存在。不滤掉的话，一条错的体重会一直参与趋势和「最近一次」，
+		// 而且是从别的工具（比如「健康」App 导出）带进来的也照单全收。
+		if s.Resources[i].voided() {
+			continue
+		}
 		if len(out) > 0 && s.Resources[i].when().Before(out[len(out)-1].when()) {
 			sorted = false
 		}

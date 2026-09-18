@@ -74,6 +74,7 @@ struct Sparkline: View {
 
 /// 点开一项指标：一张带坐标的图 + 一条条读数。
 struct VitalDetail: View {
+    @EnvironmentObject var store: Store
     let vital: HealthVital
     @Environment(\.dismiss) private var dismiss
 
@@ -81,6 +82,9 @@ struct VitalDetail: View {
 
     /// 看多久。默认一个月——最常问的是「这个月怎么样」。
     @State private var span = Span.month
+
+    /// 正在问「这条是不是录错了」的那一条。
+    @State private var asking: HealthPoint?
 
     enum Span: String, CaseIterable, Identifiable {
         case week = "周", month = "月", half = "6 个月"
@@ -98,6 +102,18 @@ struct VitalDetail: View {
         guard let cut = Calendar.current.date(byAdding: .day, value: -span.days, to: Date())
         else { return vital.points }
         return vital.points.filter { $0.date >= cut }
+    }
+
+    private var askingBinding: Binding<Bool> {
+        Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })
+    }
+
+    private func void(_ p: HealthPoint) {
+        asking = nil
+        Task {
+            let ok = await store.voidHealth(kind: vital.kind, at: p.date)
+            ok ? Haptics.warning() : Haptics.failure()
+        }
     }
 
     /// 血压一条记录有两个数，两条线一起画。
@@ -148,6 +164,16 @@ struct VitalDetail: View {
                     Button { dismiss() } label: { Image(systemName: "xmark") }
                         .accessibilityLabel("关掉")
                 }
+            }
+            .confirmationDialog("这条录错了？", isPresented: askingBinding,
+                                titleVisibility: .visible) {
+                if let p = asking {
+                    Button("标成录错了", role: .destructive) { void(p) }
+                }
+                Button("算了", role: .cancel) {}
+            } message: {
+                Text("记录会留在文件里，只是往后不算数——"
+                     + "医疗记录跟账本一样不改历史。")
             }
         }
     }
@@ -289,6 +315,14 @@ struct VitalDetail: View {
                         .font(.subheadline.monospacedDigit())
                 }
                 .padding(.horizontal, 12).padding(.vertical, 9)
+                .contentShape(Rectangle())
+                // 体重打错一位、血压记反了，以前没有出路：那条会一直
+                // 参与趋势和「最近一次」，只能到电脑上去改文件。
+                .contextMenu {
+                    Button(role: .destructive) { asking = p } label: {
+                        Label("这条录错了", systemImage: "exclamationmark.triangle")
+                    }
+                }
             }
         }
         .glassEffect(.regular, in: .rect(cornerRadius: Brand.radius))

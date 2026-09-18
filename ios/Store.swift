@@ -389,6 +389,29 @@ final class Store: ObservableObject, AskEvents {
     /// 手上这些 org 文件的名字，排好序。记一条时可以挑写进哪个。
     var orgFiles: [String] { files.keys.sorted() }
 
+    /// 把一条健康记录标成「录错了」。
+    ///
+    /// 不是删——医疗记录跟账本一样不改历史。那条留在文件里，只是往后
+    /// 不再参与趋势和「最近一次」。
+    @discardableResult
+    func voidHealth(kind: String, at: Date) async -> Bool {
+        guard !thinking else { return false }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        let stamp = iso.string(from: at)
+        let current = health
+        let r = await Task.detached(priority: .userInitiated) {
+            Bridge.voidHealth(health: current, kind: kind, at: stamp)
+        }.value
+
+        if let err = r.error, !err.isEmpty {
+            fail(err)
+            return false
+        }
+        guard let updated = r.health, !updated.isEmpty else { return true }
+        return await writeBack(health: updated)
+    }
+
     /// 冲掉记错的那一笔。
     ///
     /// 不是删——账本是流水账，记错了要记一笔反向的把它抵掉，原始那笔

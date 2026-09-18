@@ -193,6 +193,27 @@ enum Bridge {
         }
     }
 
+    /// 把一条健康记录标成「录错了」。
+    ///
+    /// **不是删掉那一行。** FHIR 里记错的记录是改 status 成
+    /// entered-in-error，原样留在文件里——医疗记录跟账本一样不改历史。
+    /// 按体征名加时刻定位，下标会因为文件在别处被追加过而错位。
+    static func voidHealth(health: String, kind: String, at: String) -> VoidHealthResult {
+        let input: [String: Any] = [
+            "health": health, "kind": kind, "at": at,
+            "tz": TimeZone.current.identifier,
+        ]
+        guard let json = encode(input) else {
+            return VoidHealthResult(error: "入参编码失败")
+        }
+        let out = callVoidHealth(json)
+        do {
+            return try JSONDecoder().decode(VoidHealthResult.self, from: Data(out.utf8))
+        } catch {
+            return VoidHealthResult(error: "出参解不开：\(error.localizedDescription)")
+        }
+    }
+
     /// 冲掉记错的那一笔：往账本末尾追加一笔方向相反的。
     ///
     /// **不是删掉原来那几行。** 账本是一条流水，每一笔都是「当时确实这么
@@ -280,6 +301,14 @@ enum Bridge {
     private static func callSpend(_ json: String) -> String {
         #if canImport(Mobile)
         return MobileSpend(json)
+        #else
+        return #"{"error":"Mobile framework 没连上"}"#
+        #endif
+    }
+
+    private static func callVoidHealth(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileVoidHealth(json)
         #else
         return #"{"error":"Mobile framework 没连上"}"#
         #endif

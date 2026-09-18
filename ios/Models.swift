@@ -503,6 +503,13 @@ struct ModelCheck: Codable {
     var error: String?
 }
 
+/// 标「录错了」的结果。health 只在真改过之后才有。
+struct VoidHealthResult: Codable {
+    var message = ""
+    var health: String?
+    var error: String?
+}
+
 /// 记一笔账的结果。ledger 只在真写进去之后才有，跟 ActResult 一个规矩。
 struct SpendResult: Codable {
     var message = ""

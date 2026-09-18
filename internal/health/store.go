@@ -192,6 +192,67 @@ func (s *Store) AppendAll(rs []Resource) error {
 	return nil
 }
 
+// Void 把某项记录标成「录错了」，返回新的文件全文。
+//
+// **不删那一行。** FHIR 里记错的记录是改 status 成 entered-in-error，
+// 原样留在文件里——医疗记录跟账本一样不改历史：删掉的话说不清当时到底
+// 记过什么，别处（比如「健康」App）同步过来的那份也对不上。
+//
+// 按**体征名加时刻**定位，不按下标：下标会因为文件在别处被追加过而错位，
+// 而一条记录的「什么时候量的」不会变。跟账本冲账要核对日期和收款方
+// 是同一个道理——标错一条，人要过很久才发现。
+//
+// 按行重写，其余行一个字节都不碰：这个文件可能被别的工具追加过，也可能
+// 有我们不认得的资源类型，整份重新生成会把它们弄坏。
+func Void(raw, kind, at string) (string, error) {
+	kind = strings.TrimSpace(kind)
+	want, err := time.Parse(time.RFC3339, strings.TrimSpace(at))
+	if err != nil {
+		return raw, fmt.Errorf("时刻 %q 看不懂", at)
+	}
+
+	code := ""
+	meals := kind == "饮食"
+	if !meals {
+		v, ok := vitals[kind]
+		if !ok {
+			return raw, fmt.Errorf("不认识的记录种类 %q", kind)
+		}
+		code = v.Code
+	}
+
+	lines := strings.Split(raw, "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var r Resource
+		if err := json.Unmarshal([]byte(line), &r); err != nil {
+			continue // 坏行跳过，跟 scan 一个规矩
+		}
+		if meals && r.ResourceType != "NutritionIntake" {
+			continue
+		}
+		if code != "" && !r.hasCode(code) {
+			continue
+		}
+		if !r.when().Equal(want) {
+			continue
+		}
+		if r.voided() {
+			return raw, fmt.Errorf("这条已经标过「录错了」")
+		}
+		r.Status = StatusVoided
+		out, err := marshalLine(r)
+		if err != nil {
+			return raw, err
+		}
+		lines[i] = strings.TrimRight(out, "\n")
+		return strings.Join(lines, "\n"), nil
+	}
+	return raw, fmt.Errorf("找不到这条记录，下拉刷新一下再试")
+}
+
 // Patient 返回最后写进去的那份基础信息。
 //
 // 同一个 id 可以写很多条，后来的算数——文件只追加，改资料就是再记一版。
@@ -231,6 +292,12 @@ func (s *Store) Recent(kind string, since time.Time, limit int) []Resource {
 	var out []Resource
 	for _, r := range s.Resources {
 		if r.ResourceType == "Patient" {
+			continue
+		}
+		// 标了「录错了」的当它不存在——那条仍在文件里，只是不算数。
+		// 别处（比如「健康」App 导出）写进来的这个状态也认，它是 FHIR
+		// 的标准状态，不是我们自己发明的约定。
+		if r.voided() {
 			continue
 		}
 		if code != "" && !r.hasCode(code) {
