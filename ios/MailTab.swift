@@ -106,7 +106,6 @@ struct MailTab: View {
                 .disabled(syncing)
                 .accessibilityLabel("收信")
             }
-            SettingsLink()
         }
         .sheet(item: $selected) { MailDetail(mail: $0) }
         .confirmationDialog("清掉这一组？", isPresented: cleaningBinding,

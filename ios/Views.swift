@@ -142,7 +142,6 @@ struct PlannerView: View {
                 .labelsHidden()
                 .frame(width: 160)
             }
-            SettingsLink()
             QuickAddButton()
         }
     }
@@ -381,13 +380,11 @@ struct LedgerTab: View {
                         // 三个并排在手机上每个只有一百多点宽，数字一到七八位
                         // 就得缩到看不清。净资产是最该一眼看到的，单独占一行
                         // 给足宽度；另外两个并排够用。
-                        GlassEffectContainer(spacing: 10) {
-                            VStack(spacing: 10) {
-                                Stat(name: "净资产", value: l.net, emphasize: true)
-                                HStack(spacing: 10) {
-                                    Stat(name: "资产", value: l.assets)
-                                    Stat(name: "负债", value: -l.debts)
-                                }
+                        VStack(spacing: 10) {
+                            Stat(name: "净资产", value: l.net, emphasize: true)
+                            HStack(spacing: 10) {
+                                Stat(name: "资产", value: l.assets)
+                                Stat(name: "负债", value: -l.debts)
                             }
                         }
                         .listRowInsets(EdgeInsets(top: 8, leading: 8,
@@ -396,9 +393,14 @@ struct LedgerTab: View {
                     }
                     // 按科目分组。原来把 Income:Salary 跟银行卡并排列在「账户」
                     // 里，看着像是有这么个账户——那是记账科目，不是钱放在哪儿。
-                    ForEach(accountGroups(l.accounts), id: \.title) { group in
-                        Section(group.title) {
-                            ForEach(Array(group.items.enumerated()), id: \.offset) { AccountRow(account: $1) }
+                    ForEach(accountGroups(l.accounts)) { group in
+                        Section {
+                            ForEach(Array(group.items.enumerated()), id: \.offset) {
+                                AccountRow(account: $1, tint: group.kind.tint)
+                            }
+                        } header: {
+                            GroupHeader(text: group.title, icon: group.kind.icon,
+                                        tint: group.kind.tint)
                         }
                     }
                     // 流水默认收起来。打开财务页多半是想看「还剩多少」，
@@ -408,7 +410,8 @@ struct LedgerTab: View {
                             withAnimation(.snappy) { showTxns.toggle() }
                         } label: {
                             HStack {
-                                Label("最近流水", systemImage: "list.bullet.rectangle")
+                                GroupHeader(text: "最近流水",
+                                            icon: "list.bullet.rectangle", tint: .blue)
                                 Spacer()
                                 Text("\(l.recent.count) 笔")
                                     .font(.caption.monospacedDigit())
@@ -429,6 +432,9 @@ struct LedgerTab: View {
                             } header: {
                                 HStack {
                                     Text(dayTitle(day.date))
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .textCase(nil)
                                     Spacer()
                                     if day.spent > 0 {
                                         Text("支出 " + moneyRound(day.spent))
@@ -448,21 +454,66 @@ struct LedgerTab: View {
         .refreshable { await store.reload() }
         .overlay { LoadingHint(isEmpty: store.snapshot.ledger == nil) }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
-        .toolbar { SettingsLink() }
     }
 }
 
 /// 账户按科目归类。顺序是「钱在哪儿 → 欠多少 → 花在哪儿 → 挣多少」，
 /// 最常看的排前面；权益和认不出来的放最后。
-func accountGroups(_ accounts: [Account]) -> [(title: String, items: [Account])] {
-    let order: [(String, String)] = [
-        ("asset", "账户"), ("debt", "负债"),
-        ("expense", "支出"), ("income", "收入"),
-        ("equity", "权益"), ("other", "其他"),
-    ]
-    return order.compactMap { kind, title in
-        let items = accounts.filter { $0.kind == kind }
-        return items.isEmpty ? nil : (title, items)
+func accountGroups(_ accounts: [Account]) -> [AccountGroup] {
+    AccountKind.order.compactMap { k in
+        let items = accounts.filter { $0.kind == k.rawValue }
+        return items.isEmpty ? nil : AccountGroup(kind: k, items: items)
+    }
+}
+
+struct AccountGroup: Identifiable {
+    let kind: AccountKind
+    let items: [Account]
+    var id: String { kind.rawValue }
+    var title: String { kind.title }
+}
+
+/// 科目的样子：叫什么、什么颜色、什么图标。
+///
+/// 跟健康那边 HealthGroup 一个路子——颜色和图标是界面的事，收在一处，
+/// 别散在各个 switch 里。顺序就是「钱在哪儿 → 欠多少 → 花在哪儿 →
+/// 挣多少」，最常看的排前面；权益和认不出来的放最后。
+enum AccountKind: String, CaseIterable {
+    case asset, debt, expense, income, equity, other
+
+    static let order: [AccountKind] = [.asset, .debt, .expense, .income, .equity, .other]
+
+    var title: String {
+        switch self {
+        case .asset:   return "账户"
+        case .debt:    return "负债"
+        case .expense: return "支出"
+        case .income:  return "收入"
+        case .equity:  return "权益"
+        case .other:   return "其他"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .asset:   return .green
+        case .debt:    return .red
+        case .expense: return .orange
+        case .income:  return .mint
+        case .equity:  return .indigo
+        case .other:   return .secondary
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .asset:   return "banknote"
+        case .debt:    return "creditcard"
+        case .expense: return "cart"
+        case .income:  return "arrow.down.circle"
+        case .equity:  return "scalemass"
+        case .other:   return "square.grid.2x2"
+        }
     }
 }
 
@@ -549,9 +600,13 @@ struct TxnRow: View {
 
 struct AccountRow: View {
     let account: Account
+    var tint: Color = .secondary
 
     var body: some View {
         HStack(spacing: 10) {
+            // 一个小色点。整行都染色太吵，但完全没有的话，滑到中间就分不清
+            // 现在看的是哪一组了——分区标题早滚出屏幕了。
+            Circle().fill(tint).frame(width: 7, height: 7)
             VStack(alignment: .leading, spacing: 1) {
                 Text(account.leaf).font(.callout).lineLimit(1)
                 if !account.parentPath.isEmpty {
@@ -576,19 +631,26 @@ struct Stat: View {
     var body: some View {
         VStack(spacing: 4) {
             Text(name).font(.caption).foregroundStyle(.secondary)
-            Text(moneyRound(value))
-                .font(emphasize ? .largeTitle.bold().monospacedDigit()
-                                : .title3.monospacedDigit())
-                .foregroundStyle(emphasize ? AnyShapeStyle(Brand.sheen)
-                                           : AnyShapeStyle(Color.primary))
-                .lineLimit(1)
-                .minimumScaleFactor(0.4)
+            // 数字排大号、单位排小号。同一个字号的话，一眼扫过去分不出
+            // 「231891」和「元」哪个是重点——健康页那几张卡也是这么排的。
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(moneyRound(value))
+                    .font(.system(emphasize ? .largeTitle : .title3,
+                                  design: .rounded).weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(emphasize ? AnyShapeStyle(Brand.sheen)
+                                               : AnyShapeStyle(Color.primary))
+                Text("元").font(.caption).foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.4)
         }
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
         // 净资产是这页最该先看到的，给它一点色，另外两个保持素净。
-        .glassEffect(emphasize ? .regular.tint(Brand.soft) : .regular,
-                     in: .rect(cornerRadius: Brand.radius))
+        .background(emphasize ? AnyShapeStyle(Brand.soft)
+                              : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
+                    in: .rect(cornerRadius: Brand.radius))
     }
 }
 
@@ -1050,6 +1112,31 @@ struct ConfirmSheet: View {
 ///
 /// 原先四个页面统一是系统那个灰托盘——日程空了给你看一个托盘，
 /// 既不贴切也不像自家东西。图标改成各页自己的，底色用品牌浅蓝。
+/// 分区标题：彩色图标 + 黑色粗体。
+///
+/// 比 List 默认那种灰色小字重得多，是**故意的**：一屏十来张卡片摞下来，
+/// 灰色小字分不出段落。系统「健康」和「设置」里的分组标题也是这个分量。
+struct GroupHeader: View {
+    let text: String
+    var icon: String?
+    var tint: Color = .secondary
+
+    var body: some View {
+        HStack(spacing: 7) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+            Text(text).font(.title3.weight(.bold))
+                .foregroundStyle(.primary)
+        }
+        // List 的 section header 默认全大写、全灰；这两下把它收回来。
+        .textCase(nil)
+        .padding(.vertical, 2)
+    }
+}
+
 /// 小标题。健康那几块在用；别的页面走 List 的原生 Section。
 ///
 /// 放这儿是因为 EmptyHint / LoadingHint / ErrorBar 这些共享组件都在这个
@@ -1176,6 +1263,12 @@ struct QuickAddButton: ToolbarContent {
     }
 }
 
+/// 设置的入口。**只挂在对话那一页上。**
+///
+/// 日程、邮件、财务、健康原先各挂了一个——那会儿它们是并排的标签页，
+/// 不各带一个就没别的路进设置。现在它们是从对话里掀起来的卡片，右上角
+/// 已经有「关掉」了，再摆个齿轮就是两个按钮挤在一起，而且点进去还得
+/// 关两层才回得到刚才那一页。
 struct SettingsLink: ToolbarContent {
     @State private var open = false
 

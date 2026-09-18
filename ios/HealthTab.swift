@@ -66,7 +66,7 @@ struct HealthTab: View {
         VStack(alignment: .leading, spacing: 10) {
             // 分区标题是黑色大字，不是灰色小字——「健康」里就是这样，
             // 它要能在一屏卡片里一眼分出段落来。
-            GroupHeader(group: group, text: group.name)
+            GroupHeader(text: group.name, icon: group.icon, tint: group.tint)
             VStack(spacing: 10) {
                 ForEach(items) { v in
                     Button { picked = v } label: { VitalCard(vital: v, tint: group.tint) }
@@ -80,7 +80,8 @@ struct HealthTab: View {
 
     private func meals(_ items: [HealthEntry]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            GroupHeader(group: .nutrition, text: "饮食")
+            GroupHeader(text: "饮食", icon: HealthGroup.nutrition.icon,
+                        tint: HealthGroup.nutrition.tint)
             VStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.offset) { i, m in
                     if i > 0 { Divider().padding(.leading, 14) }
@@ -148,21 +149,6 @@ struct HealthTab: View {
             ? "还没有记录。\n可以从下面把「健康」里的数据导进来，"
                 + "也可以直接跟 Jarvis 说「体重 72.5」「昨晚睡了 7 小时」。"
             : "还没有记录。\n跟 Jarvis 说「体重 72.5」「昨晚睡了 7 小时」「早上吃了小米粥」就行。"
-    }
-}
-
-/// 分区标题：彩色图标 + 黑色粗体。
-struct GroupHeader: View {
-    let group: HealthGroup
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: group.icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(group.tint)
-            Text(text).font(.title3.weight(.bold))
-        }
     }
 }
 
