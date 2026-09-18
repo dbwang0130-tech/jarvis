@@ -10,7 +10,9 @@
 """
 import hashlib
 import os
+import re
 import pathlib
+import subprocess
 
 IOS = pathlib.Path(__file__).resolve().parent
 FRAMEWORK = "Mobile.xcframework"
@@ -18,6 +20,32 @@ ASSETS = "Assets.xcassets"
 PRIVACY = "PrivacyInfo.xcprivacy"
 LAUNCH = "LaunchScreen.storyboard"
 ENTITLEMENTS = "Jarvis.entitlements"
+
+
+def find_team() -> str:
+    """找开发者团队 ID。
+
+    原来这里写死留空，团队 ID 由 install-device.sh 在命令行传进去。命令行
+    那条路是够用的，可**在 Xcode 里按一次 ⌘B 就不行**——它只看工程里写的
+    那个值，看到空的就报「Signing requires a development team」。
+
+    而有些事只能在 Xcode 里做：加一项能力（比如 HealthKit）要跟 Apple 那边
+    换新的描述文件，命令行拿不到登录态。所以工程里也得有这个值。
+
+    找的顺序跟装机脚本一致：环境变量 → Xcode 里登的账号。都没有就留空，
+    照旧由命令行传——只是那样在 Xcode 里点不动。
+    """
+    if t := os.environ.get("DEVELOPMENT_TEAM", "").strip():
+        return t
+    try:
+        out = subprocess.run(
+            ["defaults", "read", "com.apple.dt.Xcode",
+             "IDEProvisioningTeamByIdentifier"],
+            capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return ""
+    m = re.search(r'teamID\s*=\s*"?([A-Z0-9]{10})"?\s*;', out)
+    return m.group(1) if m else ""
 BUNDLE_ID = "com.dabao.jarvis"
 DEPLOY_TARGET = "26.0"  # Liquid Glass 那套要 26 起；设备是 iPhone 17 Pro，本来就跑 26+
 
@@ -107,11 +135,12 @@ def main() -> None:
 
     appicon = ("\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;"
                if has_assets else "")
+    team = find_team()
     target_common = f'''				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";{appicon}
 				CODE_SIGN_ENTITLEMENTS = {ENTITLEMENTS};
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = "{team}";
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
