@@ -60,6 +60,18 @@ struct HealthTab: View {
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .refreshable { await store.reload() }
         .sheet(item: $picked) { VitalDetail(vital: $0) }
+        .toolbar {
+            if canImport, !isEmpty {
+                ToolbarItem(placement: .topBarLeading) { importButton }
+            }
+        }
+        // 导完那句话说完就该退场。原来它一直挂在按钮上方，下次进来
+        // 还在，像是刚发生过。
+        .task(id: note) {
+            guard !note.isEmpty else { return }
+            try? await Task.sleep(for: .seconds(5))
+            note = ""
+        }
     }
 
     private func section(_ group: HealthGroup, _ items: [HealthVital]) -> some View {
@@ -104,11 +116,17 @@ struct HealthTab: View {
 
     // MARK: - 从「健康」导入
 
+    private var canImport: Bool { HealthKitImporter.isAvailable }
+
     /// 空着的时候这个按钮尤其要在——第一次进来手里已经有几年的数据了，
     /// 不该让人从今天开始重新一条条说。
+    ///
+    /// 但导完就不该再占着地方了：往后每天都是跟 Jarvis 说一句记进来的，
+    /// 再导一次是偶尔才干的事，而它压在整页底下，每次看指标都要绕开它。
+    /// 所以有数据之后收进工具栏，底下只在有话要说时才亮一条。
     @ViewBuilder
     private var importBar: some View {
-        if HealthKitImporter.isAvailable {
+        if canImport, isEmpty || !note.isEmpty {
             VStack(spacing: 6) {
                 if !note.isEmpty {
                     Text(note)
@@ -117,26 +135,44 @@ struct HealthTab: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 20)
                 }
-                Button {
-                    Task { note = await store.importFromHealthKit() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if store.importingHealth {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "heart.circle")
+                if isEmpty {
+                    Button {
+                        Task { note = await store.importFromHealthKit(); Haptics.success() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if store.importingHealth {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "heart.circle")
+                            }
+                            Text(store.importingHealth ? "正在读…" : "从「健康」导入")
                         }
-                        Text(store.importingHealth ? "正在读…" : "从「健康」导入")
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 16).padding(.vertical, 10)
                     }
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .disabled(store.importingHealth)
                 }
-                .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: .capsule)
-                .disabled(store.importingHealth)
             }
             .padding(.bottom, 10)
         }
+    }
+
+    /// 工具栏里那颗。图标按钮没有文字说明自己是干嘛的，所以留了
+    /// accessibilityLabel，长按也认得出来。
+    private var importButton: some View {
+        Button {
+            Task { note = await store.importFromHealthKit(); Haptics.success() }
+        } label: {
+            if store.importingHealth {
+                ProgressView().controlSize(.small)
+            } else {
+                Image(systemName: "heart.circle")
+            }
+        }
+        .disabled(store.importingHealth)
+        .accessibilityLabel("从「健康」导入")
     }
 
     private var isEmpty: Bool {
