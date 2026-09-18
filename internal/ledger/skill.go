@@ -43,7 +43,9 @@ func (s *Skill) Describe(b *strings.Builder) {
 	fmt.Fprintf(b, "账本文件：%s\n", s.Book.Path)
 	fmt.Fprintf(b, "共 %d 笔交易、%d 个账户。\n", len(s.Book.Transactions), len(bal))
 	if len(bal) > 0 {
-		b.WriteString("主要账户余额：\n")
+		// 说清这是什么时候的数。不说的话，记完一笔之后模型会拿工具返回的
+		// 新余额跟这里的旧余额比，然后把「差了一笔」当成账目异常报出来。
+		b.WriteString("主要账户余额（**这一轮对话开始时**的，记账之后就不是这个数了）：\n")
 		for _, name := range s.Book.SortedAccounts() {
 			if len(name) == 0 {
 				continue
@@ -60,7 +62,20 @@ func (s *Skill) Instructions() string {
 3. 金额写阿拉伯数字，货币写在数字后面（如 50.00 CNY）。支出一条记正数（如 Expenses:Food 50.00），对应的资产/负债条可以留空让系统自动配平。
 4. 查询余额、收支用 list_accounts；看流水用 list_transactions。
 5. 只追加新交易，不要改写历史记录。
-6. 记完账用一两句话说清楚记了什么、当前相关账户余额。`
+6. 记完账用一两句话说清楚记了什么、相关账户的新余额（用工具返回的那个数，别自己算）。
+
+**不要误报账目异常。** 这几种情况都是正常的，不是对不上：
+- 系统提示里那份余额是**这一轮开始时**的。你刚记完一笔，工具返回的新余额
+  跟它不一样，差的正好就是这笔——这是记账生效了，不是数据有问题。
+- 「建账」「期初余额」那笔的金额，跟账户当前余额本来就不同，中间隔着所有
+  流水。两个数相减不说明任何事。
+- 两个账户余额碰巧相同、或者差额恰好等于某笔金额，都只是巧合。
+
+真要说「账可能有问题」，前提是你**已经用 list_transactions 把那个账户的流水
+拉出来逐笔核过**，并且能指出具体是哪一笔缺了或重了。做不到就什么都别说——
+误报的代价是用户跑去核对一遍，最后发现是你算错了，从此不敢信你报的数。
+
+7. 用户只说记一笔，就只记这一笔。别顺带去查别的账户、别主动提"另外我发现"。`
 }
 
 func (s *Skill) Tools() []agent.Tool {
@@ -159,6 +174,9 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 			if err := s.Book.Add(tx); err != nil {
 				return "", false, err
 			}
+			// Add 收的是值，配平出来的那条金额只填在它自己那份上。
+			// 拿存进去的那笔来显示，否则自动配平的一条金额是 0。
+			tx = s.Book.Transactions[len(s.Book.Transactions)-1]
 			if commodity != "" {
 				for i := range tx.Postings {
 					if tx.Postings[i].Commodity == "" {
@@ -169,8 +187,12 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 			bal := s.Book.Balances()
 			msg := fmt.Sprintf("已记账：%s", s.Book.FormatTransactionLine(tx))
 			msg += fmt.Sprintf("\n当前共 %d 笔交易。", len(s.Book.Transactions))
+			// **前 → 后一起给**。只给新余额的话，模型手里另一个数是系统提示
+			// 里那份旧快照，它会把两者之差（也就是刚记的这笔）当成对不上账。
 			for _, p := range tx.Postings {
-				msg += fmt.Sprintf("\n  %s 余额 %.2f", p.Account, bal[p.Account])
+				now := bal[p.Account]
+				msg += fmt.Sprintf("\n  %s 余额 %.2f → %.2f（这笔 %+.2f）",
+					p.Account, now-p.Amount, now, p.Amount)
 			}
 			return msg, false, nil
 		},
