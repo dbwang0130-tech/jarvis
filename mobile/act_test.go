@@ -317,3 +317,48 @@ func TestActNoteNeedsText(t *testing.T) {
 		t.Fatal("空笔记该报错")
 	}
 }
+
+// 记错了的条目一直没有出路：「做完了」该标完成，可「这条本来就不该在这儿」
+// 以前只能到电脑上去改文件。
+func TestActDelete(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": "* TODO 写周报\n* TODO 改简历\n"},
+		Ref:   "a.org:0", Op: "delete", Title: "写周报", TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("删不掉：%s", out.Error)
+	}
+	got := out.Files["a.org"]
+	if strings.Contains(got, "写周报") {
+		t.Fatalf("没删掉：\n%s", got)
+	}
+	// 只删那一条，别把整个文件清了。
+	if !strings.Contains(got, "改简历") {
+		t.Fatalf("把别的条目也删了：\n%s", got)
+	}
+}
+
+// 标题对不上就别删——这道保险是 delete_item 自带的，界面这条路也得走它，
+// 不能因为「界面上点的就是那一条」就绕过去：ref 是行号，文件在别处被改过
+// 之后，同一个行号指的可能已经是另一条了。
+func TestActDeleteChecksTitle(t *testing.T) {
+	for _, tc := range []struct{ name, title, want string }{
+		{"没给标题", "", "带上标题"},
+		// 对不上时 resolve 报的是「引用已失效」——它分不清是文件被改过
+		// 还是点错了条目，反正这个 ref 不能信了。
+		{"标题对不上", "改简历", "失效"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := act(t, ActInput{
+				Files: map[string]string{"a.org": "* TODO 写周报\n"},
+				Ref:   "a.org:0", Op: "delete", Title: tc.title, TZ: "Asia/Shanghai",
+			})
+			if out.Error == "" {
+				t.Fatal("该拒绝")
+			}
+			if !strings.Contains(out.Error, tc.want) {
+				t.Fatalf("话没说到点上：%s", out.Error)
+			}
+		})
+	}
+}

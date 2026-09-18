@@ -23,7 +23,7 @@ type ActInput struct {
 	Files map[string]string `json:"files"`
 	Ref   string            `json:"ref"`
 	// Op 是要做的事：done / start / stop / postpone / cancel / undone /
-	// create / check / priority / state / schedule / deadline / note。
+	// create / check / priority / state / schedule / deadline / note / delete。
 	Op string `json:"op"`
 	// Days 给 postpone 用，推迟几天，零值按 1 天算。
 	Days int `json:"days"`
@@ -156,6 +156,21 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 
 	case "stop":
 		return call("clock_out", ref)
+
+	case "delete":
+		// **真的删掉**，不是标记完成。界面那边为它挂了确认框。
+		//
+		// 「做完了」应该标完成而不是删除（提示词里也这么跟秘书说），但
+		// 「记错了」「这条本来就不该在这儿」没有别的出路——以前只能到
+		// 电脑上去改文件。
+		//
+		// 要带标题：delete_item 拿它跟 ref 指着的那条核对，对不上就拒绝。
+		// 这道保险是防模型删错的，界面这边本来就握着标题，顺手给上。
+		if strings.TrimSpace(in.Title) == "" {
+			return "", fmt.Errorf("删除要带上标题，好核对删的是哪一条")
+		}
+		return call("delete_item",
+			map[string]any{"ref": in.Ref, "title": in.Title})
 
 	case "note":
 		// 详情页把 LOGBOOK 里的记录都列出来了（「做过什么」那一节），却没有

@@ -329,6 +329,8 @@ struct ItemDetail: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var data: DetailData?
+    @State private var askDelete = false
+    @State private var deleting = false
 
     /// 这一条**现在**的样子。
     ///
@@ -410,6 +412,19 @@ struct ItemDetail: View {
                     }
                 }
 
+                // 删掉一条一直没有出路：「做完了」该标完成，可「记错了」
+                // 「这条本来就不该在这儿」以前只能到电脑上去改文件。
+                //
+                // 摆在最底下、红色、要点头——它跟上面那排动作不是一类，
+                // 上面那些都能再改回来。
+                Section {
+                    Button(role: .destructive) { askDelete = true } label: {
+                        Label("删掉这一条", systemImage: "trash")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .disabled(deleting || store.thinking)
+                }
+
                 Section {
                     LabeledContent("来自", value: item.file)
                     LabeledContent("引用", value: item.ref)
@@ -425,9 +440,36 @@ struct ItemDetail: View {
                         .accessibilityLabel("关掉")
                 }
             }
+            .confirmationDialog("删掉「\(live.title)」？", isPresented: $askDelete,
+                                titleVisibility: .visible) {
+                Button("删掉", role: .destructive) { remove() }
+                Button("算了", role: .cancel) {}
+            } message: {
+                Text("这条连同它的正文、清单、记录一起没了，撤不回来。"
+                     + "做完了的话标完成就行。")
+            }
         }
         // 正文和勾选项不在列表里，点开才去 Go 那边取这一条。
         .task(id: item.ref) { data = await store.detail(of: item.ref) }
+    }
+
+    /// 删掉这一条。
+    ///
+    /// 带上标题：delete_item 拿它跟 ref 指着的那条核对，对不上就拒绝。
+    /// ref 是行号，文件在别处被改过之后同一个行号可能已经是另一条了——
+    /// 这道保险不能因为「界面上点的就是那一条」而绕过去。
+    private func remove() {
+        deleting = true
+        Task {
+            let ok = await store.act("delete", on: live.ref, title: live.title)
+            deleting = false
+            if ok {
+                Haptics.warning()
+                dismiss()
+            } else {
+                Haptics.failure()
+            }
+        }
     }
 
     /// 常用动作摆在最上面。这些都不经过模型——界面已经握着 ref 了，
