@@ -18,7 +18,8 @@ var toolLabels = map[string]string{
 	"set_todo_state": "修改状态", "set_priority": "设置优先级", "create_item": "新建条目",
 	"set_repeat": "设置循环", "delete_item": "删除条目", "clock_in": "开始计时",
 	"clock_out": "结束计时", "add_note": "记笔记", "demote_item": "降级",
-	"promote_item": "升级", "move_item": "移动条目",
+	"toggle_checkbox": "勾选清单",
+	"promote_item":    "升级", "move_item": "移动条目",
 	// 邮件
 	"list_mail": "查看邮件", "triage": "整理邮件", "refresh_mail": "同步邮件",
 	"load_more_mail": "加载更早邮件", "mark_read": "标记已读", "clean_mail": "清理邮件",

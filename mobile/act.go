@@ -22,10 +22,14 @@ import (
 type ActInput struct {
 	Files map[string]string `json:"files"`
 	Ref   string            `json:"ref"`
-	// Op 是要做的事：done / start / stop / postpone / cancel / undone / create。
+	// Op 是要做的事：done / start / stop / postpone / cancel / undone /
+	// create / check。
 	Op string `json:"op"`
 	// Days 给 postpone 用，推迟几天，零值按 1 天算。
 	Days int `json:"days"`
+	// Index 给 check 用：勾正文里的第几个复选框，从 1 数起。
+	// 跟工具那边对外的说法一致——界面和用户说的都是「第二项」。
+	Index int `json:"index"`
 
 	// 下面几项给 create 用。
 	Title     string `json:"title"`
@@ -145,6 +149,12 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 
 	case "stop":
 		return call("clock_out", ref)
+
+	case "check":
+		// 勾一个复选框。org 那边一直有这个能力，但工具没接出来，于是
+		// 手机上那几个框画得出来却点不动——看着像坏了。
+		return call("toggle_checkbox",
+			map[string]any{"ref": in.Ref, "index": in.Index})
 
 	case "cancel":
 		// 有取消态就用取消态；没有就标完成并写明是取消的——总好过删掉。

@@ -362,15 +362,9 @@ struct ItemDetail: View {
 
                     if !data.boxes.isEmpty {
                         Section("清单") {
-                            ForEach(Array(data.boxes.enumerated()), id: \.offset) { _, box in
-                                HStack(alignment: .top, spacing: 8) {
-                                    Image(systemName: box.done ? "checkmark.square.fill" : "square")
-                                        .foregroundStyle(box.done ? Color.green : Color.secondary)
-                                    Text(box.text)
-                                        .strikethrough(box.done, color: .secondary)
-                                        .foregroundStyle(box.done ? Color.secondary : Color.primary)
-                                }
-                                .font(.callout)
+                            ForEach(Array(data.boxes.enumerated()), id: \.offset) { idx, box in
+                                CheckboxRow(box: box, ref: item.ref,
+                                            index: idx + 1, data: $data)
                             }
                         }
                     }
@@ -518,6 +512,69 @@ struct ItemDetail: View {
     private func duration(_ minutes: Int) -> String {
         minutes < 60 ? "\(minutes) 分钟"
                      : "\(minutes / 60) 小时 \(minutes % 60) 分"
+    }
+}
+
+/// 清单里的一项，**能点**。
+///
+/// 以前这儿是个纯展示的方框：画着复选框却按不动，看着像坏了。org 那边
+/// 一直有勾选的能力（ToggleCheckbox），只是一直没接出来——工具、桥、界面
+/// 三层都缺一段。
+///
+/// 点的时候先把框自己改掉，不等文件写回来。改的是 iCloud 里的文件，
+/// 一来一回有零点几秒，那段时间里方框一动不动，人会以为没点上又点一次。
+/// 写回失败就弹回原样，并由 ErrorBar 说明缘由。
+struct CheckboxRow: View {
+    @EnvironmentObject var store: Store
+    let box: Checkbox
+    let ref: String
+    let index: Int
+    /// 勾完要把整条重新取一遍——进度、别的框、标题上的 [n/m] 都可能跟着变，
+    /// 所以直接把详情那份数据交给这一行去换。
+    @Binding var data: DetailData?
+
+    @State private var optimistic: Bool?
+    @State private var working = false
+
+    private var done: Bool { optimistic ?? box.done }
+
+    var body: some View {
+        Button {
+            guard !working else { return }
+            working = true
+            optimistic = !done
+            Haptics.done()
+            Task {
+                let ok = await store.act("check", on: ref, index: index)
+                if ok {
+                    data = await store.detail(of: ref)
+                } else {
+                    optimistic = nil        // 没成，弹回去
+                    Haptics.failure()
+                }
+                working = false
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: done ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(done ? Color.green : Color.secondary)
+                    .contentTransition(.symbolEffect(.replace))
+                Text(box.text)
+                    .strikethrough(done, color: .secondary)
+                    .foregroundStyle(done ? Color.secondary : Color.primary)
+                Spacer(minLength: 0)
+            }
+            .font(.callout)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(store.thinking)
+        .animation(.snappy(duration: 0.2), value: done)
+        // 整行是一个开关，读屏时别拆成「勾」和一段文字两下念。
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(box.text)
+        .accessibilityValue(done ? "已勾选" : "未勾选")
+        .accessibilityAddTraits(.isButton)
     }
 }
 

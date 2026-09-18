@@ -78,10 +78,12 @@ enum Bridge {
     /// 让模型跑一趟要好几秒和一次 API 调用。
     static func act(files: [String: String], ref: String, op: String,
                     days: Int = 0, title: String = "",
-                    scheduled: String = "", priority: String = "") -> ActResult {
+                    scheduled: String = "", priority: String = "",
+                    index: Int = 0) -> ActResult {
         let input: [String: Any] = [
             "files": files, "ref": ref, "op": op, "days": days,
             "title": title, "scheduled": scheduled, "priority": priority,
+            "index": index,
             "tz": TimeZone.current.identifier,
         ]
         guard let json = encode(input) else {

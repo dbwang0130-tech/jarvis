@@ -168,6 +168,16 @@ func wsToolDefs() []agent.ToolSpec {
 			}, "ref", "text"),
 		},
 		{
+			Name: "toggle_checkbox",
+			Description: "勾上或取消条目正文里的某个复选框（`- [ ] 买菜` 那种），" +
+				"标题上的 [n/m] 进度会跟着变。用户说「第二项做完了」时用。",
+			Parameters: schema(map[string]any{
+				"ref":   str("条目引用，形如 work.org:12"),
+				"title": str("条目标题，用于校验"),
+				"index": num("第几个复选框，从 1 数起"),
+			}, "ref", "index"),
+		},
+		{
 			Name:        "demote_item",
 			Description: "把条目及其子条目降一级（变成更深一层的子任务）。",
 			Parameters: schema(map[string]any{
@@ -264,6 +274,8 @@ func (w *Workspace) execOrg(name, rawArgs string) (string, bool, error) {
 		return w.clockOut(getStr("ref"), getStr("title"))
 	case "add_note":
 		return w.addNote(getStr("ref"), getStr("title"), getStr("text"))
+	case "toggle_checkbox":
+		return w.toggleBox(getStr("ref"), getStr("title"), getInt("index", 0))
 	case "demote_item":
 		return w.demote(getStr("ref"), getStr("title"))
 	case "promote_item":
@@ -851,6 +863,45 @@ func (w *Workspace) addNote(ref, title, text string) (string, bool, error) {
 	}
 	w.record(doc, "为「%s」记了一条笔记", n.Title)
 	return fmt.Sprintf("已在「%s」的 LOGBOOK 里记下笔记。", n.Title), true, nil
+}
+
+// toggleBox 勾上/取消正文里的第 index 个复选框（从 1 数起）。
+//
+// 对外从 1 数起是有意的：用户和模型说的是「第二项」，不是「下标 1」。
+// 转成下标这一下放在这里，org 那边照旧按 0 起。
+func (w *Workspace) toggleBox(ref, title string, index int) (string, bool, error) {
+	if index < 1 {
+		return "", false, fmt.Errorf("要说清是第几个复选框（从 1 数起）")
+	}
+	doc, n, err := w.resolve(ref, title)
+	if err != nil {
+		return "", false, err
+	}
+	if len(n.Boxes) == 0 {
+		return "", false, fmt.Errorf("「%s」正文里没有复选框", n.Title)
+	}
+	if index > len(n.Boxes) {
+		return "", false, fmt.Errorf("「%s」只有 %d 个复选框，没有第 %d 个",
+			n.Title, len(n.Boxes), index)
+	}
+	// 先把要报的话攒下来：Toggle 之后 n 会被重新解析，Boxes 也跟着换了。
+	box := n.Boxes[index-1]
+	w.snapshot(doc)
+	n, err = doc.ToggleCheckbox(n, index-1)
+	if err != nil {
+		return "", false, err
+	}
+	if err := w.save(doc); err != nil {
+		return "", false, err
+	}
+	what := "勾上了"
+	if box.Done {
+		what = "取消了"
+	}
+	done, total := n.Progress()
+	w.record(doc, "%s「%s」的第 %d 项", what, n.Title, index)
+	return fmt.Sprintf("%s「%s」里的「%s」，现在 %d/%d。",
+		what, n.Title, strings.TrimSpace(box.Text), done, total), true, nil
 }
 
 func (w *Workspace) demote(ref, title string) (string, bool, error) {

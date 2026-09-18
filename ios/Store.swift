@@ -357,12 +357,14 @@ final class Store: ObservableObject, AskEvents {
     /// 的处理都跟对话里说一句完全一致，不会出现两套写回逻辑各走各的。
     @discardableResult
     func act(_ op: String, on ref: String, days: Int = 0, title: String = "",
-             scheduled: String = "", priority: String = "") async -> Bool {
+             scheduled: String = "", priority: String = "",
+             index: Int = 0) async -> Bool {
         guard !thinking else { return false }   // 秘书正拿着旧内容干活，别插队
         let f = files
         let r = await Task.detached(priority: .userInitiated) {
             Bridge.act(files: f, ref: ref, op: op, days: days,
-                       title: title, scheduled: scheduled, priority: priority)
+                       title: title, scheduled: scheduled, priority: priority,
+                       index: index)
         }.value
 
         if let err = r.error, !err.isEmpty {

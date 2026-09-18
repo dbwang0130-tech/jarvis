@@ -153,3 +153,42 @@ func TestActCreate(t *testing.T) {
 		t.Error("空标题该报错")
 	}
 }
+
+// 勾一个复选框。org 那边一直有这个能力，但一直没接出来——手机上那几个框
+// 画得出来却点不动，看着像坏了。
+func TestActCheck(t *testing.T) {
+	const withBoxes = `* TODO 出门前检查 [1/3]
+  - [X] 关窗
+  - [ ] 带钥匙
+  - [ ] 倒垃圾
+`
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": withBoxes},
+		Ref:   "a.org:0", Op: "check", Index: 2, TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("勾不上：%s", out.Error)
+	}
+	got := out.Files["a.org"]
+	if !strings.Contains(got, "- [X] 带钥匙") {
+		t.Fatalf("第二项没勾上：\n%s", got)
+	}
+	// 标题上的进度要跟着走，否则列表显示 1/3 而正文里勾了两个。
+	if !strings.Contains(got, "[2/3]") {
+		t.Fatalf("标题进度没同步：\n%s", got)
+	}
+}
+
+// 说错了数不该让整个 app 出错，得给句人话。
+func TestActCheckBadIndex(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": actOrg},
+		Ref:   "a.org:0", Op: "check", Index: 1, TZ: "Asia/Shanghai",
+	})
+	if out.Error == "" {
+		t.Fatal("这条根本没有复选框，该报错")
+	}
+	if !strings.Contains(out.Error, "复选框") {
+		t.Fatalf("话没说到点上：%s", out.Error)
+	}
+}
