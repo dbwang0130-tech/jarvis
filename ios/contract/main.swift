@@ -32,6 +32,21 @@ check("Snapshot") {
     guard h.vitals.contains(where: { $0.value.contains("/") }) else {
         throw Err("血压没拼成 124/81 的样子：\(h.vitals.map(\.value))")
     }
+    // 趋势图的点。体重样例里有两条，该能连成线；v2 只有血压才有，
+    // 别的点根本没这个键——合成解码器会因此炸掉，这条就是防它的。
+    guard let w = h.vitals.first(where: { $0.kind == "体重" }) else {
+        throw Err("没有体重")
+    }
+    guard w.hasTrendLine, w.points.count == 2, w.unit == "kg" else {
+        throw Err("体重的趋势点不对：\(w.points.count) 个 / 单位 \(w.unit)")
+    }
+    guard w.points[0].date < w.points[1].date else {
+        throw Err("趋势点没按时间升序")
+    }
+    guard let bp = h.vitals.first(where: { $0.kind == "血压" }),
+          bp.points.count == 2, bp.points.last?.v == 124, bp.points.last?.v2 == 81 else {
+        throw Err("血压的两条线没过来")
+    }
     // 没写标签的条目也得是空数组而不是 null，否则上面 decode 就炸了。
     return "\(s.days.count) 天 / \(items) 条日程 / \(s.todos.count) 待办 / "
         + "净资产 \(s.ledger!.net) / 健康 \(h.profile)，\(h.vitals.count) 项"

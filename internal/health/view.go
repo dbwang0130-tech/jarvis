@@ -61,7 +61,30 @@ type VitalSummary struct {
 	// Trend 是跟上一次比的变化，如「+0.8kg」。只有一次记录时是空串——
 	// 拿第一次当基线画个 0 出来，看着像「没变化」，其实是没得比。
 	Trend string
+	// Unit 是画图时坐标轴上那个单位。
+	Unit string
+	// Points 是按时间升序的历史，给趋势图用。
+	Points []Point
 }
+
+// Point 是趋势图上的一个点。血压一个点有两个值。
+type Point struct {
+	At time.Time
+	V  float64
+	V2 float64
+}
+
+// seriesDays 是趋势图往回看几天。
+//
+// 半年。再长在手机那块屏上就挤成一条毛线了，看不出趋势；再短又盖不住
+// 「今年比去年重了几斤」这种真正想看的事。
+const seriesDays = 180
+
+// seriesMax 是一项最多给几个点。
+//
+// 每天量一次，半年也就 180 个点。有人一天量好几次（体重秤连着 app），
+// 那就会多出来——超了只留最近的，图的右半边才是要看的。
+const seriesMax = 400
 
 // Summary 给出每一项最近一次的测量，按 vitalNames 的顺序。
 func (s *Store) Summary(now time.Time) []VitalSummary {
@@ -75,6 +98,7 @@ func (s *Store) Summary(now time.Time) []VitalSummary {
 		sum := VitalSummary{
 			Kind: name, Value: strings.TrimPrefix(last.label(), name+" "),
 			When: last.when(), Ago: agoCN(last.when(), now),
+			Unit: vitals[name].Unit, Points: pointsOf(hist, now),
 		}
 		if len(hist) > 1 {
 			sum.Trend = trendOf(hist[len(hist)-2], last)
@@ -97,6 +121,30 @@ func (s *Store) history(name string) []Resource {
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].when().Before(out[j].when()) })
+	return out
+}
+
+// pointsOf 把历史削成能画的一条线。
+func pointsOf(hist []Resource, now time.Time) []Point {
+	cut := now.AddDate(0, 0, -seriesDays)
+	out := make([]Point, 0, len(hist))
+	for _, r := range hist {
+		t := r.when()
+		if t.Before(cut) {
+			continue
+		}
+		switch {
+		case len(r.Component) == 2:
+			out = append(out, Point{At: t,
+				V:  r.Component[0].ValueQuantity.Value,
+				V2: r.Component[1].ValueQuantity.Value})
+		case r.ValueQuantity != nil:
+			out = append(out, Point{At: t, V: r.ValueQuantity.Value})
+		}
+	}
+	if len(out) > seriesMax {
+		out = out[len(out)-seriesMax:]
+	}
 	return out
 }
 

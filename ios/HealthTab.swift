@@ -15,6 +15,7 @@ struct HealthTab: View {
     private var health: HealthView? { store.snapshot.health }
 
     @State private var note = ""
+    @State private var picked: HealthVital?
 
     var body: some View {
         ScrollView {
@@ -48,6 +49,7 @@ struct HealthTab: View {
         .overlay { LoadingHint(isEmpty: isEmpty) }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .refreshable { await store.reload() }
+        .sheet(item: $picked) { VitalDetail(vital: $0) }
     }
 
     // MARK: - 从「健康」导入
@@ -107,7 +109,12 @@ struct HealthTab: View {
             // 两列。一行一个太空，三列在小屏上数字会被挤断行。
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
                                 GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                ForEach(items) { VitalCard(vital: $0) }
+                ForEach(items) { v in
+                    Button { picked = v } label: { VitalCard(vital: v) }
+                        .buttonStyle(.plain)
+                        // 只有一条记录的时候点进去也没东西看，别给个空图。
+                        .disabled(!v.hasTrendLine)
+                }
             }
         }
     }
@@ -159,6 +166,16 @@ struct VitalCard: View {
                 Text(vital.ago)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+                if vital.hasTrendLine {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            if vital.hasTrendLine {
+                Sparkline(points: vital.points)
+                    .padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

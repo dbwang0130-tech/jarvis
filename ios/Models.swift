@@ -209,8 +209,57 @@ struct HealthVital: Codable, Identifiable, Hashable {
     /// 跟上一次比的变化，如「+0.8kg」。只有一次记录时是空串——
     /// 拿第一次当基线画个 0 出来，看着像「没变化」，其实是没得比。
     var trend = ""
+    /// 坐标轴上那个单位。
+    var unit = ""
+    /// 按时间升序的历史。少于两个点画不出线。
+    var points: [HealthPoint] = []
 
     var id: String { kind }
+
+    /// 两个点起才画得出趋势。
+    var hasTrendLine: Bool { points.count >= 2 }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        value = try c.decodeIfPresent(String.self, forKey: .value) ?? ""
+        when = try c.decodeIfPresent(String.self, forKey: .when) ?? ""
+        ago = try c.decodeIfPresent(String.self, forKey: .ago) ?? ""
+        trend = try c.decodeIfPresent(String.self, forKey: .trend) ?? ""
+        unit = try c.decodeIfPresent(String.self, forKey: .unit) ?? ""
+        points = try c.decodeIfPresent([HealthPoint].self, forKey: .points) ?? []
+    }
+}
+
+/// 趋势图上的一个点。血压一个点有两个值。
+struct HealthPoint: Codable, Hashable, Identifiable {
+    /// 时间戳（RFC3339）。给的是时刻不是日期——一天量两次体重，
+    /// 只给日期的话两个点会叠在一起。
+    var t = ""
+    var v: Double = 0
+    var v2: Double = 0
+
+    var id: String { t }
+
+    var date: Date { HealthPoint.parser.date(from: t) ?? .distantPast }
+
+    // v2 只有血压才有，Go 那边是 omitempty——绝大多数点根本没这个键。
+    // 合成的解码器对非可选字段一律要求键存在（有默认值也不行），
+    // 所以这里得自己来。契约测试逮到过。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        t = try c.decodeIfPresent(String.self, forKey: .t) ?? ""
+        v = try c.decodeIfPresent(Double.self, forKey: .v) ?? 0
+        v2 = try c.decodeIfPresent(Double.self, forKey: .v2) ?? 0
+    }
+
+    /// 解析器建一次就够。每个点各建一个的话，一屏几百个点就是几百次
+    /// DateFormatter 初始化——那玩意儿出了名的慢。
+    private static let parser: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
 }
 
 struct HealthEntry: Codable, Identifiable, Hashable {

@@ -30,6 +30,20 @@ type HealthVital struct {
 	Ago   string `json:"ago"`   // 今天 / 3 天前
 	// Trend 是跟上一次比的变化，如「+0.8kg」；只有一次记录时是空串。
 	Trend string `json:"trend"`
+	// Unit 是坐标轴上那个单位。
+	Unit string `json:"unit"`
+	// Points 是按时间升序的历史，给趋势图用。少于两个点就画不出线，
+	// 界面据此决定显不显示图。
+	Points []HealthPoint `json:"points"`
+}
+
+// HealthPoint 是趋势图上的一个点。血压一个点有两个值。
+type HealthPoint struct {
+	// T 是时间戳（RFC3339）。给的是时刻不是日期——一天量两次体重，
+	// 只给日期的话两个点会叠在一起。
+	T  string  `json:"t"`
+	V  float64 `json:"v"`
+	V2 float64 `json:"v2,omitempty"`
 }
 
 // HealthEntry 是一条饮食记录。
@@ -42,6 +56,12 @@ type HealthEntry struct {
 func (v *HealthView) normalize() {
 	if v.Vitals == nil {
 		v.Vitals = []HealthVital{}
+	}
+	// 往下钻一层：Swift 那边数组字段是非可选的，解到 null 整份快照作废。
+	for i := range v.Vitals {
+		if v.Vitals[i].Points == nil {
+			v.Vitals[i].Points = []HealthPoint{}
+		}
 	}
 	if v.Meals == nil {
 		v.Meals = []HealthEntry{}
@@ -57,9 +77,14 @@ func buildHealth(raw string, now time.Time) *HealthView {
 	v := &HealthView{Total: len(st.Resources)}
 	v.Profile = st.ProfileLine(now)
 	for _, s := range st.Summary(now) {
+		pts := make([]HealthPoint, 0, len(s.Points))
+		for _, p := range s.Points {
+			pts = append(pts, HealthPoint{
+				T: p.At.Format(time.RFC3339), V: p.V, V2: p.V2})
+		}
 		v.Vitals = append(v.Vitals, HealthVital{
 			Kind: s.Kind, Value: s.Value, When: s.When.Format("2006-01-02 15:04"),
-			Ago: s.Ago, Trend: s.Trend,
+			Ago: s.Ago, Trend: s.Trend, Unit: s.Unit, Points: pts,
 		})
 	}
 	for _, m := range st.RecentMeals(now, 7, 30) {
