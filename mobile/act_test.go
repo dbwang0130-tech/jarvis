@@ -282,3 +282,38 @@ func TestActScheduleAndDeadline(t *testing.T) {
 		t.Fatalf("排期还在：\n%s", out.Files["a.org"])
 	}
 }
+
+// 详情页把 LOGBOOK 里的记录都列出来了，却没地方往里添一笔——
+// 想记「卡在数据那段」只能开口跟秘书说。
+func TestActNote(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": "* TODO 写周报\n"},
+		Ref:   "a.org:0", Op: "note", Text: "卡在数据那段，问了老张才通",
+		TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("记不上：%s", out.Error)
+	}
+	got := out.Files["a.org"]
+	if !strings.Contains(got, "问了老张") {
+		t.Fatalf("笔记正文丢了：\n%s", got)
+	}
+	if !strings.Contains(got, "Note taken on") {
+		t.Fatalf("没按 org 的格式写：\n%s", got)
+	}
+	// 记笔记归记笔记，别把标题行弄坏。
+	if !strings.Contains(got, "* TODO 写周报") {
+		t.Fatalf("标题行被动过了：\n%s", got)
+	}
+}
+
+// 空笔记不该悄悄记一条空的。
+func TestActNoteNeedsText(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": actOrg},
+		Ref:   "a.org:0", Op: "note", Text: "   ", TZ: "Asia/Shanghai",
+	})
+	if out.Error == "" {
+		t.Fatal("空笔记该报错")
+	}
+}

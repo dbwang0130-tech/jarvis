@@ -396,13 +396,14 @@ final class Store: ObservableObject, AskEvents {
     @discardableResult
     func act(_ op: String, on ref: String, days: Int = 0, title: String = "",
              scheduled: String = "", priority: String = "",
-             index: Int = 0, file: String = "", state: String = "") async -> Bool {
+             index: Int = 0, file: String = "", state: String = "",
+             text: String = "") async -> Bool {
         guard !thinking else { return false }   // 秘书正拿着旧内容干活，别插队
         let f = files
         let r = await Task.detached(priority: .userInitiated) {
             Bridge.act(files: f, ref: ref, op: op, days: days,
                        title: title, scheduled: scheduled, priority: priority,
-                       index: index, file: file, state: state)
+                       index: index, file: file, state: state, text: text)
         }.value
 
         if let err = r.error, !err.isEmpty {

@@ -391,10 +391,12 @@ struct ItemDetail: View {
                         }
                     }
 
-                    if !data.log.isEmpty {
-                        Section("做过什么") {
-                            ForEach(Array(data.log.enumerated()), id: \.offset) { LogRow(entry: $1) }
-                        }
+                    // 「做过什么」这一节一直只能看：LOGBOOK 里的记录都列出来了，
+                    // 却没地方往里添一笔。空着的时候也要有入口——一件事刚开始
+                    // 做，正是最该记两句的时候。
+                    Section("做过什么") {
+                        ForEach(Array(data.log.enumerated()), id: \.offset) { LogRow(entry: $1) }
+                        NoteButton(ref: live.ref, data: $data)
                     }
 
                     if let err = data.error, !err.isEmpty {
@@ -583,6 +585,90 @@ struct CheckboxRow: View {
         .accessibilityLabel(box.text)
         .accessibilityValue(done ? "已勾选" : "未勾选")
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// 往 LOGBOOK 里记一笔。
+///
+/// 记的是「做的过程中发生了什么」，跟条目正文不是一回事：正文是这件事
+/// 本身的说明，笔记是带时间戳的流水——org 那边也是分开存的（- Note taken on）。
+struct NoteButton: View {
+    @EnvironmentObject var store: Store
+    let ref: String
+    @Binding var data: DetailData?
+
+    @State private var writing = false
+    @State private var text = ""
+    @State private var working = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Button {
+            text = ""
+            writing = true
+        } label: {
+            HStack(spacing: 10) {
+                if working {
+                    ProgressView().controlSize(.small).frame(width: 18)
+                } else {
+                    Image(systemName: "square.and.pencil")
+                        .font(.footnote)
+                        .foregroundStyle(Brand.primary)
+                        .frame(width: 18)
+                }
+                Text("记一笔").foregroundStyle(Brand.primary)
+                Spacer(minLength: 0)
+            }
+            .font(.callout)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(working || store.thinking)
+        .sheet(isPresented: $writing) { editor }
+    }
+
+    private var editor: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("这会儿是什么情况", text: $text, axis: .vertical)
+                        .lineLimit(3...8)
+                        .focused($focused)
+                } footer: {
+                    Text("记进这条的 LOGBOOK，带上时间。")
+                }
+            }
+            .navigationTitle("记一笔")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("算了") { writing = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("记下") { save() }
+                        .disabled(text.trimmed.isEmpty)
+                }
+            }
+            .onAppear { focused = true }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func save() {
+        let what = text.trimmed
+        guard !what.isEmpty else { return }
+        writing = false
+        working = true
+        Task {
+            let ok = await store.act("note", on: ref, text: what)
+            working = false
+            if ok {
+                Haptics.done()
+                data = await store.detail(of: ref)
+            } else {
+                Haptics.failure()
+            }
+        }
     }
 }
 

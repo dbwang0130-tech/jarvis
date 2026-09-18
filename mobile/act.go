@@ -23,7 +23,7 @@ type ActInput struct {
 	Files map[string]string `json:"files"`
 	Ref   string            `json:"ref"`
 	// Op 是要做的事：done / start / stop / postpone / cancel / undone /
-	// create / check / priority / state / schedule / deadline。
+	// create / check / priority / state / schedule / deadline / note。
 	Op string `json:"op"`
 	// Days 给 postpone 用，推迟几天，零值按 1 天算。
 	Days int `json:"days"`
@@ -32,6 +32,11 @@ type ActInput struct {
 	Index int `json:"index"`
 	// State 给 state 用：改成哪个 TODO 关键字（TODO / NEXT / WAITING…）。
 	State string `json:"state"`
+	// Text 给 note 用：往 LOGBOOK 里记的那句话。
+	//
+	// 不复用 Title：那是 create 用来当标题的。两件事挤一个字段，哪天想在
+	// 一次调用里同时给标题和笔记就没地方放了。
+	Text string `json:"text"`
 
 	// 下面几项给 create 用。
 	Title     string `json:"title"`
@@ -151,6 +156,14 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 
 	case "stop":
 		return call("clock_out", ref)
+
+	case "note":
+		// 详情页把 LOGBOOK 里的记录都列出来了（「做过什么」那一节），却没有
+		// 地方往里添一笔——想记「卡在数据那段，问了老张才通」只能开口说。
+		if strings.TrimSpace(in.Text) == "" {
+			return "", fmt.Errorf("没说要记什么")
+		}
+		return call("add_note", map[string]any{"ref": in.Ref, "text": in.Text})
 
 	case "schedule", "deadline":
 		// 排期和截止一直只能靠 postpone 往后挪整天——挪到「下周三下午三点」
