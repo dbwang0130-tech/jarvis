@@ -57,6 +57,24 @@ struct Item: Codable, Identifiable, Hashable {
 
     var isDone: Bool { state == "DONE" }
 
+    /// 状态给人看的说法。
+    ///
+    /// org 里的关键字是英文的（而且文件里用 `#+TODO:` 还能自定义），
+    /// 原样摆在界面上是把文件格式漏给了用户——他要的是「等回复」，
+    /// 不是「WAITING」。认不出来的照原样显示，总比显示空白强。
+    var stateLabel: String {
+        switch state {
+        case "TODO": return "待办"
+        case "NEXT": return "下一步"
+        case "WAITING": return "等回复"
+        case "HOLD": return "搁置"
+        case "SOMEDAY": return "将来"
+        case "DONE": return "已完成"
+        case "CANCELLED", "CANCELED": return "已取消"
+        default: return state
+        }
+    }
+
     /// 一句话说清它什么时候到期：今天、明天、过期 3 天、9/20。
     /// 「2026-09-20」要在脑子里减一次才知道远近，「后天」不用。
     var dueText: String {

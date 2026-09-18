@@ -212,7 +212,7 @@ struct ItemRow: View {
             }
 
             if !item.state.isEmpty, !item.isDone {
-                Text(item.state)
+                Text(item.stateLabel)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -434,7 +434,7 @@ struct ItemDetail: View {
                 Image(systemName: look.icon).foregroundStyle(look.color)
                 Text(look.label).font(.subheadline.weight(.medium)).foregroundStyle(look.color)
                 if !item.state.isEmpty {
-                    Text(item.state)
+                    Text(item.stateLabel)
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(.quaternary, in: Capsule())

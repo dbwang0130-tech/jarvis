@@ -24,15 +24,8 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    HStack(spacing: 12) {
-                        Avatar(size: 52)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Jarvis").font(.headline)
-                            Text(Brand.slogan)
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
+                    BrandHeader()
+                        .padding(.vertical, 4)
                     .listRowBackground(Brand.soft)
                 }
 
@@ -164,6 +157,15 @@ struct SettingsView: View {
                     Section {
                         Text(err).font(.footnote).foregroundStyle(.red)
                     }
+                }
+
+                // 最底下这一行是**承诺**，不是版权声明：欢迎页那句话用户
+                // 只看得到一次，可「文件是你自己的」正是这个 app 跟别家
+                // 最不一样的地方，得留个随时看得见的地方。
+                Section {
+                    LabeledContent("版本", value: Brand.version)
+                } footer: {
+                    Text(Brand.subtitle)
                 }
             }
             .navigationTitle("设置")

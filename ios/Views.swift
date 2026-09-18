@@ -54,7 +54,7 @@ struct WelcomeView: View {
             Avatar(size: 140)
                 .shadow(color: Brand.primary.opacity(0.25), radius: 18, y: 8)
             VStack(spacing: 8) {
-                Text("Jarvis").font(.largeTitle.bold())
+                Wordmark(font: .largeTitle)
                 Text(Brand.slogan)
                     .font(.title3)
                     .foregroundStyle(Brand.primary)
@@ -66,7 +66,7 @@ struct WelcomeView: View {
                 .padding(.horizontal, 32)
 
             Button("选 iCloud 里的 Jarvis 目录") { picking = true }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
 
             Text("iCloud Drive → Jarvis")
                 .font(.footnote)
@@ -187,7 +187,8 @@ struct AgendaView: View {
         }
         // 标题、刷新、工具栏、错误条都归 PlannerView 管——两边都写一遍的话
         // 工具栏会出现两个 + 和两个齿轮。
-        .overlay { EmptyHint(show: store.snapshot.days.isEmpty && !store.loading, text: "这几天没有安排") }
+        .overlay { EmptyHint(show: store.snapshot.days.isEmpty && !store.loading,
+                                 text: "这几天没有安排", icon: "calendar") }
         .overlay { LoadingHint(isEmpty: store.snapshot.days.isEmpty) }
         // 整个列表共用一个详情页。挂在每一行上的话，有多少行就建多少套
         // 呈现状态，滚起来明显发涩。
@@ -275,7 +276,8 @@ struct TodosView: View {
             }
         }
         .searchable(text: $keyword, prompt: "找点什么")
-        .overlay { EmptyHint(show: groups.isEmpty && !store.loading, text: "没有待办") }
+        .overlay { EmptyHint(show: groups.isEmpty && !store.loading,
+                                 text: "没有待办", icon: "checklist") }
         .overlay { LoadingHint(isEmpty: groups.isEmpty) }
         .safeAreaInset(edge: .bottom) { truncatedHint }
         .sheet(item: $selected) { ItemDetail(item: $0) }
@@ -413,7 +415,7 @@ struct LedgerTab: View {
                     }
                 }
             } else {
-                EmptyHint(show: !store.loading, text: "没有账本")
+                EmptyHint(show: !store.loading, text: "没有账本", icon: "book.closed")
             }
         }
         .navigationTitle("财务")
@@ -651,14 +653,7 @@ struct ChatView: View {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     if shownMessages.isEmpty && !store.thinking {
                         VStack(alignment: .leading, spacing: 16) {
-                            HStack(spacing: 10) {
-                                Avatar(size: 44)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Jarvis").font(.headline)
-                                    Text(Brand.slogan)
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
+                            BrandHeader(size: 44)
                             Starters(pick: startWith)
                         }
                         .padding(.top, 20)
@@ -1036,13 +1031,29 @@ struct ConfirmSheet: View {
     }
 }
 
+/// 空状态。
+///
+/// 原先四个页面统一是系统那个灰托盘——日程空了给你看一个托盘，
+/// 既不贴切也不像自家东西。图标改成各页自己的，底色用品牌浅蓝。
 struct EmptyHint: View {
     let show: Bool
     let text: String
+    var icon = "tray"
 
     var body: some View {
         if show {
-            ContentUnavailableView(text, systemImage: "tray")
+            VStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(Brand.sheen)
+                    .frame(width: 72, height: 72)
+                    .background(Brand.soft, in: Circle())
+                Text(text)
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 32)
         }
     }
 }
@@ -1080,10 +1091,21 @@ struct LoadingHint: View {
     var busy: Bool?
     var text = "正在读 iCloud…"
 
+    @State private var breathe = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         if (busy ?? store.loading) && isEmpty {
-            VStack(spacing: 10) {
-                ProgressView()
+            VStack(spacing: 12) {
+                // 裸转圈哪个 app 都长一样。让头像轻轻喘气，
+                // 这几秒就还是「他在给你办」，而不是「系统在忙」。
+                Avatar(size: 56)
+                    .scaleEffect(breathe ? 1.05 : 0.95)
+                    .opacity(breathe ? 1 : 0.7)
+                    .onAppear { breathe = !reduceMotion }
+                    .animation(reduceMotion ? nil
+                               : .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
+                               value: breathe)
                 Text(text).font(.footnote).foregroundStyle(.secondary)
             }
         }

@@ -94,7 +94,7 @@ struct MailTab: View {
         .navigationTitle("邮件")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await sync() }
-        .overlay { EmptyHint(show: items.isEmpty && !syncing, text: emptyText) }
+        .overlay { EmptyHint(show: items.isEmpty && !syncing, text: emptyText, icon: emptyIcon) }
         .overlay { LoadingHint(isEmpty: items.isEmpty, busy: syncing, text: "正在收信…") }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .safeAreaInset(edge: .bottom) { noteBar }
@@ -147,6 +147,10 @@ struct MailTab: View {
 
     private var emptyText: String {
         store.settings.mail.isEmpty ? "还没配邮箱，去设置里加一个" : "没有邮件，下拉收一次"
+    }
+
+    private var emptyIcon: String {
+        store.settings.mail.isEmpty ? "envelope.badge.shield.half.filled" : "envelope"
     }
 
     /// 按处置意见分组，要紧的在最前。清理过的 Go 那边已经滤掉了。

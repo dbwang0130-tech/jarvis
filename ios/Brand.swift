@@ -39,6 +39,17 @@ enum Brand {
     /// 副标题：数据归属。这是跟别的日程 app 最大的差别，值得单独说。
     static let subtitle = "日程、账本、邮件都是你自己的文件，手机和电脑同一份"
 
+    /// 版本号，给设置页最底下那行用。
+    ///
+    /// 免费 Apple ID 签的包七天就过期、要重装，手机上到底是哪一版说不清，
+    /// 有这一行就对得上。
+    static var version: String {
+        let info = Bundle.main.infoDictionary
+        let v = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let b = info?["CFBundleVersion"] as? String ?? ""
+        return b.isEmpty ? v : "\(v)（\(b)）"
+    }
+
     /// 全 app 的圆角。3D 那张头像是圆润的，界面跟着圆一点才是一家人。
     static let radius: CGFloat = 18
     static let smallRadius: CGFloat = 12
@@ -53,6 +64,39 @@ enum Brand {
         UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255,
                 green: CGFloat((hex >> 8) & 0xFF) / 255,
                 blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+    }
+}
+
+/// 字标。
+///
+/// 「Jarvis」这四个字原先在欢迎页、设置页、对话空状态各写了一遍，
+/// 字重字距各不相同——同一个牌子在自己 app 里出现三种写法。
+/// 收到一处，顺手加一点字距：字标要比正文站得开一些才立得住。
+struct Wordmark: View {
+    var font: Font = .headline
+
+    var body: some View {
+        Text("Jarvis")
+            .font(font.weight(.bold))
+            .tracking(0.6)
+    }
+}
+
+/// 头像 + 字标 + 一句话。设置页顶上和对话空页面用的是同一块东西，
+/// 各写一遍就会慢慢走散。
+struct BrandHeader: View {
+    var size: CGFloat = 52
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Avatar(size: size)
+            VStack(alignment: .leading, spacing: 2) {
+                Wordmark()
+                Text(Brand.slogan)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
