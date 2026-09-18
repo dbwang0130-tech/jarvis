@@ -41,6 +41,17 @@ type VitalSummary struct {
 	Trend string
 	// Unit 是画图时坐标轴上那个单位。
 	Unit string
+	// Number 是不带单位的那一串（「72.5」「124/81」）。
+	//
+	// 跟 Value 分开给，是因为界面要把数字排成大号、单位排成小号——
+	// 让它去切 Value 那个串的话，得知道单位可能是「次/分」这种带斜杠的，
+	// 而那是这边才有的知识。
+	Number string
+	// Group 是归到哪一类（身体测量 / 心脏 / 活动 …），界面按它分区配色。
+	Group string
+	// Total 表示这个数是一天累计出来的（步数、睡眠），画图时该用柱子
+	// 而不是折线——把累计量连成折线，等于在说两天之间的点也有意义。
+	Total bool
 	// Points 是按时间升序的历史，给趋势图用。
 	Points []Point
 }
@@ -76,7 +87,9 @@ func (s *Store) Summary(now time.Time) []VitalSummary {
 		sum := VitalSummary{
 			Kind: name, Value: last.valueText(),
 			When: last.when(), Ago: agoCN(last.when(), now),
-			Unit: vitals[name].Unit, Points: pointsOf(hist, now),
+			Unit: vitals[name].Unit, Number: last.numberText(),
+			Group: vitals[name].Group, Total: vitals[name].Total,
+			Points: pointsOf(hist, now),
 		}
 		if len(hist) > 1 {
 			sum.Trend = trendOf(hist[len(hist)-2], last)

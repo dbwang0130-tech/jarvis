@@ -33,6 +33,13 @@ type HealthVital struct {
 	Trend string `json:"trend"`
 	// Unit 是坐标轴上那个单位。
 	Unit string `json:"unit"`
+	// Number 是不带单位的那一串（「72.5」「124/81」）。界面把数字排成
+	// 大号、单位排成小号，得先有拆开的两段。
+	Number string `json:"number"`
+	// Group 是归到哪一类（身体测量 / 心脏 / 活动 …），界面按它分区配色。
+	Group string `json:"group"`
+	// Total 表示这个数是一天累计出来的（步数、睡眠），画图时用柱子。
+	Total bool `json:"total_kind"`
 	// Points 是按时间升序的历史，给趋势图用。少于两个点就画不出线，
 	// 界面据此决定显不显示图。
 	Points []HealthPoint `json:"points"`
@@ -117,7 +124,8 @@ func buildHealth(raw string, now time.Time) *HealthView {
 		}
 		v.Vitals = append(v.Vitals, HealthVital{
 			Kind: s.Kind, Value: s.Value, When: s.When.Format("2006-01-02 15:04"),
-			Ago: s.Ago, Trend: s.Trend, Unit: s.Unit, Points: pts,
+			Ago: s.Ago, Trend: s.Trend, Unit: s.Unit,
+			Number: s.Number, Group: s.Group, Total: s.Total, Points: pts,
 		})
 	}
 	for _, m := range st.RecentMeals(now, 7, 30) {

@@ -210,10 +210,23 @@ struct HealthVital: Codable, Identifiable, Hashable {
     var trend = ""
     /// 坐标轴上那个单位。
     var unit = ""
+    /// 不带单位的那一串（「72.5」「124/81」）。
+    /// 跟 value 分开给，是因为要把数字排成大号、单位排成小号。
+    var number = ""
+    /// 归到哪一类（身体测量 / 心脏 / 活动 …），界面按它分区配色。
+    var group = ""
+    /// 这个数是一天累计出来的（步数、睡眠）——画柱子，不画折线。
+    /// 把累计量连成折线，等于在说两天之间的那些点也有意义。
+    var isTotal = false
     /// 按时间升序的历史。少于两个点画不出线。
     var points: [HealthPoint] = []
 
     var id: String { kind }
+
+    enum CodingKeys: String, CodingKey {
+        case kind, value, when, ago, trend, unit, number, group, points
+        case isTotal = "total_kind"
+    }
 
     /// 两个点起才画得出趋势。
     var hasTrendLine: Bool { points.count >= 2 }
@@ -226,6 +239,9 @@ struct HealthVital: Codable, Identifiable, Hashable {
         ago = try c.decodeIfPresent(String.self, forKey: .ago) ?? ""
         trend = try c.decodeIfPresent(String.self, forKey: .trend) ?? ""
         unit = try c.decodeIfPresent(String.self, forKey: .unit) ?? ""
+        number = try c.decodeIfPresent(String.self, forKey: .number) ?? value
+        group = try c.decodeIfPresent(String.self, forKey: .group) ?? ""
+        isTotal = try c.decodeIfPresent(Bool.self, forKey: .isTotal) ?? false
         points = try c.decodeIfPresent([HealthPoint].self, forKey: .points) ?? []
     }
 }

@@ -58,6 +58,11 @@ check("Snapshot") {
     guard w.points[0].date < w.points[1].date else {
         throw Err("趋势点没按时间升序")
     }
+    // 类别和「是不是累计量」由 Go 那张体征表给——界面按它分区、配色、
+    // 决定画柱还是画线。对不上的话整页会退成灰色一大坨。
+    guard w.group == "身体测量", !w.isTotal, !w.number.isEmpty else {
+        throw Err("体重的类别/累计标记不对：group=\(w.group) total=\(w.isTotal)")
+    }
     guard let bp = h.vitals.first(where: { $0.kind == "血压" }),
           bp.points.count == 2, bp.points.last?.v == 124, bp.points.last?.v2 == 81 else {
         throw Err("血压的两条线没过来")
@@ -127,10 +132,12 @@ check("Snapshot 的必填键") {
           let vs = h["vitals"] as? [[String: Any]], let v0 = vs.first else {
         throw Err("样例里没有健康数据")
     }
-    for k in ["kind", "value", "when", "ago", "trend", "unit", "points"] where v0[k] == nil {
+    let vitalKeys = ["kind", "value", "when", "ago", "trend", "unit", "number",
+                     "group", "total_kind", "points"]
+    for k in vitalKeys where v0[k] == nil {
         throw Err("HealthVital 少了键 \(k)")
     }
-    return "Item \(want.count) 个键 / HealthVital 7 个键"
+    return "Item \(want.count) 个键 / HealthVital \(vitalKeys.count) 个键"
 }
 
 // AskInput 方向相反，是 Swift 编码给 Go 的，字段名同样得对上。

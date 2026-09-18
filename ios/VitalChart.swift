@@ -9,8 +9,26 @@ import SwiftUI
 struct Sparkline: View {
     let points: [HealthPoint]
     var tint: Color = Brand.primary
+    /// 累计量（步数、睡眠）画柱子。
+    var bars = false
 
     var body: some View {
+        if bars { barline } else { lineline }
+    }
+
+    private var barline: some View {
+        Chart(points) { p in
+            BarMark(x: .value("时间", p.date), y: .value("值", p.v))
+                .foregroundStyle(tint.opacity(0.7))
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .frame(height: 28)
+        .allowsHitTesting(false)
+    }
+
+    private var lineline: some View {
         // 血压一条记录有两个数，两条线都画——只画收缩压的话，
         // 卡片上那条小线跟点进去看到的图对不上。
         let paired = points.contains { $0.v2 > 0 }
@@ -49,11 +67,13 @@ struct VitalDetail: View {
     let vital: HealthVital
     @Environment(\.dismiss) private var dismiss
 
+    private var tint: Color { HealthGroup.of(vital.group).tint }
+
     /// 看多久。默认一个月——最常问的是「这个月怎么样」。
     @State private var span = Span.month
 
     enum Span: String, CaseIterable, Identifiable {
-        case week = "近 7 天", month = "近 30 天", half = "近半年"
+        case week = "周", month = "月", half = "6 个月"
         var id: String { rawValue }
         var days: Int {
             switch self {
@@ -110,6 +130,7 @@ struct VitalDetail: View {
                 }
                 .padding()
             }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle(vital.kind)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -123,15 +144,47 @@ struct VitalDetail: View {
 
     // MARK: - 图
 
+    @ViewBuilder
     private func chart(_ pts: [HealthPoint], paired: Bool, dot: CGFloat) -> some View {
+        if vital.isTotal {
+            barChart(pts)
+        } else {
+            lineChart(pts, paired: paired, dot: dot)
+        }
+    }
+
+    /// 累计量（步数、睡眠）画柱子。
+    ///
+    /// **纵轴从 0 起**——柱子的高度就是量的多少，截断了会把「八千步」和
+    /// 「一万步」画得差一倍。这跟折线那边的取舍正好相反，因为要看的东西
+    /// 不一样：折线看的是起伏，柱子看的是量。
+    private func barChart(_ pts: [HealthPoint]) -> some View {
+        Chart(pts) { p in
+            BarMark(x: .value("时间", p.date), y: .value(vital.kind, p.v))
+                .foregroundStyle(tint.gradient)
+        }
+        .chartYAxis { AxisMarks { v in
+            AxisGridLine()
+            AxisValueLabel { if let d = v.as(Double.self) { Text(trimZeros(d)) } }
+        } }
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                AxisGridLine()
+                AxisValueLabel(format: .dateTime.month(.defaultDigits).day())
+            }
+        }
+        .frame(height: 220)
+    }
+
+    private func lineChart(_ pts: [HealthPoint], paired: Bool, dot: CGFloat) -> some View {
         Chart {
             ForEach(pts) { p in
                 LineMark(x: .value("时间", p.date), y: .value(vital.kind, p.v),
                          series: .value("线", "主"))
                     .interpolationMethod(.monotone)
-                    .foregroundStyle(Brand.primary)
+                    .foregroundStyle(tint)
                 PointMark(x: .value("时间", p.date), y: .value(vital.kind, p.v))
-                    .foregroundStyle(Brand.primary)
+                    .foregroundStyle(tint)
                     .symbolSize(dot)
             }
             if paired {
@@ -139,9 +192,9 @@ struct VitalDetail: View {
                     LineMark(x: .value("时间", p.date), y: .value("舒张压", p.v2),
                              series: .value("线", "次"))
                         .interpolationMethod(.monotone)
-                        .foregroundStyle(Brand.accent)
+                        .foregroundStyle(tint.opacity(0.45))
                     PointMark(x: .value("时间", p.date), y: .value("舒张压", p.v2))
-                        .foregroundStyle(Brand.accent)
+                        .foregroundStyle(tint.opacity(0.45))
                         .symbolSize(dot)
                 }
             }
@@ -191,15 +244,20 @@ struct VitalDetail: View {
     }
 
     private func stat(_ name: String, _ value: String) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 3) {
             Text(name).font(.caption2).foregroundStyle(.secondary)
-            Text(value + vital.unit)
-                .font(.subheadline.weight(.medium).monospacedDigit())
-                .lineLimit(1).minimumScaleFactor(0.6)
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                Text(value)
+                    .font(.system(.headline, design: .rounded).weight(.semibold))
+                    .monospacedDigit()
+                Text(vital.unit).font(.caption2).foregroundStyle(.secondary)
+            }
+            .lineLimit(1).minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .glassEffect(.regular, in: .rect(cornerRadius: Brand.smallRadius))
+        .padding(.vertical, 11)
+        .background(Color(.secondarySystemGroupedBackground),
+                    in: .rect(cornerRadius: Brand.smallRadius))
     }
 
     // MARK: - 一条条读数
