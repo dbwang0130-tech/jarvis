@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/mobile"
@@ -47,9 +48,19 @@ func main() {
     Assets:Bank:CMB               18000.00
     Income:Salary
 `
+	// 健康记录是 FHIR NDJSON，一行一条资源。血压那条带两个分项，
+	// 正是最容易在两端解出不同结果的形状。
+	healthLines := []string{
+		`{"resourceType":"Patient","id":"me","birthDate":"1985-03-12","gender":"male"}`,
+		`{"resourceType":"Observation","status":"final","code":{"coding":[{"system":"http://loinc.org","code":"29463-7"}],"text":"体重"},"effectiveDateTime":"2026-09-09T08:00:00+08:00","valueQuantity":{"value":71.7,"unit":"kg"}}`,
+		`{"resourceType":"Observation","status":"final","code":{"coding":[{"system":"http://loinc.org","code":"29463-7"}],"text":"体重"},"effectiveDateTime":"2026-09-16T08:00:00+08:00","valueQuantity":{"value":72.5,"unit":"kg"}}`,
+		`{"resourceType":"Observation","status":"final","code":{"coding":[{"system":"http://loinc.org","code":"85354-9"}],"text":"血压"},"effectiveDateTime":"2026-09-16T08:05:00+08:00","component":[{"code":{"coding":[{"system":"http://loinc.org","code":"8480-6"}],"text":"收缩压"},"valueQuantity":{"value":124,"unit":"mmHg"}},{"code":{"coding":[{"system":"http://loinc.org","code":"8462-4"}],"text":"舒张压"},"valueQuantity":{"value":81,"unit":"mmHg"}}]}`,
+		`{"resourceType":"NutritionIntake","status":"completed","category":[{"coding":[{"code":"dietary"}],"text":"早餐"}],"occurrenceDateTime":"2026-09-16T07:30:00+08:00","consumedItem":[{"type":{"text":"早餐"},"nutritionProduct":{"text":"小米粥"}}]}`,
+	}
 	in, _ := json.Marshal(map[string]any{
 		"files":  map[string]string{"work.org": org},
 		"ledger": ledger,
+		"health": strings.Join(healthLines, "\n") + "\n",
 		"days":   7,
 		"now":    "2026-09-16T09:00:00+08:00",
 	})

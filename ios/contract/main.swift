@@ -23,8 +23,18 @@ check("Snapshot") {
     guard items > 0, !s.todos.isEmpty, s.ledger != nil else {
         throw Err("解出来是空的，样例数据或解析有问题")
     }
+    // 健康是后加的，两端字段对不上同样会让整份快照解不开。
+    guard let h = s.health else { throw Err("health 没解出来") }
+    guard h.profile.contains("岁"), !h.vitals.isEmpty, !h.meals.isEmpty else {
+        throw Err("health 解出来是空的：\(h)")
+    }
+    // 血压是一条带两个分项的记录，过桥之后该是拼好的一串。
+    guard h.vitals.contains(where: { $0.value.contains("/") }) else {
+        throw Err("血压没拼成 124/81 的样子：\(h.vitals.map(\.value))")
+    }
     // 没写标签的条目也得是空数组而不是 null，否则上面 decode 就炸了。
-    return "\(s.days.count) 天 / \(items) 条日程 / \(s.todos.count) 待办 / 净资产 \(s.ledger!.net)"
+    return "\(s.days.count) 天 / \(items) 条日程 / \(s.todos.count) 待办 / "
+        + "净资产 \(s.ledger!.net) / 健康 \(h.profile)，\(h.vitals.count) 项"
 }
 
 check("Snapshot(空目录)") {
@@ -70,7 +80,7 @@ check("AskInput 编码") {
                        model: ModelConfig(), profile: "学生")
     let obj = try JSONSerialization.jsonObject(
         with: try JSONEncoder().encode(inp)) as! [String: Any]
-    let want = ["accounts", "files", "history", "ledger", "memory", "model",
+    let want = ["accounts", "files", "health", "history", "ledger", "memory", "model",
                 "profile", "question", "tz"]
     guard obj.keys.sorted() == want else {
         throw Err("字段对不上：\(obj.keys.sorted()) 应该是 \(want)")

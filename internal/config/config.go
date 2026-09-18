@@ -115,6 +115,9 @@ type Config struct {
 	// 记账（ledger-cli 纯文本格式）
 	LedgerFile string `json:"ledger_file,omitempty"`
 
+	// 健康记录（HL7 FHIR，一行一条资源的 NDJSON）
+	HealthFile string `json:"health_file,omitempty"`
+
 	// Theme 是界面主题：dark / light / auto。
 	Theme string `json:"theme,omitempty"`
 
@@ -159,6 +162,7 @@ func Default() Config {
 		c.Files = []string{filepath.Join(icloud, "org")}
 		c.LedgerFile = filepath.Join(icloud, "ledger.dat")
 		c.MemoryFile = filepath.Join(icloud, "memory.md")
+		c.HealthFile = filepath.Join(icloud, "health.ndjson")
 	}
 	return c
 }
@@ -178,6 +182,7 @@ func defaultLocal() Config {
 			TimeoutSec:  120,
 		},
 		LedgerFile: "~/finance/ledger.dat",
+		HealthFile: "~/health/health.ndjson",
 		MemoryFile: "", // 空表示放配置目录，见 MemoryPath
 		Theme:      "auto",
 		Browser:    Browser{Endpoint: "ws://127.0.0.1:9222"},
@@ -267,6 +272,7 @@ func (c *Config) normalize() {
 	c.Inbox = Expand(c.Inbox)
 	c.MemoryFile = Expand(c.MemoryFile)
 	c.LedgerFile = Expand(c.LedgerFile)
+	c.HealthFile = Expand(c.HealthFile)
 }
 
 // fill 用默认值补齐缺失的字段。
@@ -295,6 +301,9 @@ func (c *Config) fill() {
 	}
 	if c.LedgerFile == "" {
 		c.LedgerFile = d.LedgerFile
+	}
+	if c.HealthFile == "" {
+		c.HealthFile = d.HealthFile
 	}
 	if c.Theme == "" {
 		c.Theme = d.Theme

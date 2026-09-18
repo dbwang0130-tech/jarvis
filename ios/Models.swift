@@ -181,16 +181,57 @@ struct LedgerView: Codable {
     var recent: [TxnBrief]
 }
 
+/// 健康记录整理好的样子。
+///
+/// FHIR 的解析全在 Go 那头做——这边再实现一遍 LOINC 查表、血压分项、
+/// 单位换算，两边迟早对不上，而这份数据的全部意义就在于它是标准的。
+/// 过桥拿到的每个字段都已经是能直接摆上屏幕的字符串。
+struct HealthView: Codable {
+    var profile: String
+    var vitals: [HealthVital]
+    var meals: [HealthEntry]
+    var total: Int
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        profile = try c.decodeIfPresent(String.self, forKey: .profile) ?? ""
+        vitals = try c.decodeIfPresent([HealthVital].self, forKey: .vitals) ?? []
+        meals = try c.decodeIfPresent([HealthEntry].self, forKey: .meals) ?? []
+        total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
+    }
+}
+
+struct HealthVital: Codable, Identifiable, Hashable {
+    var kind = ""
+    var value = ""
+    var when = ""
+    var ago = ""
+    /// 跟上一次比的变化，如「+0.8kg」。只有一次记录时是空串——
+    /// 拿第一次当基线画个 0 出来，看着像「没变化」，其实是没得比。
+    var trend = ""
+
+    var id: String { kind }
+}
+
+struct HealthEntry: Codable, Identifiable, Hashable {
+    var when = ""
+    var ago = ""
+    var text = ""
+
+    var id: String { when + text }
+}
+
 struct Snapshot: Codable {
     var days: [Day]
     var todos: [Item]
     /// 截断前的待办总数，比 todos.count 大就说明有没显示出来的。
     var todosTotal: Int = 0
     var ledger: LedgerView?
+    var health: HealthView?
     var error: String?
 
     enum CodingKeys: String, CodingKey {
-        case days, todos, ledger, error
+        case days, todos, ledger, health, error
         case todosTotal = "todos_total"
     }
 
@@ -212,6 +253,7 @@ extension Snapshot {
         todos = try c.decodeIfPresent([Item].self, forKey: .todos) ?? []
         todosTotal = try c.decodeIfPresent(Int.self, forKey: .todosTotal) ?? todos.count
         ledger = try c.decodeIfPresent(LedgerView.self, forKey: .ledger)
+        health = try c.decodeIfPresent(HealthView.self, forKey: .health)
         error = try c.decodeIfPresent(String.self, forKey: .error)
     }
 }
@@ -478,6 +520,8 @@ struct AskInput: Codable {
     var tz: String = TimeZone.current.identifier
     /// 长期记忆全文，跟电脑上共用 iCloud 里那一份。
     var memory: String = ""
+    /// 健康记录全文（FHIR NDJSON，一行一条资源）。
+    var health: String = ""
     /// 邮箱账号。空的话这一轮就没有邮件能力。
     var accounts: [MailAccountInput] = []
 }
@@ -528,6 +572,8 @@ struct AskOutput: Codable {
     var steps: [Step]?
     /// 只在秘书改过记忆时才有。
     var memory: String?
+    /// 只在健康记录被追加过时才有。
+    var health: String?
     /// 这一轮是被叫停的，不是自己跑完的。
     var stopped: Bool?
     var error: String?

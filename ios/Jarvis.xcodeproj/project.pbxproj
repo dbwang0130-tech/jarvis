@@ -11,6 +11,7 @@
 		9A53982984734FDED06A13D5 /* AskHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2EC0FABF5C40602546BB919 /* AskHost.swift */; };
 		D57DA02D9B9F2425733C793D /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0F86B84455EAED7A993462 /* Brand.swift */; };
 		939EF22E8168702EA6A3BD9B /* Bridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D07C43188251FCFF33B98AC2 /* Bridge.swift */; };
+		72C6A0D8861565F0A690BB70 /* HealthTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */; };
 		0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F1B6CBE154F3A41E575653 /* ItemView.swift */; };
 		FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED29F84A2C8136AC729D9F6 /* Keychain.swift */; };
 		92FC9F6976C5724D4F2C680D /* MailBodyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4B5769A10A945FEA42C7B2 /* MailBodyView.swift */; };
@@ -25,6 +26,7 @@
 		F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7CAA3A267067C3AC9942A5 /* Session.swift */; };
 		EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */; };
 		621910C5F045309EAEBB1B6A /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090A09C1465CE23ABD827A8F /* Store.swift */; };
+		BC9F10B66AE5A92DAA1557A5 /* Tools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */; };
 		7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5464F1D332FD60C84FF7555B /* Vault.swift */; };
 		484365F4C183DDFCE32CCAA6 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11FD182F6BBEFF87A5F395CA /* Views.swift */; };
 		1228440DDBCFF603473E79E6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 164C0316A3825EF4C698B340 /* Assets.xcassets */; };
@@ -53,6 +55,7 @@
 		B2EC0FABF5C40602546BB919 /* AskHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskHost.swift; sourceTree = "<group>"; };
 		FB0F86B84455EAED7A993462 /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
 		D07C43188251FCFF33B98AC2 /* Bridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bridge.swift; sourceTree = "<group>"; };
+		DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthTab.swift; sourceTree = "<group>"; };
 		E8F1B6CBE154F3A41E575653 /* ItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemView.swift; sourceTree = "<group>"; };
 		EED29F84A2C8136AC729D9F6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		7B4B5769A10A945FEA42C7B2 /* MailBodyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailBodyView.swift; sourceTree = "<group>"; };
@@ -67,6 +70,7 @@
 		FF7CAA3A267067C3AC9942A5 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		090A09C1465CE23ABD827A8F /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
+		4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tools.swift; sourceTree = "<group>"; };
 		5464F1D332FD60C84FF7555B /* Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vault.swift; sourceTree = "<group>"; };
 		11FD182F6BBEFF87A5F395CA /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		164C0316A3825EF4C698B340 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -95,6 +99,7 @@
 				B2EC0FABF5C40602546BB919 /* AskHost.swift */,
 				FB0F86B84455EAED7A993462 /* Brand.swift */,
 				D07C43188251FCFF33B98AC2 /* Bridge.swift */,
+				DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */,
 				E8F1B6CBE154F3A41E575653 /* ItemView.swift */,
 				EED29F84A2C8136AC729D9F6 /* Keychain.swift */,
 				7B4B5769A10A945FEA42C7B2 /* MailBodyView.swift */,
@@ -109,6 +114,7 @@
 				FF7CAA3A267067C3AC9942A5 /* Session.swift */,
 				6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */,
 				090A09C1465CE23ABD827A8F /* Store.swift */,
+				4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */,
 				5464F1D332FD60C84FF7555B /* Vault.swift */,
 				11FD182F6BBEFF87A5F395CA /* Views.swift */,
 				164C0316A3825EF4C698B340 /* Assets.xcassets */,
@@ -203,6 +209,7 @@
 				9A53982984734FDED06A13D5 /* AskHost.swift in Sources */,
 				D57DA02D9B9F2425733C793D /* Brand.swift in Sources */,
 				939EF22E8168702EA6A3BD9B /* Bridge.swift in Sources */,
+				72C6A0D8861565F0A690BB70 /* HealthTab.swift in Sources */,
 				0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */,
 				FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */,
 				92FC9F6976C5724D4F2C680D /* MailBodyView.swift in Sources */,
@@ -217,6 +224,7 @@
 				F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */,
 				EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */,
 				621910C5F045309EAEBB1B6A /* Store.swift in Sources */,
+				BC9F10B66AE5A92DAA1557A5 /* Tools.swift in Sources */,
 				7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */,
 				484365F4C183DDFCE32CCAA6 /* Views.swift in Sources */,
 			);

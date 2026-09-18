@@ -36,6 +36,8 @@ type SnapshotInput struct {
 	Files map[string]string `json:"files"`
 	// Ledger 是账本全文，没有就留空。
 	Ledger string `json:"ledger"`
+	// Health 是健康记录全文（FHIR NDJSON），没有就留空。
+	Health string `json:"health"`
 	// Days 是日程往后看几天，零值按 7 天算。
 	Days int `json:"days"`
 	// TodoLimit 是待办最多给几条，零值按 1000 算。见 buildTodos。
@@ -152,6 +154,7 @@ type SnapshotOutput struct {
 	// TodosTotal 是截断前的总数，界面据此提示还有多少没显示。
 	TodosTotal int         `json:"todos_total"`
 	Ledger     *LedgerView `json:"ledger,omitempty"`
+	Health     *HealthView `json:"health,omitempty"`
 	Error      string      `json:"error,omitempty"`
 }
 
@@ -521,6 +524,9 @@ func Snapshot(inputJSON string) string {
 	if strings.TrimSpace(in.Ledger) != "" {
 		out.Ledger = buildLedger(ledger.ParseBook(in.Ledger))
 	}
+	if strings.TrimSpace(in.Health) != "" {
+		out.Health = buildHealth(in.Health, now)
+	}
 	return marshal(&out)
 }
 
@@ -756,6 +762,10 @@ func (o *SnapshotOutput) normalize() {
 		if o.Ledger.Recent == nil {
 			o.Ledger.Recent = []TxnBrief{}
 		}
+	}
+	// 往下钻一层。Swift 那头数组字段是非可选的，解到 null 整个出参作废。
+	if o.Health != nil {
+		o.Health.normalize()
 	}
 }
 

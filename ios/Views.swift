@@ -11,7 +11,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if store.isConfigured {
-                MainTabs()
+                MainShell()
             } else {
                 WelcomeView()
             }
@@ -84,24 +84,17 @@ struct WelcomeView: View {
 
 // MARK: - 主界面
 
-struct MainTabs: View {
-    @EnvironmentObject var store: Store
-
+/// 根视图：**一整屏对话**。
+///
+/// 原来是四个并排的标签页，Jarvis 占第一个。标签栏最多五格，功能只会
+/// 越来越多；更要紧的是，它把「说一句」和「翻一翻」摆成了平级的五选一，
+/// 可这个 app 的主交互从来只有一个。
+///
+/// 现在对话就是底座，日程、健康、邮件、财务浮在输入框上面那一排，
+/// 点开是盖上来的一张卡片。见 Tool。
+struct MainShell: View {
     var body: some View {
-        // Jarvis 排第一，因为它是主交互——其余三页是"看"，这页是"使唤"。
-        // TabView 默认选第一个，不用另外记选中状态。
-        TabView {
-            NavigationStack { ChatView() }
-                // 单个气泡，笔画密度跟旁边的清单图标一致；两个气泡叠起来的那个
-                // 在 28pt 下糊成一团，比另外三个都重。三个点直接表达「在说话」。
-                .tabItem { Label("Jarvis", systemImage: "ellipsis.bubble") }
-            NavigationStack { PlannerView() }
-                .tabItem { Label("日程", systemImage: "calendar") }
-            NavigationStack { MailTab() }
-                .tabItem { Label("邮件", systemImage: "envelope") }
-            NavigationStack { LedgerTab() }
-                .tabItem { Label("财务", systemImage: "yensign.circle") }
-        }
+        NavigationStack { ChatView() }
     }
 }
 
@@ -651,6 +644,7 @@ struct ChatView: View {
     @EnvironmentObject var store: Store
     @State private var draft = ""
     @State private var openSettings = false
+    @State private var tool: Tool?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -663,6 +657,7 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             // 秘书要做收不回来的事（比如发信）会停在这儿等。
             .sheet(item: $store.pending) { ConfirmSheet(ask: $0) }
+            .sheet(item: $tool) { ToolSheet(tool: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { store.clearChat() } label: {
@@ -736,6 +731,12 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 16).padding(.top, 8)
             }
+            // 打字的时候把这排收起来。小屏上键盘一弹，光输入框就占掉半屏，
+            // 再压着一排胶囊，能看见的对话只剩两行。
+            if !focused {
+                ToolStrip { tool = $0 }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             // 输入区浮在内容之上，不再用一条实心底栏压着——下面的话能透出来，
             // 屏幕显得高一些。GlassEffectContainer 让挨着的两块玻璃算作一体，
             // 各自算各自的会在缝隙处叠出一道亮边。
@@ -766,6 +767,7 @@ struct ChatView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
+        .animation(.easeOut(duration: 0.2), value: focused)
         .sheet(isPresented: $openSettings) { SettingsView() }
     }
 

@@ -34,6 +34,18 @@ final class Store: ObservableObject, AskEvents {
     private var files: [String: String] = [:]
     private var ledger = ""
     private var memory = ""
+    private var health = ""
+
+    /// 工具条上那两个数字。
+    ///
+    /// 没了标签栏，就没有「扫一眼就知道有没有事」的地方了——这两个数是
+    /// 那一眼的替代品。逾期是从快照里现算的；未读要读一次本地邮件索引，
+    /// 不连网，跟打开邮件页是同一条路。
+    @Published var mailUnread = 0
+
+    var overdueCount: Int {
+        snapshot.todos.filter { $0.overdue && !$0.isDone }.count
+    }
 
     /// 正在跑的那次刷新。下拉、切回前台、首次打开三条路会撞上，
     /// 撞上就跟着等前一个，而不是各读各的文件最后谁写谁赢。
@@ -71,21 +83,24 @@ final class Store: ObservableObject, AskEvents {
         defer { loading = false }
 
         do {
-            let (f, l, m) = try await Task.detached(priority: .userInitiated) { [vault] in
-                (try vault.readOrgFiles(), try vault.readLedger(), try vault.readMemory())
+            let (f, l, m, h) = try await Task.detached(priority: .userInitiated) { [vault] in
+                (try vault.readOrgFiles(), try vault.readLedger(),
+                 try vault.readMemory(), try vault.readHealth())
             }.value
             files = f
             ledger = l
             memory = m
+            health = h
 
-            let snap = await Task.detached(priority: .userInitiated) { [f, l] in
-                Bridge.snapshot(files: f, ledger: l)
+            let snap = await Task.detached(priority: .userInitiated) { [f, l, h] in
+                Bridge.snapshot(files: f, ledger: l, health: h)
             }.value
             snapshot = snap
             if let err = snap.error, !err.isEmpty {
                 lastError = err
             }
             await refreshReminders()
+            await refreshMailBadge()
         } catch {
             lastError = "读不到 iCloud 里的内容：\(error.localizedDescription)"
         }
@@ -115,7 +130,8 @@ final class Store: ObservableObject, AskEvents {
 
         let input = AskInput(files: files, ledger: ledger, question: text,
                              history: history, model: model, profile: settings.profile,
-                             memory: memory, accounts: settings.mailAccounts())
+                             memory: memory, health: health,
+                             accounts: settings.mailAccounts())
 
         let out = await Task.detached(priority: .userInitiated) { [weak self] in
             Bridge.ask(input, events: self)
@@ -135,11 +151,12 @@ final class Store: ObservableObject, AskEvents {
 
         // 秘书改了东西就写回 iCloud，然后重新解析一遍。
         if (out.files?.isEmpty == false) || (out.ledger?.isEmpty == false)
-            || (out.memory?.isEmpty == false) {
+            || (out.memory?.isEmpty == false) || (out.health?.isEmpty == false) {
             do {
                 let changed = out.files ?? [:]
                 let newLedger = out.ledger
                 let newMemory = out.memory
+                let newHealth = out.health
                 // 把动手前那份一起交上去，写之前对一遍——盘上的要是已经变了，
                 // 说明电脑那头也改过，整文件覆盖会把人家的改动抹掉。
                 // 账本和记忆也要带上动手前那份——它们跟 org 文件一样是
@@ -147,10 +164,12 @@ final class Store: ObservableObject, AskEvents {
                 var before = files
                 before["ledger.dat"] = ledger
                 before["memory.md"] = memory
+                before["health.ndjson"] = health
                 let snapshot = before
                 let conflicts = try await Task.detached(priority: .userInitiated) { [vault] in
                     try vault.write(orgFiles: changed, ledger: newLedger,
-                                    memory: newMemory, expecting: snapshot)
+                                    memory: newMemory, health: newHealth,
+                                    expecting: snapshot)
                 }.value
                 if !conflicts.isEmpty {
                     lastError = conflictNote(conflicts)
@@ -161,6 +180,7 @@ final class Store: ObservableObject, AskEvents {
                 for (name, content) in changed { files[name] = content }
                 if let newLedger { ledger = newLedger }
                 if let newMemory { memory = newMemory }
+                if let newHealth { health = newHealth }
                 await reparse()
             } catch {
                 lastError = "改动没写回去：\(error.localizedDescription)"
@@ -225,11 +245,22 @@ final class Store: ObservableObject, AskEvents {
         Task.detached(priority: .utility) { SessionStore.save(now) }
     }
 
+    /// 数一下本地存着几封没读的。只读盘不连网，跟打开邮件页是同一条路。
+    private func refreshMailBadge() async {
+        guard !settings.mail.isEmpty else {
+            mailUnread = 0
+            return
+        }
+        let input = mailInput(op: "list", key: "", keys: [])
+        let r = await Task.detached(priority: .utility) { Bridge.mail(input) }.value
+        mailUnread = r.items.filter { $0.unread }.count
+    }
+
     /// 手上的内容变了，重新解析一遍给界面。
     private func reparse() async {
-        let f = files, l = ledger
+        let f = files, l = ledger, h = health
         snapshot = await Task.detached(priority: .userInitiated) {
-            Bridge.snapshot(files: f, ledger: l)
+            Bridge.snapshot(files: f, ledger: l, health: h)
         }.value
     }
 

@@ -34,10 +34,12 @@ enum Bridge {
     }
 
     /// 把 org 文件和账本解析成界面要显示的内容。
-    static func snapshot(files: [String: String], ledger: String, days: Int = 7) -> Snapshot {
+    static func snapshot(files: [String: String], ledger: String,
+                         health: String = "", days: Int = 7) -> Snapshot {
         let input: [String: Any] = [
             "files": files,
             "ledger": ledger,
+            "health": health,
             "days": days,
             // Go 在 iOS 上读不到系统时区库，不带过去就按 UTC 算日期。
             "tz": TimeZone.current.identifier,

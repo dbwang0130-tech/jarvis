@@ -86,6 +86,16 @@ final class Vault {
         }
     }
 
+    /// 读健康记录。FHIR NDJSON，一行一条资源，跟电脑上共用一份。
+    func readHealth() throws -> String {
+        guard let root else { throw VaultError.notConfigured }
+        return try withAccess(to: root) {
+            let url = root.appendingPathComponent("health.ndjson")
+            guard exists(url) else { return "" }
+            return try readCoordinated(url)
+        }
+    }
+
     /// 读长期记忆。跟电脑上是同一份——那边记住的事这边也该记得。
     func readMemory() throws -> String {
         guard let root else { throw VaultError.notConfigured }
@@ -114,7 +124,7 @@ final class Vault {
     /// 改动，也不能悄悄吃掉另一头的。
     @discardableResult
     func write(orgFiles: [String: String], ledger: String?, memory: String? = nil,
-               expecting: [String: String] = [:]) throws -> [String] {
+               health: String? = nil, expecting: [String: String] = [:]) throws -> [String] {
         guard let root else { throw VaultError.notConfigured }
         return try withAccess(to: root) {
             let orgDir = root.appendingPathComponent("org", isDirectory: true)
@@ -138,6 +148,7 @@ final class Vault {
             for (name, content, before) in [
                 ("ledger.dat", ledger, expecting["ledger.dat"]),
                 ("memory.md", memory, expecting["memory.md"]),
+                ("health.ndjson", health, expecting["health.ndjson"]),
             ] {
                 guard let content else { continue }
                 let url = root.appendingPathComponent(name)

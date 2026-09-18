@@ -12,6 +12,7 @@ import (
 
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/config"
+	"github.com/dabao/jarvis/internal/health"
 	"github.com/dabao/jarvis/internal/ledger"
 	"github.com/dabao/jarvis/internal/mail"
 	"github.com/dabao/jarvis/internal/memory"
@@ -38,6 +39,8 @@ type AskInput struct {
 	TZ string `json:"tz"`
 	// Memory 是长期记忆全文（iCloud 里的 memory.md），没有就留空。
 	Memory string `json:"memory"`
+	// Health 是健康记录全文（iCloud 里的 health.ndjson，一行一条 FHIR 资源）。
+	Health string `json:"health"`
 	// Accounts 是邮箱账号，空的话这一轮就没有邮件能力。
 	Accounts []MailAccount `json:"accounts"`
 	// Model 是模型接入参数。
@@ -75,6 +78,8 @@ type AskOutput struct {
 	Steps []Step `json:"steps,omitempty"`
 	// Memory 只在秘书改过记忆时才有，界面拿去写回 iCloud。
 	Memory string `json:"memory,omitempty"`
+	// Health 只在健康记录被追加过时才有。
+	Health string `json:"health,omitempty"`
 	// Stopped 表示这一轮是被叫停的，不是自己跑完的。
 	Stopped bool `json:"stopped,omitempty"`
 	// Error 非空表示这一轮没办成。
@@ -163,11 +168,16 @@ func askWith(inputJSON string, host Host) string {
 	if err := wd.write("memory.md", in.Memory); err != nil {
 		return askError("%v", err)
 	}
+	healthPath := wd.path("health.ndjson")
+	if err := wd.write("health.ndjson", in.Health); err != nil {
+		return askError("%v", err)
+	}
 
 	cfg := mobileAgentConfig(in.Model, in.Profile)
 	cfg.Files = []string{orgDir}
 	cfg.Inbox = wd.inboxPath()
 	cfg.LedgerFile = ledgerPath
+	cfg.HealthFile = healthPath
 
 	coll, err := org.Load(orgDir)
 	if err != nil {
@@ -187,6 +197,7 @@ func askWith(inputJSON string, host Host) string {
 	skills := []agent.Skill{
 		orgtools.NewSkill(ws),
 		ledger.NewSkill(ledgerPath),
+		health.New(healthPath),
 		memory.New(memoryPath),
 	}
 	// 配了邮箱才带上邮件能力。会话跨轮次留着，不然上一轮的编号和草稿全没了。
@@ -229,6 +240,9 @@ func askWith(inputJSON string, host Host) string {
 	}
 	if raw, err := os.ReadFile(memoryPath); err == nil && string(raw) != in.Memory {
 		out.Memory = string(raw)
+	}
+	if raw, err := os.ReadFile(healthPath); err == nil && string(raw) != in.Health {
+		out.Health = string(raw)
 	}
 	return marshal(&out)
 }

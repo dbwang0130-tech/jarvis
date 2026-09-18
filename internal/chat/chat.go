@@ -12,6 +12,7 @@ import (
 	"github.com/dabao/jarvis/internal/browser"
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/configskill"
+	"github.com/dabao/jarvis/internal/health"
 	"github.com/dabao/jarvis/internal/ledger"
 	"github.com/dabao/jarvis/internal/mail"
 	"github.com/dabao/jarvis/internal/memory"
@@ -53,6 +54,7 @@ type Session struct {
 	orgWS        *orgtools.Workspace
 	mailS        *mail.Session
 	ledgerSkill  *ledger.Skill
+	healthSkill  *health.Skill
 	memSkill     *memory.Skill
 	browserSkill *browser.Skill
 	skills       []agent.Skill
@@ -163,6 +165,7 @@ func (s *Session) setup() error {
 		s.startupWarn = append(s.startupWarn,
 			fmt.Sprintf("记忆已挪到 %s（原件留在配置目录里没动）", s.cfg.MemoryPath()))
 	}
+	s.healthSkill = health.New(s.cfg.HealthFile)
 	s.memSkill = memory.New(s.cfg.MemoryPath())
 	s.browserSkill = browser.New(s.cfg)
 
@@ -176,6 +179,7 @@ func (s *Session) buildSkills() []agent.Skill {
 		orgtools.NewSkill(s.orgWS),
 		mail.NewSkill(s.mailS),
 		s.ledgerSkill,
+		s.healthSkill,
 		s.browserSkill,
 		workflow.New(filepath.Join(config.Dir(), "workflows.json")),
 		configskill.New(s.cfgPath),
@@ -585,6 +589,8 @@ var toolLabels = map[string]string{
 	"refresh_mail": "同步邮件", "load_more_mail": "加载更早邮件", "mark_read": "标记已读",
 	"clean_mail": "清理邮件", "draft_reply": "起草回信", "draft_new": "起草邮件", "send_draft": "发送邮件",
 	"list_accounts": "查余额", "list_transactions": "看流水", "add_transaction": "记账",
+	"record_vital": "记体征", "record_meal": "记饮食", "set_health_profile": "填基础信息",
+	"list_health": "查健康记录",
 	"browser_navigate": "打开网页", "browser_text": "提取文本", "browser_links": "提取链接",
 	"browser_click": "点击", "browser_type": "输入", "browser_submit": "提交", "browser_exec_js": "执行JS",
 	"read_config": "读配置", "set_config": "改配置", "remove_mail_account": "删除邮箱",
