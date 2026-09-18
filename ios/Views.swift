@@ -47,12 +47,19 @@ struct RootView: View {
 struct WelcomeView: View {
     @EnvironmentObject var store: Store
     @State private var picking = false
+    @State private var entered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
             Avatar(size: 140)
                 .shadow(color: Brand.primary.opacity(0.25), radius: 18, y: 8)
+                // 启动屏上那个头像是 120pt、正中、浅蓝底。这一屏接着它演：
+                // 同一个人往前凑近一点，底色从上面那片蓝里化开。
+                // 不做的话，蓝底「啪」地变白屏，像是换了个 app。
+                .scaleEffect(entered || reduceMotion ? 1 : 0.86)
+                .opacity(entered || reduceMotion ? 1 : 0)
             VStack(spacing: 8) {
                 Wordmark(font: .largeTitle)
                 Text(Brand.slogan)
@@ -74,6 +81,17 @@ struct WelcomeView: View {
             Spacer()
         }
         .padding()
+        // 顶上这片蓝就是启动屏的底色（LaunchBackground 跟 Brand.soft
+        // 是同一个色值），往下化掉。两屏之间因此没有硬边。
+        .background(alignment: .top) {
+            LinearGradient(colors: [Brand.soft, Color(.systemBackground)],
+                           startPoint: .top, endPoint: .center)
+                .ignoresSafeArea()
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.smooth(duration: 0.55)) { entered = true }
+        }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result {
                 Task { await store.chooseVault(url) }
@@ -620,6 +638,17 @@ struct TxnRow: View {
                 .foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
+        // 一笔账是一条信息。不合并的话 VoiceOver 念成「收款方」「分类」
+        // 「金额」三下，还得自己在脑子里拼回去。
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(spoken)
+    }
+
+    /// 念出来的说法。符号和箭头图标对眼睛管用，对耳朵得换成词。
+    private var spoken: String {
+        let what = txn.category.isEmpty ? txn.payee : "\(txn.payee)，\(txn.category)"
+        if txn.isTransfer { return "转账，\(what)，\(money(abs(txn.amount)))" }
+        return "\(txn.isIncome ? "收入" : "支出")，\(what)，\(money(abs(txn.amount)))"
     }
 
     private var signed: String {
@@ -660,6 +689,10 @@ struct AccountRow: View {
                 .lineLimit(1).minimumScaleFactor(0.7)
                 .foregroundStyle(account.balance < 0 ? Color.red : Color.primary)
         }
+        // 色点是分组用的，念不出来；账户全名要连着父级一起念，
+        // 光一个「储蓄」不知道是哪家的。
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(account.name)，\(money(account.balance))")
     }
 }
 
@@ -750,7 +783,13 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var openSettings = false
     @State private var tool: Tool?
+    @State private var askClear = false
+    @State private var entered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
+    /// 发送键跟着字号长。写死 38 的话，输入框在无障碍档位下长高了，
+    /// 旁边这颗还是原样，看着像掉在坑里。
+    @ScaledMetric(relativeTo: .headline) private var send: CGFloat = 44
 
     var body: some View {
         // 输入区用 safeAreaInset 浮在内容之上，不是拿 VStack 摞在下面。
@@ -765,13 +804,25 @@ struct ChatView: View {
             .sheet(item: $tool) { ToolSheet(tool: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { store.clearChat() } label: {
+                    Button { askClear = true } label: {
                         Image(systemName: "trash")
                     }
                     .disabled(store.messages.isEmpty)
-                    .accessibilityLabel("清空")
+                    .accessibilityLabel("清空对话")
                 }
                 SettingsLink()
+            }
+            // 一下点掉整段对话，之前是碰到就没了。别的收不回来的事
+            // （发信、删邮件）都要点头，自己这一处不该例外。
+            .confirmationDialog("清空这段对话？", isPresented: $askClear,
+                                titleVisibility: .visible) {
+                Button("清空", role: .destructive) {
+                    store.clearChat()
+                    Haptics.warning()
+                }
+                Button("算了", role: .cancel) {}
+            } message: {
+                Text("说过的话会从这台设备上删掉，日程和账本不受影响。")
             }
     }
 
@@ -785,8 +836,20 @@ struct ChatView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             BrandHeader(size: 44)
                             Starters(pick: startWith)
+                                // 例句是**可以点的样例**，不是要逐字读的正文。
+                                // 一路放大的话四句话就占满两屏，人得先滚过
+                                // 它们才够得着输入框——而这一屏的正事是打字。
+                                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                         }
                         .padding(.top, 20)
+                        // 头像刚从启动屏那儿过来，这一屏接着往上浮一点。
+                        // 硬糊上去的话，启动屏那一下就白铺垫了。
+                        .opacity(entered || reduceMotion ? 1 : 0)
+                        .offset(y: entered || reduceMotion ? 0 : 10)
+                        .onAppear {
+                            guard !reduceMotion else { return }
+                            withAnimation(.smooth(duration: 0.45)) { entered = true }
+                        }
                     }
                     ForEach(Array(shownMessages.enumerated()), id: \.offset) { _, m in
                         Bubble(message: m)
@@ -832,15 +895,26 @@ struct ChatView: View {
                 } label: {
                     Label("还没填模型密钥，点这里去设置", systemImage: "key")
                         .font(.footnote)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
                 }
-                .padding(.horizontal, 16).padding(.top, 8)
+                .buttonStyle(.plain)
+                .foregroundStyle(Brand.primary)
+                // 底是**实的**，不是玻璃。这是一条横幅，压在对话之上；
+                // 玻璃会把底下滚过去的气泡透上来，两层蓝叠在一起谁都读不清
+                // ——字号调大之后尤其明显。别处用玻璃是因为底下没有字。
+                .background(Brand.soft, in: .capsule)
+                .overlay(Capsule().strokeBorder(Brand.primary.opacity(0.15)))
+                .padding(.horizontal, 12).padding(.bottom, 6)
             }
             // 打字的时候把这排收起来。小屏上键盘一弹，光输入框就占掉半屏，
             // 再压着一排胶囊，能看见的对话只剩两行。
             if !focused {
                 ToolStrip { tool = $0 }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                    // 这排是**控件**，不是正文。跟着无障碍字号一路放大的话，
+                    // 一个「日程」就占掉半屏宽，还把输入框挤下去——
+                    // 而这一屏真正要保的是能打字。HIG 允许控件类元素封顶。
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             }
             // 输入区浮在内容之上，不再用一条实心底栏压着——下面的话能透出来，
             // 屏幕显得高一些。GlassEffectContainer 让挨着的两块玻璃算作一体，
@@ -857,9 +931,9 @@ struct ChatView: View {
 
                     Button(action: submit) {
                         Image(systemName: store.thinking ? "ellipsis" : "arrow.up")
-                            .font(.system(size: 17, weight: .bold))
+                            .font(.system(.headline, weight: .bold))
                             .foregroundStyle(canSend ? Color.white : Color.secondary)
-                            .frame(width: 38, height: 38)
+                            .frame(width: send, height: send)
                             .contentTransition(.symbolEffect(.replace))
                     }
                     .glassEffect(canSend ? .regular.tint(Brand.primary).interactive()
@@ -867,6 +941,7 @@ struct ChatView: View {
                                  in: .circle)
                     .disabled(!canSend)
                     .animation(.easeInOut(duration: 0.18), value: canSend)
+                    .accessibilityLabel(store.thinking ? "正在办" : "发送")
                 }
             }
             .padding(.horizontal, 12)
@@ -885,6 +960,7 @@ struct ChatView: View {
     private func submit() {
         let q = draft
         draft = ""
+        Haptics.tap()
         // 不在这儿收键盘：刚发完还想接着补一句是常事。
         // 等它真动起手来（操作列表冒出来）再收，那会儿是要看它干什么。
         Task { await store.send(q) }
@@ -922,7 +998,7 @@ struct Starters: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             ForEach(examples, id: \.self) { e in
-                Button { pick(e) } label: {
+                Button { Haptics.tap(); pick(e) } label: {
                     Text(e)
                         .font(.callout)
                         .foregroundStyle(Brand.onSoft)
@@ -930,6 +1006,9 @@ struct Starters: View {
                 }
                 .buttonStyle(.plain)
                 .glassEffect(.regular.tint(Brand.soft).interactive(), in: .capsule)
+                // 点了只是填进输入框，不直接发。看得见的人从上下文能猜到，
+                // 读屏的人猜不到——一句话说清就不用试。
+                .accessibilityHint("填进输入框，可以改完再发")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -941,6 +1020,21 @@ struct Bubble: View {
     let message: Message
 
     var isUser: Bool { message.role == "user" }
+
+    /// 四个角不一样圆：靠说话人那一侧的下角收紧。
+    ///
+    /// 四角同圆的话，一串气泡看着像并排的卡片，得靠颜色和左右位置才分得出
+    /// 谁在说；收一个角，形状本身就指向说话的人——头像在左，左下角就尖，
+    /// 话是从那儿出来的。iMessage、微信都是这个道理。
+    private var shape: UnevenRoundedRectangle {
+        let round: CGFloat = 16
+        let tight: CGFloat = 5
+        return UnevenRoundedRectangle(
+            topLeadingRadius: round,
+            bottomLeadingRadius: isUser ? round : tight,
+            bottomTrailingRadius: isUser ? tight : round,
+            topTrailingRadius: round)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -957,16 +1051,19 @@ struct Bubble: View {
                 }
             }
                 .padding(10)
-                .background(isUser ? Brand.primary : Brand.soft,
-                            in: RoundedRectangle(cornerRadius: 14))
+                .background(isUser ? Brand.primary : Brand.soft, in: shape)
                 .foregroundStyle(isUser ? Color.white : Brand.onSoft)
                 .textSelection(.enabled)
+                // 左右对齐和颜色是给眼睛分的，VoiceOver 只听得到一串
+                // 文字，一问一答连在一起读完全分不出谁在说话。
+                .accessibilityLabel(isUser ? "你说：\(message.content)"
+                                           : "Jarvis 说：\(message.content)")
                 // 长按：抄走，或者换个说法再问一遍。重发对用户自己那句
                 // 尤其有用——秘书会错意时，改一个词比重打一整句快得多。
                 .contextMenu {
                     Button {
                         UIPasteboard.general.string = message.content
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Haptics.tap()
                     } label: {
                         Label("复制", systemImage: "doc.on.doc")
                     }
@@ -993,7 +1090,7 @@ struct ThinkingRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Avatar(size: 26)
+            BusyAvatar(size: 26)
 
             VStack(alignment: .leading, spacing: 6) {
                 Button { expanded.toggle() } label: {
@@ -1019,14 +1116,18 @@ struct ThinkingRow: View {
             Spacer(minLength: 8)
 
             // 一轮可能要跑一分钟。中途改主意总得能喊停——桌面端按 esc。
-            Button { store.stopThinking() } label: {
+            Button { store.stopThinking(); Haptics.tap() } label: {
                 Image(systemName: "stop.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .frame(width: 26, height: 26)
+                    .frame(width: 30, height: 30)
             }
             .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: .circle)
+            // 玻璃圆还是 30，但**能按到的地方**撑到 44——这是 HIG 的下限，
+            // 而这颗按钮偏偏是着急的时候要点的那颗。
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
             .accessibilityLabel("停下")
         }
     }
@@ -1053,11 +1154,13 @@ struct StepLine: View {
                 .font(.system(size: 9))
                 .foregroundStyle(color)
                 .padding(.top, 3)
+                .accessibilityHidden(true)
             Text(text)
                 .font(.caption2)
                 .foregroundStyle(step.kind == "error" ? Color.red : .secondary)
                 .lineLimit(2)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var text: String {
@@ -1131,6 +1234,9 @@ struct ConfirmSheet: View {
                         .controlSize(.large)
                         .frame(maxWidth: .infinity)
                     Button(ask.irreversible ? "确认发出" : "去吧") {
+                        // 收不回来的事给一下更重的——手指离开屏幕的瞬间
+                        // 就该知道「这下真发出去了」。
+                        ask.irreversible ? Haptics.warning() : Haptics.tap()
                         store.answerPending(true)
                     }
                     .buttonStyle(.glassProminent)
@@ -1165,7 +1271,9 @@ struct GroupHeader: View {
         HStack(spacing: 7) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
+                    // 语义字号而不是定死 15pt：标题用 .title3，图标不跟着
+                    // 缩放的话，字放大到无障碍档位就成了大字配小图标。
+                    .font(.system(.subheadline, weight: .semibold))
                     .foregroundStyle(tint)
             }
             Text(text).font(.title3.weight(.bold))
@@ -1174,6 +1282,10 @@ struct GroupHeader: View {
         // List 的 section header 默认全大写、全灰；这两下把它收回来。
         .textCase(nil)
         .padding(.vertical, 2)
+        // 让 VoiceOver 的「按标题浏览」能停在这儿——一屏十来张卡片，
+        // 不能只有从头听到尾一条路。
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -1201,14 +1313,16 @@ struct EmptyHint: View {
     let show: Bool
     let text: String
     var icon = "tray"
+    /// 圆底跟着字号长。写死 72 的话，字调大之后图标会顶破这个圈。
+    @ScaledMetric(relativeTo: .title) private var badge: CGFloat = 72
 
     var body: some View {
         if show {
             VStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 28, weight: .medium))
+                    .font(.system(.title, weight: .medium))
                     .foregroundStyle(Brand.sheen)
-                    .frame(width: 72, height: 72)
+                    .frame(width: badge, height: badge)
                     .background(Brand.soft, in: Circle())
                 Text(text)
                     .font(.callout)
@@ -1231,8 +1345,12 @@ struct ErrorBar: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                 Text(err).lineLimit(3)
                 Spacer(minLength: 0)
-                Button { store.lastError = nil } label: { Image(systemName: "xmark") }
-                    .accessibilityLabel("关掉")
+                Button { store.lastError = nil } label: {
+                    Image(systemName: "xmark")
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("关掉")
             }
             .font(.caption)
             .foregroundStyle(.white)
@@ -1253,23 +1371,16 @@ struct LoadingHint: View {
     var busy: Bool?
     var text = "正在读 iCloud…"
 
-    @State private var breathe = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
         if (busy ?? store.loading) && isEmpty {
             VStack(spacing: 12) {
-                // 裸转圈哪个 app 都长一样。让头像轻轻喘气，
-                // 这几秒就还是「他在给你办」，而不是「系统在忙」。
-                Avatar(size: 56)
-                    .scaleEffect(breathe ? 1.05 : 0.95)
-                    .opacity(breathe ? 1 : 0.7)
-                    .onAppear { breathe = !reduceMotion }
-                    .animation(reduceMotion ? nil
-                               : .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
-                               value: breathe)
+                BusyAvatar()
                 Text(text).font(.footnote).foregroundStyle(.secondary)
             }
+            // 「正在读」要念出来，不然屏幕上什么都没有，读屏的人不知道
+            // 是在等还是空了。
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(text)
         }
     }
 }
@@ -1315,6 +1426,7 @@ struct SettingsLink: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button { open = true } label: { Image(systemName: "gearshape") }
+                .accessibilityLabel("设置")
                 .sheet(isPresented: $open) { SettingsView() }
         }
     }

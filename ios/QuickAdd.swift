@@ -85,10 +85,10 @@ struct QuickAddView: View {
                                      scheduled: scheduledText, priority: priority)
             saving = false
             if ok {
-                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                Haptics.done()
                 dismiss()
             } else {
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                Haptics.failure()
             }
         }
     }

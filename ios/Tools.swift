@@ -50,14 +50,16 @@ struct ToolStrip: View {
     @EnvironmentObject var store: Store
     let pick: (Tool) -> Void
 
+    @ScaledMetric(relativeTo: .subheadline) private var stripHeight: CGFloat = 44
+
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(Tool.allCases) { tool in
-                    Button { pick(tool) } label: {
+                    Button { Haptics.tap(); pick(tool) } label: {
                         HStack(spacing: 6) {
                             Image(systemName: tool.icon)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(.footnote, weight: .semibold))
                             Text(tool.title).font(.subheadline)
                             if let n = badge(tool), n > 0 {
                                 Text("\(n)")
@@ -73,6 +75,10 @@ struct ToolStrip: View {
                     }
                     .buttonStyle(.plain)
                     .glassEffect(.regular.interactive(), in: .capsule)
+                    // 角标是个光秃秃的数字，念出来是「邮件 3」，
+                    // 听不出这 3 是什么。
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(spoken(tool))
                 }
             }
             .padding(.horizontal, 12)
@@ -80,7 +86,18 @@ struct ToolStrip: View {
         }
         .scrollIndicators(.hidden)
         // 一排胶囊而已，别让它把整条滚动区域撑成一屏高。
-        .frame(height: 44)
+        // 但高度得跟着字号走——写死 44 的话，字调到无障碍档位就被切掉半行。
+        .frame(height: stripHeight)
+    }
+
+    /// 念出来的说法。数字得带上单位，不然听着像编号。
+    private func spoken(_ tool: Tool) -> String {
+        guard let n = badge(tool), n > 0 else { return tool.title }
+        switch tool {
+        case .mail:    return "\(tool.title)，\(n) 封未读"
+        case .planner: return "\(tool.title)，\(n) 条逾期"
+        default:       return "\(tool.title)，\(n)"
+        }
     }
 
     /// 需要留神的数目。没有就不显示——常年挂着个 0 反而让人不看它了。

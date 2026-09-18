@@ -81,7 +81,7 @@ struct MailDetail: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }
-                        .accessibilityLabel("关闭")
+                        .accessibilityLabel("关掉")
                 }
             }
         }

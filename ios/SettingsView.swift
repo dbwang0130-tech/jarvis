@@ -208,7 +208,7 @@ struct SettingsView: View {
             }.value
             check = r
             checking = false
-            UINotificationFeedbackGenerator().notificationOccurred(r.ok ? .success : .warning)
+            r.ok ? Haptics.success() : Haptics.warning()
         }
     }
 

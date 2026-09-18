@@ -195,13 +195,13 @@ struct MailTab: View {
     private func apply(_ r: MailResult, haptic: Bool = false) {
         if let err = r.error, !err.isEmpty {
             store.lastError = err
-            if haptic { UINotificationFeedbackGenerator().notificationOccurred(.error) }
+            if haptic { Haptics.failure() }
             return
         }
         items = r.items
         groups = Self.group(r.items)
         if !r.message.isEmpty { note = r.message }
-        if haptic { UIImpactFeedbackGenerator(style: .soft).impactOccurred() }
+        if haptic { Haptics.done() }
     }
 }
 
@@ -234,6 +234,7 @@ struct MailRow: View {
                 if !mail.reason.isEmpty {
                     HStack(spacing: 4) {
                         Image(systemName: "sparkles").font(.system(size: 9))
+                            .accessibilityHidden(true)
                         Text(mail.reason).lineLimit(2)
                     }
                     .font(.caption2)

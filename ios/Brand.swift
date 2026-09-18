@@ -67,6 +67,70 @@ enum Brand {
     }
 }
 
+/// 手感。
+///
+/// 触觉跟配色、圆角一样是品牌的一部分——「说一句它就办了」这件事，
+/// 眼睛看到的是气泡，指头感到的就是这一下。收在一处是因为：散着写的话，
+/// 每处各挑一种强度，同一个 app 里轻一下重一下，人会觉得它没准头。
+///
+/// 五档，按**这件事要不要紧**分，不按它是什么操作分：
+/// - `tap` 按下去了。发送、停下、复制——最常见，最轻。
+/// - `done` 落地了。勾掉一条、记一笔、归档一封。比 tap 厚一点，
+///   因为它确认的是「文件真的改了」，不只是「你点到了」。
+/// - `success` 一整趟办完了。导入几千条、测通一个邮箱。
+/// - `warning` 做了件收不回来的事。清空对话、确认发出。
+/// - `failure` 没办成。这一档要留着——手指离开屏幕之后人就不看了，
+///   失败光靠一行红字，很容易当成办成了。
+///
+/// **系统开关自己会管**：用户在「设置 → 声音与触感」里关掉之后，
+/// 这些调用就是空转，不必在这儿判。
+enum Haptics {
+    static func tap() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    static func done() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+    }
+
+    static func success() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    static func warning() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+
+    static func failure() {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+    }
+}
+
+/// 忙着的时候的头像：轻轻喘气。
+///
+/// 裸一个转圈哪个 app 都长一样，那几秒钟界面就不是「他在给你办」，
+/// 而是「系统在忙」。原先只有首屏读 iCloud 那儿这么做，对话里等回复
+/// 反倒是个静止的头像——同一件事两种样子。收在这儿，两处用同一个。
+///
+/// 幅度压得很小（±5%）：它要的是「活着」，不是「在动」；在对话里
+/// 每来一条回复就蹦一下会很吵。关了动效的人直接拿到一个静的。
+struct BusyAvatar: View {
+    var size: CGFloat = 56
+
+    @State private var breathe = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Avatar(size: size)
+            .scaleEffect(breathe ? 1.05 : 0.95)
+            .opacity(breathe ? 1 : 0.7)
+            .onAppear { breathe = !reduceMotion }
+            .animation(reduceMotion ? nil
+                       : .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
+                       value: breathe)
+    }
+}
+
 /// 字标。
 ///
 /// 「Jarvis」这四个字原先在欢迎页、设置页、对话空状态各写了一遍，
@@ -87,9 +151,20 @@ struct Wordmark: View {
 struct BrandHeader: View {
     var size: CGFloat = 52
 
+    /// 头像跟着字号长。写死的话，字放大到无障碍档位就成了一个小圆点
+    /// 配两行大字，而且那两行会绕到头像身上去。
+    @ScaledMetric(relativeTo: .headline) private var scale: CGFloat = 1
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(spacing: 12) {
-            Avatar(size: size)
+        // 字大到无障碍档位时改竖排。横着摆的话，一行字标加一句 slogan
+        // 要占掉半屏宽，slogan 折成两三行、头像孤零零吊在左边。
+        let stacked = typeSize.isAccessibilitySize
+        return AnyLayout(stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                                 : AnyLayout(HStackLayout(spacing: 12))) {
+            // 跟着长，但封顶两倍。头像是装饰——字调到最大那几档时它能
+            // 涨到一百多点，占掉三分之一屏，真正要读的字反被挤下去。
+            Avatar(size: min(size * scale, size * 2))
             VStack(alignment: .leading, spacing: 2) {
                 Wordmark()
                 Text(Brand.slogan)
@@ -116,5 +191,9 @@ struct Avatar: View {
             // 浅蓝底配浅蓝边会糊在一起，描一圈更亮的
             .overlay(Circle().strokeBorder(Brand.accent.opacity(0.35),
                                            lineWidth: max(1, size / 48)))
+            // 它是装饰，不是信息。每条回复前面都挂一个的话，VoiceOver
+            // 会在每句话之前先念一遍「Avatar」——谁说的那件事由气泡
+            // 自己的标签讲（见 Bubble）。
+            .accessibilityHidden(true)
     }
 }

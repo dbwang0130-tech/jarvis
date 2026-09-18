@@ -120,9 +120,9 @@ struct SwipeActions: ViewModifier {
         return Button {
             Task {
                 if await store.act(op, on: item.ref, days: days) {
-                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    Haptics.done()
                 } else {
-                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    Haptics.failure()
                 }
             }
         } label: {
@@ -170,11 +170,11 @@ struct ItemRow: View {
     private var leadingIcon: some View {
         if item.isDone {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 15))
+                .font(.system(.subheadline))
                 .foregroundStyle(.green)
         } else {
             Image(systemName: categoryIcon(item.category))
-                .font(.system(size: 15))
+                .font(.system(.subheadline))
                 .foregroundStyle(look.color)
                 .overlay(alignment: .topTrailing) {
                     if item.overdue {
@@ -404,7 +404,7 @@ struct ItemDetail: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }
-                        .accessibilityLabel("关闭")
+                        .accessibilityLabel("关掉")
                 }
             }
         }
@@ -530,10 +530,10 @@ struct ActionButton: View {
                 let ok = await store.act(op, on: item.ref, days: 1)
                 working = false
                 if ok {
-                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    Haptics.done()
                     done?()
                 } else {
-                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    Haptics.failure()
                 }
             }
         } label: {
@@ -541,7 +541,7 @@ struct ActionButton: View {
                 if working {
                     ProgressView().controlSize(.small)
                 } else {
-                    Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+                    Image(systemName: icon).font(.system(.subheadline, weight: .semibold))
                 }
                 Text(title).font(.caption2)
             }
