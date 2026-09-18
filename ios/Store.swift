@@ -389,6 +389,27 @@ final class Store: ObservableObject, AskEvents {
     /// 手上这些 org 文件的名字，排好序。记一条时可以挑写进哪个。
     var orgFiles: [String] { files.keys.sorted() }
 
+    /// 冲掉记错的那一笔。
+    ///
+    /// 不是删——账本是流水账，记错了要记一笔反向的把它抵掉，原始那笔
+    /// 留着。这是 ledger 的规矩，也是复式记账本来的样子。
+    @discardableResult
+    func reverse(_ txn: TxnBrief) async -> Bool {
+        guard !thinking else { return false }
+        let book = ledger
+        let r = await Task.detached(priority: .userInitiated) {
+            Bridge.reverse(ledger: book, index: txn.index,
+                           date: txn.date, payee: txn.payee)
+        }.value
+
+        if let err = r.error, !err.isEmpty {
+            fail(err)
+            return false
+        }
+        guard let updated = r.ledger, !updated.isEmpty else { return true }
+        return await writeBack(ledger: updated)
+    }
+
     /// 记一笔账。
     ///
     /// 财务页一直是只读的：余额、账户、流水都看得见，可「刚花了 35 块」

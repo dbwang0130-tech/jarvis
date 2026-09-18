@@ -470,6 +470,11 @@ type TxnBrief struct {
 	Kind string `json:"kind"`
 	// Category 是花在哪儿 / 哪来的，取科目的末一段（餐饮、工资）。
 	Category string `json:"category"`
+	// Index 是这笔在账本里的下标，删除时要传回来。
+	//
+	// 光有下标不够安全——账本在别处被改过之后，同一个下标指的可能是
+	// 另一笔了。所以删除那头还要拿日期、金额、收款方核对一遍（见 DropTxn）。
+	Index int `json:"index"`
 }
 
 // briefOf 把一笔交易压成流水里的一行。
@@ -794,7 +799,9 @@ func buildLedger(b *ledger.Book) *LedgerView {
 	}
 	// 给多一点，界面按天分组之后二十条也就三四天。
 	for i := len(b.Transactions) - 1; i >= 0 && i > len(b.Transactions)-61; i-- {
-		v.Recent = append(v.Recent, briefOf(b.Transactions[i]))
+		brief := briefOf(b.Transactions[i])
+		brief.Index = i
+		v.Recent = append(v.Recent, brief)
 	}
 	return v
 }

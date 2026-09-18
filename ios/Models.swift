@@ -182,6 +182,13 @@ struct TxnBrief: Codable, Identifiable {
     var kind: String = ""
     /// 花在哪儿 / 哪来的，科目的末一段。
     var category: String = ""
+    /// 这笔在账本里的下标，冲账时要传回去。光有下标不够安全，那头还会拿
+    /// 日期和收款方核对一遍。
+    var index: Int = 0
+
+    /// 这笔本身就是一笔冲账。已经冲过的不能再冲——两笔反向的抵完，
+    /// 再来一笔就成了重复记账。
+    var isReversal: Bool { payee.hasPrefix("冲账：") }
 
     var id: String { date + payee + String(amount) + category }
 

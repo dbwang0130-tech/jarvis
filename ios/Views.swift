@@ -543,7 +543,21 @@ struct TxnListView: View {
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
 
+    @State private var asking: TxnBrief?
+
     private var txns: [TxnBrief] { store.snapshot.ledger?.recent ?? [] }
+
+    private var askingBinding: Binding<Bool> {
+        Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })
+    }
+
+    private func reverse(_ txn: TxnBrief) {
+        asking = nil
+        Task {
+            let ok = await store.reverse(txn)
+            ok ? Haptics.warning() : Haptics.failure()
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -563,7 +577,19 @@ struct TxnListView: View {
             // 而「今天花了多少」这个最常问的问题反而得自己加。
             ForEach(dayGroups(txns), id: \.date) { day in
                 Section {
-                    ForEach(Array(day.items.enumerated()), id: \.offset) { TxnRow(txn: $1) }
+                    ForEach(Array(day.items.enumerated()), id: \.offset) { _, txn in
+                        TxnRow(txn: txn)
+                            // 记错了不能删，只能冲——账本是流水账，
+                            // 回头改历史的账没法对。
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if !txn.isReversal {
+                                    Button { asking = txn } label: {
+                                        Label("冲账", systemImage: "arrow.uturn.backward")
+                                    }
+                                    .tint(.orange)
+                                }
+                            }
+                    }
                 } header: {
                     HStack {
                         Text(dayTitle(day.date))
@@ -583,6 +609,16 @@ struct TxnListView: View {
         .navigationTitle("最近流水")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await store.reload() }
+        .confirmationDialog(asking.map { "冲掉「\($0.payee)」？" } ?? "",
+                            isPresented: askingBinding, titleVisibility: .visible) {
+            if let txn = asking {
+                Button("记一笔冲账", role: .destructive) { reverse(txn) }
+            }
+            Button("算了", role: .cancel) {}
+        } message: {
+            Text("原来那笔会留在账上，另记一笔方向相反的把它抵掉——"
+                 + "账本是流水账，改不得历史。")
+        }
         .overlay { EmptyHint(show: txns.isEmpty && !store.loading, text: "还没有流水", icon: "list.bullet.rectangle") }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
     }
@@ -670,11 +706,15 @@ struct TxnRow: View {
     }
 
     private var icon: String {
+        // 冲账那笔单独一个图标：它跟普通收支不是一回事，是用来抵掉
+        // 另一笔的。不标出来的话，账上会凭空多出一笔「收入」。
+        if txn.isReversal { return "arrow.uturn.backward.circle.fill" }
         if txn.isTransfer { return "arrow.left.arrow.right" }
         return txn.isIncome ? "arrow.down.circle.fill" : "arrow.up.circle.fill"
     }
 
     private var tint: Color {
+        if txn.isReversal { return .orange }
         if txn.isTransfer { return .secondary }
         return txn.isIncome ? .green : Brand.onSoft
     }

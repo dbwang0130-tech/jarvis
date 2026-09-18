@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/dabao/jarvis/internal/ledger"
 )
 
 const spendBook = `2026-09-01 * 开户
@@ -108,4 +110,137 @@ func TestSpendOnEmptyBook(t *testing.T) {
 	if !strings.Contains(out.Ledger, "第一笔") {
 		t.Fatalf("没写进去：\n%s", out.Ledger)
 	}
+}
+
+func reverse(t *testing.T, in ReverseInput) SpendOutput {
+	t.Helper()
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out SpendOutput
+	if err := json.Unmarshal([]byte(Reverse(string(raw))), &out); err != nil {
+		t.Fatalf("出参不是合法 JSON：%v", err)
+	}
+	return out
+}
+
+// 记错了不是把那几行删掉，而是再记一笔方向相反的。
+//
+// 账本是一条流水，每一笔都是「当时确实这么记过」的事实：回头改历史的账
+// 没法对，也说不清当时到底发生过什么。冲账之后两笔都留着，一抵，余额就
+// 回去了——这是 ledger 的规矩。
+func TestReverse(t *testing.T) {
+	out := reverse(t, ReverseInput{
+		Ledger: spendBook, Index: 1, Date: "2026-09-10", Payee: "午饭",
+		TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("冲不了：%s", out.Error)
+	}
+	// **原来那笔必须还在。**
+	if !strings.Contains(out.Ledger, "2026-09-10 * 午饭") {
+		t.Fatalf("把原来那笔改掉了：\n%s", out.Ledger)
+	}
+	if !strings.Contains(out.Ledger, "冲账：午饭（2026-09-10）") {
+		t.Fatalf("没记上冲账：\n%s", out.Ledger)
+	}
+
+	// 两笔一抵，账户余额得回到冲账之前。
+	before := ledgerBalance(t, spendBook, "Expenses:餐饮")
+	after := ledgerBalance(t, out.Ledger, "Expenses:餐饮")
+	if after != before-35 {
+		t.Fatalf("冲完餐饮还剩 %.2f，原来 %.2f，该少 35", after, before)
+	}
+	if b := ledgerBalance(t, out.Ledger, "Assets:招行"); b != 10000 {
+		t.Fatalf("冲完招行余额 %.2f，该回到 10000", b)
+	}
+}
+
+// 冲账的冲账 = 重复记账。两笔反向的抵完，再来一笔就把钱又花出去了。
+func TestReverseTwiceRefused(t *testing.T) {
+	out := reverse(t, ReverseInput{
+		Ledger: spendBook, Index: 1, Date: "2026-09-10", Payee: "午饭",
+		TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatal(out.Error)
+	}
+	book := ledgerParsed(t, out.Ledger)
+	last := len(book) - 1
+	again := reverse(t, ReverseInput{
+		Ledger: out.Ledger, Index: last,
+		Date: book[last].date, Payee: book[last].payee, TZ: "Asia/Shanghai",
+	})
+	if again.Error == "" {
+		t.Fatal("冲账的冲账该被拦住")
+	}
+	if !strings.Contains(again.Error, "本来就是一笔冲账") {
+		t.Fatalf("话没说到点上：%s", again.Error)
+	}
+}
+
+// 光有下标不够：账本在别处被改过之后，同一个下标指的可能已经是另一笔了。
+// 冲错一笔账，人要过很久才发现。
+func TestReverseChecksIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   ReverseInput
+		want string
+	}{
+		{"日期对不上", ReverseInput{Ledger: spendBook, Index: 1,
+			Date: "2026-01-01", Payee: "午饭"}, "对不上"},
+		{"收款方对不上", ReverseInput{Ledger: spendBook, Index: 1,
+			Date: "2026-09-10", Payee: "晚饭"}, "对不上"},
+		{"下标越界", ReverseInput{Ledger: spendBook, Index: 99,
+			Date: "2026-09-10", Payee: "午饭"}, "找不到"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.in.TZ = "Asia/Shanghai"
+			out := reverse(t, tc.in)
+			if out.Error == "" {
+				t.Fatal("该拒绝")
+			}
+			if !strings.Contains(out.Error, tc.want) {
+				t.Fatalf("话没说到点上：%s", out.Error)
+			}
+			if out.Ledger != "" {
+				t.Error("拒绝了却把账本交回去了")
+			}
+		})
+	}
+
+	var out SpendOutput
+	if err := json.Unmarshal([]byte(Reverse("不是 JSON")), &out); err != nil {
+		t.Fatalf("出参不是合法 JSON：%v", err)
+	}
+	if out.Error == "" {
+		t.Error("烂入参该报错")
+	}
+}
+
+// 下面两个是读账本的小帮手，只在这个文件里用。
+
+func ledgerBalance(t *testing.T, text, account string) float64 {
+	t.Helper()
+	var sum float64
+	for _, tx := range ledger.ParseBook(text).Transactions {
+		for _, p := range tx.Resolved() {
+			if p.Account == account {
+				sum += p.Amount
+			}
+		}
+	}
+	return sum
+}
+
+type txLine struct{ date, payee string }
+
+func ledgerParsed(t *testing.T, text string) []txLine {
+	t.Helper()
+	var out []txLine
+	for _, tx := range ledger.ParseBook(text).Transactions {
+		out = append(out, txLine{tx.Date.Format("2006-01-02"), tx.Payee})
+	}
+	return out
 }

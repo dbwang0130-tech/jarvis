@@ -33,6 +33,13 @@ type Transaction struct {
 	Status   byte // ' '、'*' 或 '!'
 	Payee    string
 	Postings []Posting
+	// Line 是这笔交易在文件里的起始行（0 起），End 是它的下一行。
+	//
+	// 用来定位原始那几行——**不是为了删掉它**。账本是流水账，记错了
+	// 要冲账（记一笔反向的），不能回头改历史：改过的账没法对，也说不清
+	// 当时到底发生过什么。这是 ledger 的规矩，不是这个项目的偏好。
+	Line int
+	End  int
 }
 
 // Book 是一个账本文件的内存表示。
@@ -97,13 +104,17 @@ func isComment(s string) bool {
 
 func (b *Book) parse(text string) {
 	var cur *Transaction
+	// 收尾时 End 停在最后一条 posting 的下一行，不含后面那些空行——
+	// 删除时把空行留给上一笔，不然连着删几笔会把段落之间的空行也吃掉。
+	end := 0
 	flush := func() {
 		if cur != nil {
+			cur.End = end
 			b.Transactions = append(b.Transactions, *cur)
 			cur = nil
 		}
 	}
-	for _, line := range strings.Split(text, "\n") {
+	for i, line := range strings.Split(text, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || isComment(trimmed) {
 			continue
@@ -112,11 +123,14 @@ func (b *Book) parse(text string) {
 		if !indented && dateRe.MatchString(line) {
 			flush()
 			tx := parseTransaction(line)
+			tx.Line = i
 			cur = &tx
+			end = i + 1
 			continue
 		}
 		if indented && cur != nil {
 			cur.Postings = append(cur.Postings, parsePosting(trimmed))
+			end = i + 1
 		}
 	}
 	flush()

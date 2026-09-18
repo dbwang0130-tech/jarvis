@@ -193,6 +193,28 @@ enum Bridge {
         }
     }
 
+    /// 冲掉记错的那一笔：往账本末尾追加一笔方向相反的。
+    ///
+    /// **不是删掉原来那几行。** 账本是一条流水，每一笔都是「当时确实这么
+    /// 记过」的事实；回头改历史的账没法对，也说不清当时发生过什么。
+    /// 这是 ledger 的规矩。
+    static func reverse(ledger: String, index: Int,
+                        date: String, payee: String) -> SpendResult {
+        let input: [String: Any] = [
+            "ledger": ledger, "index": index, "date": date, "payee": payee,
+            "tz": TimeZone.current.identifier,
+        ]
+        guard let json = encode(input) else {
+            return SpendResult(error: "入参编码失败")
+        }
+        let out = callReverse(json)
+        do {
+            return try JSONDecoder().decode(SpendResult.self, from: Data(out.utf8))
+        } catch {
+            return SpendResult(error: "出参解不开：\(error.localizedDescription)")
+        }
+    }
+
     /// 拿填的这套参数真连一次 IMAP，看通不通。
     ///
     /// 服务器地址、端口、授权码三样里错一样都连不上，而填错了要等到点
@@ -258,6 +280,14 @@ enum Bridge {
     private static func callSpend(_ json: String) -> String {
         #if canImport(Mobile)
         return MobileSpend(json)
+        #else
+        return #"{"error":"Mobile framework 没连上"}"#
+        #endif
+    }
+
+    private static func callReverse(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileReverse(json)
         #else
         return #"{"error":"Mobile framework 没连上"}"#
         #endif

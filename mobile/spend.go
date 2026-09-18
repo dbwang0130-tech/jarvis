@@ -146,3 +146,106 @@ func mainCommodity(b *ledger.Book) string {
 	}
 	return best
 }
+
+// ReverseInput 冲掉记错的那一笔。
+//
+// **账本不改历史。** 记错了不是把那几行删掉或改掉，而是再记一笔方向相反
+// 的——这是 ledger 的规矩，也是复式记账本来的样子：账本是一条流水，
+// 每一笔都是「当时确实这么记过」的事实。回头改历史的账没法对，也说不清
+// 当时到底发生过什么；而冲账之后，原始那笔和改正那笔都留着，两笔一抵，
+// 余额就回去了。
+//
+// 光有下标不够：账本在别处被改过之后（电脑上记了几笔、或者秘书刚动过），
+// 同一个下标指的可能已经是另一笔了。所以还要拿日期和收款方核对一遍
+// ——跟删条目那边要带标题是同一个道理。
+type ReverseInput struct {
+	Ledger string `json:"ledger"`
+	Index  int    `json:"index"`
+	// 核对用。对不上就拒绝，让界面重读一遍再来。
+	Date  string `json:"date"`
+	Payee string `json:"payee"`
+
+	TZ string `json:"tz"`
+}
+
+// Reverse 往账本末尾追加一笔冲账。
+func Reverse(inputJSON string) string {
+	var in ReverseInput
+	if err := json.Unmarshal([]byte(inputJSON), &in); err != nil {
+		return marshal(&SpendOutput{Error: fmt.Sprintf("入参不是合法 JSON：%v", err)})
+	}
+	SetTimeZone(in.TZ)
+
+	book := ledger.ParseBook(in.Ledger)
+	if in.Index < 0 || in.Index >= len(book.Transactions) {
+		return marshal(&SpendOutput{Error: "这笔账找不到了，下拉刷新一下再试"})
+	}
+
+	// 核对。对不上一样就别动——冲错一笔账，人要过很久才发现。
+	orig := book.Transactions[in.Index]
+	if orig.Date.Format("2006-01-02") != in.Date ||
+		strings.TrimSpace(orig.Payee) != strings.TrimSpace(in.Payee) {
+		return marshal(&SpendOutput{
+			Error: "账本跟手机上看到的对不上了（多半是别处刚改过），" +
+				"下拉刷新一下再试"})
+	}
+
+	// 已经冲过的别再冲一次——两笔反向的抵完，再来一笔就成了重复记账。
+	if strings.HasPrefix(orig.Payee, reversePrefix) {
+		return marshal(&SpendOutput{Error: "这本来就是一笔冲账，别再冲了"})
+	}
+
+	wd, err := newWorkdir(nil, "jarvis-reverse-")
+	if err != nil {
+		return marshal(&SpendOutput{Error: err.Error()})
+	}
+	defer wd.close()
+
+	path := wd.path("ledger.dat")
+	if err := wd.write("ledger.dat", in.Ledger); err != nil {
+		return marshal(&SpendOutput{Error: err.Error()})
+	}
+	loaded, err := ledger.Load(path)
+	if err != nil {
+		return marshal(&SpendOutput{Error: "账本读不开：" + err.Error()})
+	}
+
+	// 冲账那笔用**今天**的日期，不是原来那天。
+	//
+	// 账本是按时间排的流水：把冲账记回原来那天，等于假装那天就已经改正了，
+	// 而事实是今天才发现。原日期写进摘要里，对得上就行。
+	rev := ledger.Transaction{
+		Date:   time.Now(),
+		Status: '*',
+		Payee: fmt.Sprintf("%s%s（%s）", reversePrefix,
+			strings.TrimSpace(orig.Payee), in.Date),
+	}
+	// 每一条分录金额取反。用 Resolved 而不是 Postings：ledger 允许留一行
+	// 不写金额由其余倒推，直接读 Postings 的话那一行是 0，冲完对不平。
+	for _, p := range orig.Resolved() {
+		rev.Postings = append(rev.Postings, ledger.Posting{
+			Account:   p.Account,
+			Amount:    -p.Amount,
+			HasAmount: true,
+			Commodity: p.Commodity,
+		})
+	}
+	if len(rev.Postings) == 0 {
+		return marshal(&SpendOutput{Error: "这笔账没有分录，冲不了"})
+	}
+
+	if err := loaded.Add(rev); err != nil {
+		return marshal(&SpendOutput{Error: err.Error()})
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return marshal(&SpendOutput{Error: "写完读不回来：" + err.Error()})
+	}
+	return marshal(&SpendOutput{
+		Message: fmt.Sprintf("冲掉了：%s", orig.Payee),
+		Ledger:  string(raw),
+	})
+}
+
+// 冲账那笔的摘要前缀。界面靠它认出哪些是冲账，也靠它挡住「冲账的冲账」。
+const reversePrefix = "冲账："
