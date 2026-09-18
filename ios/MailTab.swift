@@ -70,6 +70,7 @@ struct MailTab: View {
     /// 要整组清掉的那些键。存键而不是存 Verdict——点「全部清掉」时本来就
     /// 握着那一组，再反查一次是白找。
     @State private var cleaning: [String]?
+    @State private var keyword = ""
 
     var body: some View {
         List {
@@ -93,8 +94,17 @@ struct MailTab: View {
         }
         .navigationTitle("邮件")
         .navigationBarTitleDisplayMode(.inline)
+        // 搜主题、发件人、摘要。收件箱攒到几百封之后，「上周那封讲报销的」
+        // 只能一屏屏往下翻——而它就在那儿。
+        .searchable(text: $keyword, prompt: "找主题或发件人")
         .refreshable { await sync() }
-        .overlay { EmptyHint(show: items.isEmpty && !syncing, text: emptyText, icon: emptyIcon) }
+        .overlay {
+            // 搜不到和一封都没有是两回事。都说「没有邮件」的话，
+            // 人会以为邮箱空了或者同步坏了。
+            EmptyHint(show: groups.isEmpty && !syncing,
+                      text: keyword.isEmpty ? emptyText : "没有对得上的",
+                      icon: keyword.isEmpty ? emptyIcon : "magnifyingglass")
+        }
         .overlay { LoadingHint(isEmpty: items.isEmpty, busy: syncing, text: "正在收信…") }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .safeAreaInset(edge: .bottom) { noteBar }
@@ -119,6 +129,16 @@ struct MailTab: View {
             Text("移进垃圾箱，服务器上还能找回来。")
         }
         .task { reload() }
+        // 关键词变了要重分一次组。分组结果存在 @State 里（见上面那段注释），
+        // 不重分的话，输进关键词列表纹丝不动。
+        .task(id: keyword) {
+            // 打字没停就别急着过滤；被取消了就什么都不做。
+            if !keyword.isEmpty {
+                try? await Task.sleep(for: .milliseconds(180))
+                if Task.isCancelled { return }
+            }
+            groups = Self.group(filtered(items))
+        }
     }
 
     /// 拆成单独一个方法，不然编译器要为这一整个表达式推很久，
@@ -156,6 +176,20 @@ struct MailTab: View {
 
     /// 按处置意见分组，要紧的在最前。清理过的 Go 那边已经滤掉了。
     /// 一趟分桶就够——按六个类别各 filter 一次是把整份邮件过六遍。
+    /// 按关键词筛一遍。搜的是主题、发件人和 Jarvis 那句判断——
+    /// 「讲报销的那封」多半记不住主题原文，但记得它是谁发的、说的是什么事。
+    private func filtered(_ items: [MailItem]) -> [MailItem] {
+        let k = keyword.trimmingCharacters(in: .whitespaces)
+        guard !k.isEmpty else { return items }
+        return items.filter {
+            $0.subject.localizedCaseInsensitiveContains(k)
+                || $0.from.localizedCaseInsensitiveContains(k)
+                || $0.addr.localizedCaseInsensitiveContains(k)
+                || $0.reason.localizedCaseInsensitiveContains(k)
+                || $0.snippet.localizedCaseInsensitiveContains(k)
+        }
+    }
+
     private static func group(_ items: [MailItem]) -> [(verdict: Verdict, mails: [MailItem])] {
         let byVerdict = Dictionary(grouping: items) {
             Verdict(rawValue: $0.verdict) ?? .unjudged
@@ -201,7 +235,7 @@ struct MailTab: View {
             return
         }
         items = r.items
-        groups = Self.group(r.items)
+        groups = Self.group(filtered(r.items))
         if !r.message.isEmpty { note = r.message }
         if haptic { Haptics.done() }
     }

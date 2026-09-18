@@ -544,8 +544,19 @@ struct TxnListView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var asking: TxnBrief?
+    @State private var keyword = ""
 
-    private var txns: [TxnBrief] { store.snapshot.ledger?.recent ?? [] }
+    /// 搜的是收款方和分类——「上个月星巴克花了多少」这种问题，翻是翻不
+    /// 出来的，六十笔流水摊开有好几屏。
+    private var txns: [TxnBrief] {
+        let all = store.snapshot.ledger?.recent ?? []
+        let k = keyword.trimmingCharacters(in: .whitespaces)
+        guard !k.isEmpty else { return all }
+        return all.filter {
+            $0.payee.localizedCaseInsensitiveContains(k)
+                || $0.category.localizedCaseInsensitiveContains(k)
+        }
+    }
 
     private var askingBinding: Binding<Bool> {
         Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })
@@ -608,6 +619,7 @@ struct TxnListView: View {
         }
         .navigationTitle("最近流水")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $keyword, prompt: "找收款方或分类")
         .refreshable { await store.reload() }
         .confirmationDialog(asking.map { "冲掉「\($0.payee)」？" } ?? "",
                             isPresented: askingBinding, titleVisibility: .visible) {
@@ -619,7 +631,13 @@ struct TxnListView: View {
             Text("原来那笔会留在账上，另记一笔方向相反的把它抵掉——"
                  + "账本是流水账，改不得历史。")
         }
-        .overlay { EmptyHint(show: txns.isEmpty && !store.loading, text: "还没有流水", icon: "list.bullet.rectangle") }
+        .overlay {
+            // 搜不到和一笔都没有是两回事。都说「还没有流水」的话，
+            // 人会以为账本空了。
+            EmptyHint(show: txns.isEmpty && !store.loading,
+                      text: keyword.isEmpty ? "还没有流水" : "没有对得上的",
+                      icon: keyword.isEmpty ? "list.bullet.rectangle" : "magnifyingglass")
+        }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
     }
 }
