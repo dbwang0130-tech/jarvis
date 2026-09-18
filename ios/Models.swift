@@ -47,7 +47,22 @@ struct Item: Codable, Identifiable, Hashable {
     var hasNotes = false
     var file = ""
 
+    /// 这条正在计时（org 里有一条没收尾的 CLOCK），以及这次是什么时候
+    /// 开始的（RFC3339）。
+    ///
+    /// 以前只有详情里给得出，于是列表上看不出哪条在走，也就给不了「停止」
+    /// ——点了开始只能靠「完成」收尾。有了起点，界面和小组件都能让秒表
+    /// 自己走，不必每分钟回来问一次。
+    var running = false
+    var runningSince = ""
+
     var id: String { ref + kind + time }
+
+    /// 计时从什么时候开始的。给 `Text(_:style: .timer)` 用。
+    var startedAt: Date? {
+        guard running, !runningSince.isEmpty else { return nil }
+        return ISO8601DateFormatter().date(from: runningSince)
+    }
 
     enum CodingKeys: String, CodingKey {
         case ref, kind, time, state, priority, title, parents, tags, done, total
@@ -59,6 +74,8 @@ struct Item: Codable, Identifiable, Hashable {
         case dueKind = "due_kind"
         case hasNotes = "has_notes"
         case file
+        case running
+        case runningSince = "running_since"
     }
 
     /// 勾选项有几个才显示进度。

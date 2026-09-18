@@ -50,6 +50,16 @@ enum Brand {
         return b.isEmpty ? v : "\(v)（\(b)）"
     }
 
+    /// 小组件的底。
+    ///
+    /// 主屏上四周都是别人家的图标，一块纯白会显得是个窟窿。斜着化一层
+    /// 品牌浅蓝过去，既认得出是谁，又不会盖过上面那几行字——小组件上
+    /// 真正要看的是「还剩什么」，底色只是把它归到 Jarvis 名下。
+    static var widgetBackground: some View {
+        LinearGradient(colors: [soft, Color(.systemBackground)],
+                       startPoint: .topTrailing, endPoint: .bottomLeading)
+    }
+
     /// 全 app 的圆角。3D 那张头像是圆润的，界面跟着圆一点才是一家人。
     static let radius: CGFloat = 18
     static let smallRadius: CGFloat = 12

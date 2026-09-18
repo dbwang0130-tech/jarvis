@@ -109,7 +109,7 @@ struct SwipeActions: ViewModifier {
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if !item.isDone {
                     button("postpone", days: 1)
-                    button("start")
+                    button(item.running ? "stop" : "start")
                     button("cancel")
                 }
             }
@@ -168,7 +168,13 @@ struct ItemRow: View {
     /// 光靠颜色不够响；做完了直接换成绿勾，不必再提它属于哪一摊。
     @ViewBuilder
     private var leadingIcon: some View {
-        if item.isDone {
+        if item.running {
+            // 正在计时的那条换成秒表。不换的话，列表上跟别的条目一模一样，
+            // 「哪件事还开着」只能靠自己记。
+            Image(systemName: "stopwatch.fill")
+                .font(.system(.subheadline))
+                .foregroundStyle(.orange)
+        } else if item.isDone {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(.subheadline))
                 .foregroundStyle(.green)
@@ -421,7 +427,10 @@ struct ItemDetail: View {
                     ActionButton(op: "undone", item: item) { dismiss() }
                 } else {
                     ActionButton(op: "done", item: item) { dismiss() }
-                    ActionButton(op: "start", item: item)
+                    // 正在走的时候要给的是「停止」。以前这儿永远是「开始」，
+                    // 点下去只会再开一段计时，想收尾只能标完成——
+                    // 一件没做完的事因此没有别的出路。
+                    ActionButton(op: item.running ? "stop" : "start", item: item)
                     ActionButton(op: "postpone", item: item)
                 }
             }

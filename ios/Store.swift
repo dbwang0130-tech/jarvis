@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import WidgetKit
 
 /// Store 是界面唯一的数据来源：从 iCloud 读文件、交给 Go 解析、
 /// 把结果摆出来；对话产生的改动也从这儿写回去。
@@ -115,6 +116,7 @@ final class Store: ObservableObject, AskEvents {
                 lastError = err
             }
             await refreshReminders()
+            publishWidget(snap)
             // 徽标不参与首屏，别让加载指示器等这趟盘读。
             Task { await refreshMailBadge() }
         } catch {
@@ -304,6 +306,46 @@ final class Store: ObservableObject, AskEvents {
     }
 
     /// 叫停正在跑的那一轮。已经做完的改动会照常写回来，不会白干。
+    /// 把今天那几条抄一份给小组件。
+    ///
+    /// 小组件是独立进程，够不着 iCloud 里的 org 文件——授权是给主 app 的。
+    /// 所以每次读完顺手写一份到共享容器，它只读这一份。
+    ///
+    /// **App Group 没配好也不会出事**：写不进去就是白写一趟（`WidgetBox`
+    /// 那边拿不到 defaults 会直接返回），主 app 该怎么跑还怎么跑。
+    private func publishWidget(_ snap: Snapshot) {
+        var out = WidgetSnapshot()
+
+        // 今天那一天里的条目，加上已经逾期的——逾期的本来就该今天处理，
+        // 单看「今天」会漏掉昨天没做完的那些。
+        let today = snap.days.first { $0.today }?.items ?? []
+        let overdue = snap.todos.filter { $0.overdue && !$0.isDone }
+        var seen = Set<String>()
+        let all = (overdue + today).filter { seen.insert($0.ref).inserted }
+
+        out.totalToday = all.count
+        out.doneToday = all.filter(\.isDone).count
+        out.items = all.filter { !$0.isDone }
+            .prefix(WidgetSnapshot.maxItems)
+            .map { it in
+                WidgetItem(ref: it.ref, title: it.title, time: it.time,
+                           urgent: it.overdue, done: false, startedAt: it.startedAt)
+            }
+
+        // 正在计时的那条不限于今天——真在走的事就该摆在最显眼处。
+        if let run = (snap.todos + snap.days.flatMap(\.items)).first(where: { $0.running }) {
+            out.running = WidgetItem(ref: run.ref, title: run.title, time: run.time,
+                                     urgent: false, done: false, startedAt: run.startedAt)
+        }
+
+        if out.items.isEmpty {
+            out.emptyHint = out.totalToday > 0 ? "今天的都做完了" : "今天没安排"
+        }
+
+        WidgetBox.save(out)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     func stopThinking() {
         guard thinking else { return }
         Task.detached(priority: .userInitiated) { Bridge.cancel() }

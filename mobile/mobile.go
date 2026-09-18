@@ -202,6 +202,19 @@ type Item struct {
 	DueIn   int    `json:"due_in"`
 	DueKind string `json:"due_kind"` // deadline / scheduled / 空
 
+	// Running 表示这条正在计时（org 里有一条没收尾的 CLOCK）。
+	//
+	// 以前只有 Detail 里给（LogItem.Running），于是列表上完全看不出哪条
+	// 在走，界面也就没法给出「停止」——点了开始就只能靠「完成」收尾。
+	// 判断在 Go 这边：什么算「没收尾」是 org 的事（CLOCK 行缺 end），
+	// 界面不该去猜。
+	Running bool `json:"running"`
+	// RunningSince 是这次计时起于何时，RFC3339。
+	//
+	// 单给一个「已计时 25 分钟」的话，界面每过一分钟就得重算一次；
+	// 给出发点，界面（尤其是小组件）就能让它自己走，不必回来问。
+	RunningSince string `json:"running_since"`
+
 	// HasNotes 只说有没有正文，正文本身走 Detail 单独取。
 	// 正文和勾选项挂在每一条上的话，单条从约 180 字节涨到 900——
 	// 五千条就是 4.5MB，每次刷新都要过一遍 gomobile 的桥。
@@ -714,6 +727,10 @@ func toItem(it agenda.Item) Item {
 		out.Parents = strings.Join(parts, " / ")
 	}
 	out.Done, out.Total = n.Progress()
+	if c := n.RunningClock(); c != nil && c.Start != nil {
+		out.Running = true
+		out.RunningSince = c.Start.Start.Format(time.RFC3339)
+	}
 	if r := n.Repeater(); r != nil {
 		out.Repeat = r.Describe()
 	}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 小组件是独立进程，够不着主 app 的沙箱，也够不着 iCloud 里那些
+	     org 文件（授权是给主 app 的）。两边共用这个 App Group，主 app
+	     往里写一份今天的快照，小组件只读。
+
+	     跟 WidgetShared.swift 里的 WidgetBox.group 必须一字不差。 -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.dabao.jarvis</string>
+	</array>
+</dict>
+</plist>

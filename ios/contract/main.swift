@@ -123,7 +123,8 @@ check("Snapshot 的必填键") {
     guard let first = todos.first else { throw Err("样例里没有待办") }
     let want = ["category", "closed", "due", "due_in", "due_kind", "done", "file",
                 "has_notes", "kind", "overdue", "parents", "priority", "ref",
-                "repeat", "state", "state_label", "tags", "time", "title", "total"]
+                "repeat", "running", "running_since", "state", "state_label",
+                "tags", "time", "title", "total"]
     let missing = want.filter { first[$0] == nil }
     guard missing.isEmpty else {
         throw Err("Item 少了这些键：\(missing)——Swift 那边会悄悄走默认值")
