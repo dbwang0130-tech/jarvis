@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 记一笔账。
+/// 记一笔账：花钱或者进账。
 ///
 /// 财务页一直是只读的：余额、账户、流水都看得见，可「刚花了 35 块」这件事
 /// 只能开口跟秘书说一句——一个记账 app 在手机上记不了账。
@@ -21,18 +21,35 @@ struct SpendView: View {
     @State private var from = ""
     @State private var to = ""
     @State private var date = Date()
+    @State private var kind = Kind.expense
     @State private var saving = false
     @FocusState private var focused: Bool
 
-    /// 钱从哪儿出：资产和负债（刷信用卡也是花钱）。
-    private var sources: [Account] {
+    /// 花钱还是进账。
+    ///
+    /// **两边共用一套 from/to，方向天生对称**，Go 那边一个字都不用改：
+    /// `to` 那侧记正数、`from` 那侧配平成负数。花钱是「支出科目增加、
+    /// 银行卡减少」，进账是「银行卡增加、收入科目减少」——收入科目在
+    /// 复式记账里本来就记负数。
+    enum Kind: String, CaseIterable, Identifiable {
+        case expense = "花钱"
+        case income = "进账"
+        var id: String { rawValue }
+    }
+
+    private var assets: [Account] {
         accounts.filter { $0.kind == "asset" || $0.kind == "debt" }
     }
 
-    /// 花在什么上：支出科目。收入不在这儿记——那是另一个方向的事，
-    /// 硬塞进同一个表单只会让两边都别扭。
+    /// 钱从哪儿来：花钱时是资产和负债（刷信用卡也是花钱），
+    /// 进账时是收入科目。
+    private var sources: [Account] {
+        kind == .expense ? assets : accounts.filter { $0.kind == "income" }
+    }
+
+    /// 钱到哪儿去：花钱时是支出科目，进账时是落到哪张卡上。
     private var targets: [Account] {
-        accounts.filter { $0.kind == "expense" }
+        kind == .expense ? accounts.filter { $0.kind == "expense" } : assets
     }
 
     private var money: Double? {
@@ -56,15 +73,29 @@ struct SpendView: View {
                             .font(.title3.monospacedDigit().weight(.medium))
                             .focused($focused)
                     }
-                    TextField("买的什么（留空就记科目名）", text: $payee)
+                    TextField(kind == .expense ? "买的什么（留空就记科目名）"
+                                               : "哪来的（留空就记科目名）",
+                              text: $payee)
                 }
 
-                Section("从哪儿出") {
-                    picker(sources, selection: $from, empty: "账本里还没有资产账户")
+                Section {
+                    Picker("", selection: $kind) {
+                        ForEach(Kind.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
 
-                Section("花在什么上") {
-                    picker(targets, selection: $to, empty: "账本里还没有支出科目")
+                Section(kind == .expense ? "从哪儿出" : "哪来的") {
+                    picker(sources, selection: $from,
+                           empty: kind == .expense ? "账本里还没有资产账户"
+                                                   : "账本里还没有收入科目")
+                }
+
+                Section(kind == .expense ? "花在什么上" : "进到哪儿") {
+                    picker(targets, selection: $to,
+                           empty: kind == .expense ? "账本里还没有支出科目"
+                                                   : "账本里还没有资产账户")
                 }
 
                 Section {
@@ -72,6 +103,12 @@ struct SpendView: View {
                 } footer: {
                     Text("记进账本末尾，跟电脑上是同一份。")
                 }
+            }
+            // 换方向之后原来选的科目多半不对了（「餐饮」不能收钱），
+            // 重挑一遍默认值。
+            .onChange(of: kind) { _, _ in
+                from = sources.first?.name ?? ""
+                to = targets.first?.name ?? ""
             }
             .navigationTitle("记一笔")
             .navigationBarTitleDisplayMode(.inline)

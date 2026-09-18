@@ -244,3 +244,25 @@ func ledgerParsed(t *testing.T, text string) []txLine {
 	}
 	return out
 }
+
+// 进账走的是同一套 from/to，方向天生对称：花钱是「支出科目增加、银行卡
+// 减少」，进账是「银行卡增加、收入科目减少」——收入科目在复式记账里
+// 本来就记负数。Go 这边一个字都不用改，这条钉住它。
+func TestSpendIncome(t *testing.T) {
+	out := spend(t, SpendInput{
+		Ledger: spendBook, Date: "2026-09-18", Payee: "九月工资",
+		Amount: 12000, From: "Income:工资", To: "Assets:招行",
+		TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("记不上：%s", out.Error)
+	}
+	// 钱进了卡里：10000 + 12000。
+	if got := ledgerBalance(t, out.Ledger, "Assets:招行"); got != 21965 {
+		t.Fatalf("招行余额 %.2f，该是 21965（原来 9965 加 12000）", got)
+	}
+	// 收入科目记负数，这是复式记账的规矩，不是笔误。
+	if got := ledgerBalance(t, out.Ledger, "Income:工资"); got != -12000 {
+		t.Fatalf("工资科目 %.2f，该是 -12000", got)
+	}
+}
