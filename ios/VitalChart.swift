@@ -75,11 +75,17 @@ struct VitalDetail: View {
                         chart
                         stats
                     } else {
-                        Text("这段时间里只有 \(shown.count) 条记录，画不出趋势。换个长一点的区间看看。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.vertical, 40)
+                        VStack(spacing: 6) {
+                            Image(systemName: "chart.xyaxis.line")
+                                .font(.title2)
+                                .foregroundStyle(.tertiary)
+                            Text(noLineHint)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 36)
                     }
 
                     SectionLabel(text: "每一次", icon: "list.bullet")
@@ -140,6 +146,16 @@ struct VitalDetail: View {
             }
         }
         .frame(height: 220)
+    }
+
+    /// 画不出线时说清楚为什么——是这个区间里没有，还是这一项统共就量过
+    /// 这么几次。人看到一张空图只会以为坏了。
+    private var noLineHint: String {
+        if vital.points.count >= 2 {
+            return "这个区间里只有 \(shown.count) 条记录。\n换个长一点的区间看看。"
+        }
+        return "这一项统共只量过 \(vital.points.count) 次，两次起才画得出趋势。\n"
+            + "再量一次，或者跟 Jarvis 说一句就记上了。"
     }
 
     /// 点密了就把点收小，不然连成一条粗带子。

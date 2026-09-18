@@ -68,25 +68,42 @@ enum HealthKitImporter {
         }
     }
 
-    /// 把最近 days 天的数据读出来。
+    /// 按天合计的那两项（步数、睡眠）往回看多久。
     ///
-    /// 重复读同一段时间没关系：每条都带着 HealthKit 的 UUID，Go 那边靠它
-    /// 认出已经导过的。所以不需要记「上次导到哪儿」——那种游标一旦跟真实
-    /// 情况错位（换机、恢复备份、补录旧数据），就会漏掉一整段而没人发现。
-    static func read(days: Int = 90) async -> [Sample] {
+    /// 一年。它们**一天一条**，往回多看一年就多出 365 行；而这个文件每次
+    /// 对话都要整份过桥，不能由着它长。一年足够看出季节性的起落了。
+    private static let dailyDays = 365
+
+    /// 一项稀疏指标最多取几条。
+    ///
+    /// 体重、血压这些是**想起来才量一次**的，往回限 90 天多半就剩一两条，
+    /// 连趋势线都画不出来——第一版就是这么设的，结果体重卡片是灰的。
+    /// 改成不限时间、按条数封顶：有多少历史拿多少，封顶只是防着
+    /// 「体脂秤一天传二十条」那种。
+    private static let sparseLimit = 500
+
+    /// 把「健康」里的数据读出来。
+    ///
+    /// 重复读没关系：每条都带着 HealthKit 的 UUID，Go 那边靠它认出已经
+    /// 导过的。所以不需要记「上次导到哪儿」——那种游标一旦跟真实情况错位
+    /// （换机、恢复备份、补录旧数据），就会漏掉一整段而没人发现。
+    static func read() async -> [Sample] {
         guard isAvailable else { return [] }
         let now = Date()
-        guard let from = Calendar.current.date(byAdding: .day, value: -days, to: now) else {
-            return []
-        }
+        let cal = Calendar.current
+        // 稀疏项不设起点。`.distantPast` 会让谓词算得很慢，用一个够远的
+        // 年份就行——没人会有 1970 年的 iPhone 健康数据。
+        let sparseFrom = cal.date(byAdding: .year, value: -20, to: now) ?? now
+        let dailyFrom = cal.date(byAdding: .day, value: -dailyDays, to: now) ?? now
 
         var out: [Sample] = []
         for q in quantities {
-            out += await quantitySamples(kind: q.kind, id: q.id, unit: q.unit, from: from, to: now)
+            out += await quantitySamples(kind: q.kind, id: q.id, unit: q.unit,
+                                         from: sparseFrom, to: now)
         }
-        out += await bloodPressure(from: from, to: now)
-        out += await dailySteps(from: from, to: now)
-        out += await nightlySleep(from: from, to: now)
+        out += await bloodPressure(from: sparseFrom, to: now)
+        out += await dailySteps(from: dailyFrom, to: now)
+        out += await nightlySleep(from: dailyFrom, to: now)
         return out
     }
 
@@ -95,7 +112,7 @@ enum HealthKitImporter {
     private static func quantitySamples(kind: String, id: HKQuantityTypeIdentifier,
                                         unit: HKUnit, from: Date, to: Date) async -> [Sample] {
         guard let type = HKQuantityType.quantityType(forIdentifier: id) else { return [] }
-        let samples = await query(type: type, from: from, to: to)
+        let samples = await query(type: type, from: from, to: to, limit: sparseLimit)
         return samples.compactMap { s in
             guard let q = s as? HKQuantitySample, q.quantity.is(compatibleWith: unit) else {
                 return nil
@@ -119,7 +136,7 @@ enum HealthKitImporter {
         else { return [] }
 
         let unit = HKUnit.millimeterOfMercury()
-        return await query(type: type, from: from, to: to).compactMap { s in
+        return await query(type: type, from: from, to: to, limit: sparseLimit).compactMap { s in
             guard let c = s as? HKCorrelation,
                   let sys = c.objects(for: sysType).first as? HKQuantitySample,
                   let dia = c.objects(for: diaType).first as? HKQuantitySample
@@ -217,12 +234,17 @@ enum HealthKitImporter {
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
-    private static func query(type: HKSampleType, from: Date, to: Date) async -> [HKSample] {
+    /// 取样本。给了 limit 就按时间倒序取最近的那几条——
+    /// 不排序的话 HealthKit 给哪几条是不定的，封顶就成了随机丢弃。
+    private static func query(type: HKSampleType, from: Date, to: Date,
+                              limit: Int = HKObjectQueryNoLimit) async -> [HKSample] {
         let predicate = HKQuery.predicateForSamples(withStart: from, end: to,
                                                     options: .strictStartDate)
+        let sort = limit == HKObjectQueryNoLimit ? nil
+            : [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]
         return await withCheckedContinuation { cont in
             let q = HKSampleQuery(sampleType: type, predicate: predicate,
-                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, res, _ in
+                                  limit: limit, sortDescriptors: sort) { _, res, _ in
                 // 读权限被拒也是这条路（res 为 nil），跟「本来就没数据」
                 // 长得一模一样——iOS 有意不区分，见类型注释。
                 cont.resume(returning: res ?? [])

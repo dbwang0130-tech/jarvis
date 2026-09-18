@@ -76,7 +76,7 @@ struct HealthTab: View {
                         } else {
                             Image(systemName: "heart.circle")
                         }
-                        Text(store.importingHealth ? "正在读…" : "从「健康」导入最近 90 天")
+                        Text(store.importingHealth ? "正在读…" : "从「健康」导入")
                     }
                     .font(.subheadline.weight(.medium))
                     .padding(.horizontal, 16).padding(.vertical, 10)
@@ -110,10 +110,11 @@ struct HealthTab: View {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
                                 GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 ForEach(items) { v in
+                    // **不禁用只有一条记录的卡片。** 灰着点不动，人只会以为
+                    // 坏了——而真正的原因（这一项只量过一次）在界面上
+                    // 一个字都没说。点进去让详情页把话讲明白。
                     Button { picked = v } label: { VitalCard(vital: v) }
                         .buttonStyle(.plain)
-                        // 只有一条记录的时候点进去也没东西看，别给个空图。
-                        .disabled(!v.hasTrendLine)
                 }
             }
         }
