@@ -553,6 +553,22 @@ func (s *Session) Clean(nos []int) (done int, fails []string) {
 	return done, fails
 }
 
+// MarkSeenUIDs 按账号和 UID 把邮件标成已读，不要求它们在当前清单里。
+//
+// 跟 CleanUIDs 同一个道理：MarkSeen 走的是清单编号，那套编号只对「这次
+// 拉下来的那批」有效；手机上用户看的是本地存的那份，里面的邮件多半早就
+// 不在当前会话里了。
+func (s *Session) MarkSeenUIDs(account string, uids []imap.UID, seen bool) error {
+	if len(uids) == 0 {
+		return nil
+	}
+	c, err := s.client(account)
+	if err != nil {
+		return err
+	}
+	return c.MarkSeen(uids, seen)
+}
+
 // CleanUIDs 按账号和 UID 直接把邮件移进垃圾箱，不要求它们在当前清单里。
 //
 // Clean 走的是清单编号，那套编号只对「这次拉下来的那批」有效。手机上

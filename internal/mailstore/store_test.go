@@ -196,3 +196,39 @@ func TestRecordKeyUsesSharedFormat(t *testing.T) {
 		t.Errorf("Record.Key()=%q，Key()=%q", r.Key(), Key("工作", 7))
 	}
 }
+
+// 读完一封信要真的变成已读。以前没有这条路：正文取出来了，记录还是未读，
+// 界面上那个角标一直挂着——人已经读过了，数字却不降。
+func TestMarkSeen(t *testing.T) {
+	dir := t.TempDir()
+	s, err := New(dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Merge("me", []Record{
+		{UID: 1, Subject: "一", Unread: true},
+		{UID: 2, Subject: "二", Unread: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.MarkSeen("me", []uint32{1}, true); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := s.Load("me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range recs {
+		switch r.UID {
+		case 1:
+			if r.Unread {
+				t.Error("标了已读还是未读")
+			}
+		case 2:
+			if !r.Unread {
+				t.Error("动了不该动的那封")
+			}
+		}
+	}
+}

@@ -265,6 +265,26 @@ func (s *Store) MarkDeleted(account string, uids []uint32) error {
 	})
 }
 
+// MarkSeen 把几封标成已读（或退回未读）。
+//
+// 服务器那边是另一回事（见 mail.Session.MarkSeenUIDs）：那一趟要连网，
+// 可能超时、可能账号掉线。本地这份先改，界面立刻就对了；服务器没改成
+// 也只是下次同步又变回未读，不至于卡在那儿。
+func (s *Store) MarkSeen(account string, uids []uint32, seen bool) error {
+	want := make(map[uint32]bool, len(uids))
+	for _, u := range uids {
+		want[u] = true
+	}
+	return s.update(account, func(recs []Record) []Record {
+		for i := range recs {
+			if want[recs[i].UID] {
+				recs[i].Unread = !seen
+			}
+		}
+		return recs
+	})
+}
+
 // Body 读一封邮件的正文。没存过返回空串和 false，调用方再去服务器拉。
 func (s *Store) Body(account string, uid uint32) (string, bool) {
 	raw, err := os.ReadFile(s.bodyPath(account, uid))

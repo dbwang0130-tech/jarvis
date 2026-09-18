@@ -96,6 +96,8 @@ func Mail(inputJSON string) string {
 		return mailRead(store, in)
 	case "clean":
 		return mailClean(store, in)
+	case "mark_read":
+		return mailMarkRead(store, in)
 	default:
 		return marshal(&MailOutput{Error: fmt.Sprintf("不认识的动作 %q", in.Op)})
 	}
@@ -321,6 +323,55 @@ func parseMailBody(raw []byte) *mailbox.FullBody {
 		return &mailbox.FullBody{Text: string(raw)}
 	}
 	return full
+}
+
+// mailMarkRead 把几封标成已读。
+//
+// 手机上读完一封信，它得真的变成已读——否则那个未读角标会一直挂着，
+// 而人已经读过了。以前这条路根本没有：读正文（read）只是取内容，
+// 读完照样是未读，下次进来还得再看一遍哪些没读。
+//
+// **本地先改，服务器尽力而为**。服务器那一趟要连网，可能超时、可能账号
+// 掉线；为它把「界面上变成已读」这件事拖住是不划算的——真没改成，下次
+// 同步会把它变回未读，最坏也就是重看一眼。
+func mailMarkRead(store *mailstore.Store, in MailInput) string {
+	byAccount := map[string][]uint32{}
+	for _, k := range in.Keys {
+		acct, uid, ok := mailstore.SplitKey(k)
+		if !ok {
+			continue
+		}
+		byAccount[acct] = append(byAccount[acct], uid)
+	}
+	if len(byAccount) == 0 {
+		return marshal(&MailOutput{Error: "没说要标哪些"})
+	}
+
+	var fails []string
+	for acct, uids := range byAccount {
+		if err := store.MarkSeen(acct, uids, true); err != nil {
+			fails = append(fails, acct+"："+err.Error())
+		}
+	}
+	// 本地一封都没改成才算失败——那说明索引写不动，界面上的未读数
+	// 是假的，得说出来。
+	if len(fails) == len(byAccount) {
+		return marshal(&MailOutput{
+			Items: listLocal(store, in.Accounts),
+			Error: "标不上已读：" + strings.Join(fails, "；")})
+	}
+
+	// 服务器那边跟着走一趟。连不上就算了，不拿它挡着界面。
+	if sess := mailSessionFor(in.Accounts); sess != nil {
+		for acct, uids := range byAccount {
+			ids := make([]imap.UID, len(uids))
+			for i, u := range uids {
+				ids[i] = imap.UID(u)
+			}
+			_ = sess.MarkSeenUIDs(acct, ids, true)
+		}
+	}
+	return marshal(&MailOutput{Items: listLocal(store, in.Accounts)})
 }
 
 func mailClean(store *mailstore.Store, in MailInput) string {

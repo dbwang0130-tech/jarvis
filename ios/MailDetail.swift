@@ -84,6 +84,13 @@ struct MailDetail: View {
                         .accessibilityLabel("关掉")
                 }
             }
+            // 翻开就算读过，跟别的邮件 app 一个规矩。以前没有这一步：
+            // 正文读出来了那封信还是未读，工具条上的角标一直挂着，
+            // 人已经读过了数字却不降。
+            .task {
+                guard mail.unread else { return }
+                await store.markRead(mail.key)
+            }
         }
     }
 

@@ -279,6 +279,22 @@ final class Store: ObservableObject, AskEvents {
     }
 
     /// 数一下本地存着几封没读的。只读盘不连网，跟打开邮件页是同一条路。
+    /// 读完一封信就把它标成已读。
+    ///
+    /// 以前没有这一步：正文读出来了，那封信还是未读，工具条上的角标
+    /// 一直挂着——人已经读过了，数字却不降。
+    ///
+    /// 服务器那一趟由 Go 那边尽力而为，这儿不等它：连不上最坏也就是
+    /// 下次同步又变回未读，重看一眼而已。
+    func markRead(_ key: String) async {
+        let r = await mailAsync(op: "mark_read", keys: [key])
+        if let err = r.error, !err.isEmpty {
+            lastError = err
+            return
+        }
+        mailUnread = r.items.filter { $0.unread }.count
+    }
+
     private func refreshMailBadge() async {
         guard !settings.mail.isEmpty else {
             mailUnread = 0

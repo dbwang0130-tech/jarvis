@@ -107,7 +107,9 @@ struct MailTab: View {
                 .accessibilityLabel("收信")
             }
         }
-        .sheet(item: $selected) { MailDetail(mail: $0) }
+        // 看完退回来要重读一遍：那封信在详情里被标成已读了，不重读的话
+        // 列表上那个未读圆点还亮着——刚读完的信显示成没读过。
+        .sheet(item: $selected, onDismiss: reload) { MailDetail(mail: $0) }
         .confirmationDialog("清掉这一组？", isPresented: cleaningBinding,
                             titleVisibility: .visible) {
             if let keys = cleaning {
