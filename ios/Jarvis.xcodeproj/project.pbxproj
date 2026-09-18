@@ -26,6 +26,7 @@
 		15EE763C5605E7A1623AD205 /* QuickAdd.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03CFB3EDEEED276C5A9D5B27 /* QuickAdd.swift */; };
 		F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7CAA3A267067C3AC9942A5 /* Session.swift */; };
 		EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */; };
+		FC23004741C28D3A879C33E2 /* SpendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C50616DC0BB4CB2080FAA2E /* SpendView.swift */; };
 		621910C5F045309EAEBB1B6A /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090A09C1465CE23ABD827A8F /* Store.swift */; };
 		BC9F10B66AE5A92DAA1557A5 /* Tools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */; };
 		7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5464F1D332FD60C84FF7555B /* Vault.swift */; };
@@ -91,6 +92,7 @@
 		03CFB3EDEEED276C5A9D5B27 /* QuickAdd.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAdd.swift; sourceTree = "<group>"; };
 		FF7CAA3A267067C3AC9942A5 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		5C50616DC0BB4CB2080FAA2E /* SpendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendView.swift; sourceTree = "<group>"; };
 		090A09C1465CE23ABD827A8F /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tools.swift; sourceTree = "<group>"; };
 		5464F1D332FD60C84FF7555B /* Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vault.swift; sourceTree = "<group>"; };
@@ -143,6 +145,7 @@
 				03CFB3EDEEED276C5A9D5B27 /* QuickAdd.swift */,
 				FF7CAA3A267067C3AC9942A5 /* Session.swift */,
 				6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */,
+				5C50616DC0BB4CB2080FAA2E /* SpendView.swift */,
 				090A09C1465CE23ABD827A8F /* Store.swift */,
 				4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */,
 				5464F1D332FD60C84FF7555B /* Vault.swift */,
@@ -318,6 +321,7 @@
 				15EE763C5605E7A1623AD205 /* QuickAdd.swift in Sources */,
 				F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */,
 				EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */,
+				FC23004741C28D3A879C33E2 /* SpendView.swift in Sources */,
 				621910C5F045309EAEBB1B6A /* Store.swift in Sources */,
 				BC9F10B66AE5A92DAA1557A5 /* Tools.swift in Sources */,
 				7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */,

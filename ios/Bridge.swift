@@ -171,6 +171,28 @@ enum Bridge {
         }
     }
 
+    /// 往账本里记一笔，不经过模型。
+    ///
+    /// 界面已经知道钱从哪儿出、花在什么上了，让模型再跑一趟是好几秒加
+    /// 一次 API 调用，而它做的无非是拼一笔交易追加到文件末尾。
+    static func spend(ledger: String, date: String, payee: String,
+                      amount: Double, from: String, to: String) -> SpendResult {
+        let input: [String: Any] = [
+            "ledger": ledger, "date": date, "payee": payee,
+            "amount": amount, "from": from, "to": to,
+            "tz": TimeZone.current.identifier,
+        ]
+        guard let json = encode(input) else {
+            return SpendResult(error: "入参编码失败")
+        }
+        let out = callSpend(json)
+        do {
+            return try JSONDecoder().decode(SpendResult.self, from: Data(out.utf8))
+        } catch {
+            return SpendResult(error: "出参解不开：\(error.localizedDescription)")
+        }
+    }
+
     /// 拿填的这套参数真连一次 IMAP，看通不通。
     ///
     /// 服务器地址、端口、授权码三样里错一样都连不上，而填错了要等到点
@@ -230,6 +252,14 @@ enum Bridge {
         return MobileTestModel(json)
         #else
         return #"{"ok":false,"message":"Mobile framework 没连上"}"#
+        #endif
+    }
+
+    private static func callSpend(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileSpend(json)
+        #else
+        return #"{"error":"Mobile framework 没连上"}"#
         #endif
     }
 

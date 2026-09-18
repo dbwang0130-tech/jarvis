@@ -389,6 +389,29 @@ final class Store: ObservableObject, AskEvents {
     /// 手上这些 org 文件的名字，排好序。记一条时可以挑写进哪个。
     var orgFiles: [String] { files.keys.sorted() }
 
+    /// 记一笔账。
+    ///
+    /// 财务页一直是只读的：余额、账户、流水都看得见，可「刚花了 35 块」
+    /// 只能开口跟秘书说一句——一个记账 app 在手机上记不了账。
+    @discardableResult
+    func spend(payee: String, amount: Double, from: String, to: String,
+               date: String = "") async -> Bool {
+        guard !thinking else { return false }   // 秘书正拿着旧账本干活，别插队
+        let book = ledger
+        let r = await Task.detached(priority: .userInitiated) {
+            Bridge.spend(ledger: book, date: date, payee: payee,
+                         amount: amount, from: from, to: to)
+        }.value
+
+        if let err = r.error, !err.isEmpty {
+            fail(err)
+            return false
+        }
+        guard let updated = r.ledger, !updated.isEmpty else { return true }
+        guard await writeBack(ledger: updated) else { return false }
+        return true
+    }
+
     /// 对一个条目直接做一件事（完成/开始/停止/推迟/取消），不经过模型。
     ///
     /// 走的是跟秘书同一套 orgtools 工具，所以改动的语义、撤销点、循环任务

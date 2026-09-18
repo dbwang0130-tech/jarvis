@@ -496,6 +496,13 @@ struct ModelCheck: Codable {
     var error: String?
 }
 
+/// 记一笔账的结果。ledger 只在真写进去之后才有，跟 ActResult 一个规矩。
+struct SpendResult: Codable {
+    var message = ""
+    var ledger: String?
+    var error: String?
+}
+
 /// 邮箱连通性自检的结果。字段跟 mobile.TestMailOutput 对应。
 struct MailCheck: Codable {
     var ok = false

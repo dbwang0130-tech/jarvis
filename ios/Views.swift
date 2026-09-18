@@ -388,6 +388,7 @@ struct TodosView: View {
 struct LedgerTab: View {
     @EnvironmentObject var store: Store
     @State private var showTxns = false
+    @State private var adding = false
 
     var body: some View {
         Group {
@@ -450,6 +451,18 @@ struct LedgerTab: View {
         .overlay { LoadingHint(isEmpty: store.snapshot.ledger == nil) }
         .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
         .sheet(isPresented: $showTxns) { TxnListView() }
+        // 这一页一直只能看。余额、账户、流水都摆出来了，可「刚花了 35 块」
+        // 只能开口跟秘书说一句——一个记账 app 在手机上记不了账。
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { adding = true } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("记一笔")
+                    .disabled(store.snapshot.ledger == nil)
+            }
+        }
+        .sheet(isPresented: $adding) {
+            SpendView(accounts: store.snapshot.ledger?.accounts ?? [])
+        }
     }
 }
 
