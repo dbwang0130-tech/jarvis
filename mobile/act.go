@@ -23,7 +23,7 @@ type ActInput struct {
 	Files map[string]string `json:"files"`
 	Ref   string            `json:"ref"`
 	// Op 是要做的事：done / start / stop / postpone / cancel / undone /
-	// create / check / priority / state。
+	// create / check / priority / state / schedule / deadline。
 	Op string `json:"op"`
 	// Days 给 postpone 用，推迟几天，零值按 1 天算。
 	Days int `json:"days"`
@@ -151,6 +151,16 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 
 	case "stop":
 		return call("clock_out", ref)
+
+	case "schedule", "deadline":
+		// 排期和截止一直只能靠 postpone 往后挪整天——挪到「下周三下午三点」
+		// 或者干脆取消排期，都只能开口说一句。两个动作共用 Scheduled 字段
+		// 传时间，留空是取消。
+		tool := "schedule_item"
+		if in.Op == "deadline" {
+			tool = "set_deadline"
+		}
+		return call(tool, map[string]any{"ref": in.Ref, "time": in.Scheduled})
 
 	case "priority":
 		// 详情页把优先级摆出来了却改不动——「这事更急了」只能开口说一句。

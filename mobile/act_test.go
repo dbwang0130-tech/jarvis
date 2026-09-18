@@ -243,3 +243,42 @@ func TestActStateNeedsValue(t *testing.T) {
 		t.Fatal("没说改成什么状态，该报错")
 	}
 }
+
+// 排期和截止一直只能靠 postpone 往后挪整天——挪到具体某天某点、
+// 或者干脆取消，都只能开口说一句。
+func TestActScheduleAndDeadline(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": "* TODO 写周报\n"},
+		Ref:   "a.org:0", Op: "schedule", Scheduled: "2026-10-01 15:00",
+		TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("排不上：%s", out.Error)
+	}
+	if !strings.Contains(out.Files["a.org"], "SCHEDULED: <2026-10-01") {
+		t.Fatalf("计划时间没写上：\n%s", out.Files["a.org"])
+	}
+
+	out = act(t, ActInput{
+		Files: map[string]string{"a.org": "* TODO 写周报\n"},
+		Ref:   "a.org:0", Op: "deadline", Scheduled: "2026-10-05", TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("设不上截止：%s", out.Error)
+	}
+	if !strings.Contains(out.Files["a.org"], "DEADLINE: <2026-10-05") {
+		t.Fatalf("截止没写上：\n%s", out.Files["a.org"])
+	}
+
+	// 留空是取消，不是报错——「这事不用排期了」得有地方说。
+	out = act(t, ActInput{
+		Files: map[string]string{"a.org": "* TODO 写周报\n  SCHEDULED: <2026-10-01 三>\n"},
+		Ref:   "a.org:0", Op: "schedule", Scheduled: "", TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("取消不了排期：%s", out.Error)
+	}
+	if strings.Contains(out.Files["a.org"], "SCHEDULED") {
+		t.Fatalf("排期还在：\n%s", out.Files["a.org"])
+	}
+}

@@ -363,12 +363,16 @@ struct ItemDetail: View {
                 }
 
                 if let data {
-                    let facts = facts(data)
-                    if !facts.isEmpty {
-                        Section {
-                            ForEach(facts, id: \.0) { fact in
-                                FactRow(icon: fact.1, name: fact.0, value: fact.2, tint: fact.3)
-                            }
+                    // 时间这两行**摆出来就该能改**。以前只能靠「推迟一天」
+                    // 往后挪整天，排到「下周三下午三点」或者取消排期，
+                    // 都得退出去跟 Jarvis 说一句。
+                    Section {
+                        TimeRow(kind: .scheduled, value: data.scheduled,
+                                item: live, data: $data)
+                        TimeRow(kind: .deadline, value: data.deadline,
+                                item: live, data: $data)
+                        ForEach(facts(data), id: \.0) { fact in
+                            FactRow(icon: fact.1, name: fact.0, value: fact.2, tint: fact.3)
                         }
                     }
 
@@ -497,12 +501,7 @@ struct ItemDetail: View {
     /// 有值才摆出来，空行比没有更碍眼。
     private func facts(_ d: DetailData) -> [(String, String, String, Color)] {
         var out: [(String, String, String, Color)] = []
-        if !d.scheduled.isEmpty {
-            out.append(("计划", "clock", d.scheduled, .blue))
-        }
-        if !d.deadline.isEmpty {
-            out.append(("截止", "flag", d.deadline, item.overdue ? .red : .orange))
-        }
+        // 计划和截止不在这儿——它们是可以改的，走 TimeRow。
         if !item.repeatRule.isEmpty {
             out.append(("循环", "arrow.triangle.2.circlepath", item.repeatRule, .blue))
         }
@@ -584,6 +583,146 @@ struct CheckboxRow: View {
         .accessibilityLabel(box.text)
         .accessibilityValue(done ? "已勾选" : "未勾选")
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// 计划 / 截止那一行，点开能改。
+///
+/// 以前这两行是纯展示：日期摆在那儿，想挪只能靠「推迟一天」一天天点，
+/// 或者退出去跟 Jarvis 说一句。而 org 里这两项本来就各是一条可以直接
+/// 写回去的时间戳。
+///
+/// **带不带时刻是两回事**：不带时刻的条目在日程里是整天的事，不会到点
+/// 弹提醒——「买牛奶」不需要在某个精确时刻打断你。所以选择器里那个
+/// 「几点」是可以关掉的，关掉就只写日期。
+struct TimeRow: View {
+    enum Kind {
+        case scheduled, deadline
+
+        var name: String { self == .scheduled ? "计划" : "截止" }
+        var icon: String { self == .scheduled ? "clock" : "flag" }
+        var op: String { self == .scheduled ? "schedule" : "deadline" }
+    }
+
+    @EnvironmentObject var store: Store
+    let kind: Kind
+    let value: String
+    let item: Item
+    @Binding var data: DetailData?
+
+    @State private var picking = false
+    @State private var at = Date()
+    @State private var withTime = false
+    @State private var working = false
+
+    private var tint: Color {
+        if kind == .deadline { return item.overdue ? .red : .orange }
+        return .blue
+    }
+
+    var body: some View {
+        Button {
+            at = parsed ?? defaultTime
+            withTime = value.contains(":")
+            picking = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: kind.icon)
+                    .font(.footnote)
+                    .foregroundStyle(value.isEmpty ? Color.secondary : tint)
+                    .frame(width: 18)
+                Text(kind.name).foregroundStyle(.secondary)
+                Spacer()
+                if working {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text(value.isEmpty ? "没定" : value)
+                        .monospacedDigit()
+                        .foregroundStyle(value.isEmpty ? Color.secondary : Color.primary)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+            .font(.callout)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(working || store.thinking)
+        .sheet(isPresented: $picking) { picker }
+    }
+
+    private var picker: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    DatePicker("哪天", selection: $at,
+                               displayedComponents: withTime ? [.date, .hourAndMinute] : [.date])
+                    Toggle("定个时刻", isOn: $withTime)
+                } footer: {
+                    Text(withTime ? "到点会提醒你。"
+                                  : "不定时刻就是整天的事，不会到点打断你。")
+                }
+
+                if !value.isEmpty {
+                    Section {
+                        Button("去掉\(kind.name)", role: .destructive) { save(clear: true) }
+                    }
+                }
+            }
+            .navigationTitle(kind.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("算了") { picking = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("存") { save(clear: false) }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    /// 没定过的时候默认落在哪儿：计划落今天，截止落一周后。
+    /// 都给「现在」的话，截止时间一设上就已经过期了。
+    private var defaultTime: Date {
+        kind == .scheduled ? Date() : Date().addingTimeInterval(7 * 86400)
+    }
+
+    /// 把 org 里那串读回来，好让选择器从当前值开始。认不出就算了。
+    private var parsed: Date? {
+        guard !value.isEmpty else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        for fmt in ["yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
+            f.dateFormat = fmt
+            if let d = f.date(from: String(value.prefix(fmt.count))) { return d }
+        }
+        return nil
+    }
+
+    private func save(clear: Bool) {
+        picking = false
+        working = true
+        let text = clear ? "" : orgTime
+        Task {
+            let ok = await store.act(kind.op, on: item.ref, scheduled: text)
+            working = false
+            if ok {
+                Haptics.done()
+                data = await store.detail(of: item.ref)
+            } else {
+                Haptics.failure()
+            }
+        }
+    }
+
+    /// 写成 org 认得的样子。org 那边收 "2006-01-02" 或 "2006-01-02 15:04"。
+    private var orgTime: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = withTime ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd"
+        return f.string(from: at)
     }
 }
 
