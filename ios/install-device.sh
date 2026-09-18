@@ -16,8 +16,25 @@ xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1 || die "需要完整 Xcode�
   sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
 
 # --- 2. framework ---
-[ -d ios/Mobile.xcframework ] || die "还没生成 framework：
-  make ios-framework"
+#
+# 不光要在，还得**比 Go 源码新**。
+#
+# 踩过：直接跑这个脚本（不走 make ios-install）时，Go 那边的改动根本没有
+# 重新编进 framework。Swift 照常编过、照常装上、照常跑起来，只是桥那头
+# 还是旧的——出参里少了刚加的字段，界面拿默认值顶上，看着一切正常，
+# 实际上改的东西一点没生效。查了半天才发现装的是旧 Go。
+#
+# 所以这儿自己判、自己补，别指望每次都记得先跑 make。
+[ -d ios/Mobile.xcframework ] || NEED_FW=1
+if [ -z "$NEED_FW" ]; then
+	NEWER=$(find . -name '*.go' -not -path './ios/*' -not -name '*_test.go' \
+	        -newer ios/Mobile.xcframework -print -quit 2>/dev/null)
+	[ -n "$NEWER" ] && NEED_FW=1
+fi
+if [ -n "$NEED_FW" ]; then
+	say "Go 改过了，重新编 framework"
+	make ios-framework || die "framework 没编出来"
+fi
 
 # --- 3. Team ID ---
 # 证书不用预先存在：第一次带 -allowProvisioningUpdates 签名构建时，
