@@ -33,6 +33,16 @@ type Transaction struct {
 	Status   byte // ' '、'*' 或 '!'
 	Payee    string
 	Postings []Posting
+	// Note 是挂在这笔账上的一行注释，写成 `; 小票: receipts/...`。
+	//
+	// **相对路径**：这份账本在电脑和手机上都会被读，而两边的容器路径
+	// 完全不同，存绝对路径等于只有存的那一端找得到。
+	//
+	// 走注释而不是另建一份索引：账本是纯文本、是用户自己的文件，
+	// 图片在哪儿这件事就该跟那笔账待在一起——哪天不用这个 app 了，
+	// 拿记事本打开也看得见。ledger-cli 会把 `;` 开头的行当注释跳过，
+	// 不影响它算账。
+	Note string
 	// Line 是这笔交易在文件里的起始行（0 起），End 是它的下一行。
 	//
 	// 用来定位原始那几行——**不是为了删掉它**。账本是流水账，记错了
@@ -116,10 +126,17 @@ func (b *Book) parse(text string) {
 	}
 	for i, line := range strings.Split(text, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || isComment(trimmed) {
+		if trimmed == "" {
 			continue
 		}
 		indented := strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")
+		// 顶格的注释是文件级的（`; 我的账本`），跳过；缩进的注释挂在
+		// 当前这笔账上（`; 小票: ...`），下面认。**这个判断必须在
+		// indented 算出来之后**——早先这儿不分青红皂白跳过所有注释行，
+		// 挂在交易上的那条根本轮不到被读。
+		if isComment(trimmed) && !indented {
+			continue
+		}
 		if !indented && dateRe.MatchString(line) {
 			flush()
 			tx := parseTransaction(line)
@@ -129,6 +146,13 @@ func (b *Book) parse(text string) {
 			continue
 		}
 		if indented && cur != nil {
+			// 缩进的注释行是挂在这笔账上的（`; 小票: ...`），不是分录。
+			// 不认出来的话它会被当成一条科目名叫「; 小票: ...」的分录。
+			if isComment(trimmed) {
+				cur.Note = strings.TrimSpace(strings.TrimLeft(trimmed, ";#%|*"))
+				end = i + 1
+				continue
+			}
 			cur.Postings = append(cur.Postings, parsePosting(trimmed))
 			end = i + 1
 		}
@@ -355,6 +379,11 @@ func (b *Book) FormatTransaction(tx Transaction) string {
 		tx.Status = '*'
 	}
 	fmt.Fprintf(&sb, "%s %c %s\n", date, tx.Status, tx.Payee)
+	if n := strings.TrimSpace(tx.Note); n != "" {
+		// 注释跟在标题行后面、分录前面：ledger-cli 认这个位置，
+		// 人翻账本时也是先看见「这笔有小票」再看见金额。
+		fmt.Fprintf(&sb, "    ; %s\n", n)
+	}
 	for _, p := range tx.Postings {
 		if !p.HasAmount {
 			fmt.Fprintf(&sb, "    %s\n", p.Account)

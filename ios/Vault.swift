@@ -201,6 +201,91 @@ final class Vault {
         return fm.fileExists(atPath: placeholder.path)
     }
 
+    // MARK: - 小票
+
+    /// 小票放哪儿：`Jarvis/receipts/2026-09/`。
+    ///
+    /// **按年月分文件夹**：一个月几十张，一年几百张，全堆在一个目录里，
+    /// 在「文件」App 里根本翻不动。年月是最自然的那一刀——找小票的时候，
+    /// 人记得的是「上个月那笔」。
+    static let receiptDir = "receipts"
+
+    /// 存一张小票，返回它相对 Jarvis 目录的路径。
+    ///
+    /// **相对路径**是有讲究的：这条路径要写进账本（`; 小票: receipts/...`），
+    /// 而账本在电脑和手机上都会被读。存绝对路径的话，两边的容器路径完全
+    /// 不同，等于只有存的那一端找得到。
+    ///
+    /// 文件名带上日期时间和商家：`2026-09-19-1430-沙县小吃.jpg`。在「文件」
+    /// App 里不用挨个打开就知道是哪一张——这些图是用户自己的资产，得让他
+    /// 在没有这个 app 的时候也能用。
+    func saveReceipt(_ data: Data, payee: String, at when: Date) throws -> String {
+        guard let root = resolveBookmark() else { throw VaultError.notConfigured }
+        return try withAccess(to: root) {
+            let stamp = DateFormatter()
+            stamp.locale = Locale(identifier: "en_US_POSIX")
+            stamp.dateFormat = "yyyy-MM"
+            let month = stamp.string(from: when)
+
+            stamp.dateFormat = "yyyy-MM-dd-HHmm"
+            var name = stamp.string(from: when)
+            let who = payee.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !who.isEmpty {
+                name += "-" + safeName(who)
+            }
+
+            let dir = root.appendingPathComponent(Self.receiptDir)
+                .appendingPathComponent(month)
+            try FileManager.default.createDirectory(at: dir,
+                                                    withIntermediateDirectories: true)
+
+            // 同一分钟拍两张也不能互相覆盖——那会悄无声息地弄丢一张小票。
+            var file = dir.appendingPathComponent(name + ".jpg")
+            var n = 2
+            while FileManager.default.fileExists(atPath: file.path) {
+                file = dir.appendingPathComponent("\(name)-\(n).jpg")
+                n += 1
+            }
+
+            var coordError: NSError?
+            var writeError: Error?
+            NSFileCoordinator().coordinate(writingItemAt: file, options: .forReplacing,
+                                           error: &coordError) { u in
+                do { try data.write(to: u, options: .atomic) } catch { writeError = error }
+            }
+            if let coordError { throw coordError }
+            if let writeError { throw writeError }
+
+            return "\(Self.receiptDir)/\(month)/\(file.lastPathComponent)"
+        }
+    }
+
+    /// 读回一张小票。账本里记的是相对路径，拿它去取图。
+    func readReceipt(_ relative: String) throws -> Data {
+        guard let root = resolveBookmark() else { throw VaultError.notConfigured }
+        return try withAccess(to: root) {
+            let url = root.appendingPathComponent(relative)
+            try ensureDownloaded(url)
+            var coordError: NSError?
+            var result: Result<Data, Error>!
+            NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordError) { u in
+                result = Result { try Data(contentsOf: u) }
+            }
+            if let coordError { throw coordError }
+            return try result.get()
+        }
+    }
+
+    /// 文件名里不能有的字符换成短横。
+    ///
+    /// 商家名里带 `/` 是常事（「麦当劳/王府井店」），直接拿去当文件名会被
+    /// 当成路径分隔符，文件就跑到别的目录去了。
+    private func safeName(_ s: String) -> String {
+        let bad = CharacterSet(charactersIn: "/\\:?%*|\"<>")
+        let cleaned = s.components(separatedBy: bad).joined(separator: "-")
+        return String(cleaned.prefix(20))   // 太长的名字在「文件」里会被截断显示
+    }
+
     // MARK: - 沙箱与 iCloud 的那些讲究
 
     /// 安全作用域要成对开关，中间才能碰这个目录。

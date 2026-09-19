@@ -99,6 +99,55 @@ type Message struct {
 	Name       string `json:"name,omitempty"`
 	// ReasoningContent 是部分服务商（如 deepseek-reasoner）返回的思考过程。
 	ReasoningContent string `json:"reasoning_content,omitempty"`
+
+	// Images 是随这条消息一起发出去的图片（data URL，形如
+	// `data:image/jpeg;base64,...`）。
+	//
+	// 有图片时 content 要从一个字符串变成「文本块 + 图片块」的数组，
+	// 这是 OpenAI 兼容接口对多模态的规定格式。改 MarshalJSON 而不是把
+	// Content 的类型换成 any：那样每个读 Content 的地方都要先做类型断言，
+	// 而全项目只有识别小票这一条路会用到图片。
+	Images []string `json:"-"`
+}
+
+// contentPart 是多模态 content 数组里的一块。
+type contentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *imageRef `json:"image_url,omitempty"`
+}
+
+type imageRef struct {
+	URL string `json:"url"`
+}
+
+// MarshalJSON 在带图片时把 content 摊成数组。
+//
+// 没图片的时候一个字节都不变——绝大多数请求都不带图片，不能让多模态
+// 这条路把普通对话的线上格式也改了（有的服务商对数组形式的 content
+// 支持得并不好）。
+func (m Message) MarshalJSON() ([]byte, error) {
+	type plain Message // 借个别名，免得 MarshalJSON 递归调用自己
+	if len(m.Images) == 0 {
+		return json.Marshal(plain(m))
+	}
+
+	parts := make([]contentPart, 0, len(m.Images)+1)
+	if m.Content != "" {
+		parts = append(parts, contentPart{Type: "text", Text: m.Content})
+	}
+	for _, img := range m.Images {
+		parts = append(parts, contentPart{
+			Type: "image_url", ImageURL: &imageRef{URL: img}})
+	}
+
+	alias := struct {
+		Role       string        `json:"role"`
+		Content    []contentPart `json:"content"`
+		ToolCallID string        `json:"tool_call_id,omitempty"`
+		Name       string        `json:"name,omitempty"`
+	}{Role: m.Role, Content: parts, ToolCallID: m.ToolCallID, Name: m.Name}
+	return json.Marshal(alias)
 }
 
 // ToolCall 是模型发起的一次工具调用。

@@ -243,6 +243,7 @@ def main() -> None:
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "读你在「健康」里记下的体重、睡眠、步数这些，存进你自己的健康记录文件。只读不写，也不上传。";
+				INFOPLIST_KEY_NSCameraUsageDescription = "拍小票。照片存进你自己的 iCloud 目录，按年月归好档。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "按住麦克风说话，转成文字填进输入框。识别在本机做，录音不离开这台设备。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "把你说的话转成文字。用的是本机的识别模型，一个字都不会上传。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

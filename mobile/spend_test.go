@@ -266,3 +266,47 @@ func TestSpendIncome(t *testing.T) {
 		t.Fatalf("工资科目 %.2f，该是 -12000", got)
 	}
 }
+
+// 小票路径要记进账本，这样几年后还找得到那张图——图片是资产，
+// 不是一次性的识别输入。
+func TestSpendWithReceipt(t *testing.T) {
+	out := spend(t, SpendInput{
+		Ledger: spendBook, Date: "2026-09-19", Payee: "沙县小吃",
+		Amount: 35, From: "Assets:招行", To: "Expenses:餐饮",
+		Receipt: "receipts/2026-09/2026-09-19-1430-沙县小吃.jpg",
+		TZ:      "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("记不上：%s", out.Error)
+	}
+	if !strings.Contains(out.Ledger, "; 小票: receipts/2026-09/") {
+		t.Fatalf("小票路径没记进账本：\n%s", out.Ledger)
+	}
+
+	// 记了小票也不能影响算账——注释就该只是注释。
+	if got := ledgerBalance(t, out.Ledger, "Expenses:餐饮"); got != 70 {
+		t.Errorf("餐饮余额 %.2f，该是 70（原来 35 加这笔 35）", got)
+	}
+	// 也不能多出一个叫「小票」的账户。
+	for _, tx := range ledger.ParseBook(out.Ledger).Transactions {
+		for _, p := range tx.Resolved() {
+			if strings.Contains(p.Account, "小票") {
+				t.Fatalf("注释被当成分录了：%q", p.Account)
+			}
+		}
+	}
+}
+
+// 没有小票的那些账照旧，别平白多出一行空注释。
+func TestSpendWithoutReceipt(t *testing.T) {
+	out := spend(t, SpendInput{
+		Ledger: "", Payee: "打车", Amount: 18,
+		From: "Assets:现金", To: "Expenses:交通", TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatal(out.Error)
+	}
+	if strings.Contains(out.Ledger, ";") {
+		t.Errorf("平白多了一行注释：\n%s", out.Ledger)
+	}
+}

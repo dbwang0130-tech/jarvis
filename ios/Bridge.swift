@@ -178,10 +178,11 @@ enum Bridge {
     /// 界面已经知道钱从哪儿出、花在什么上了，让模型再跑一趟是好几秒加
     /// 一次 API 调用，而它做的无非是拼一笔交易追加到文件末尾。
     static func spend(ledger: String, date: String, payee: String,
-                      amount: Double, from: String, to: String) -> SpendResult {
+                      amount: Double, from: String, to: String,
+                      receipt: String = "") -> SpendResult {
         let input: [String: Any] = [
             "ledger": ledger, "date": date, "payee": payee,
-            "amount": amount, "from": from, "to": to,
+            "amount": amount, "from": from, "to": to, "receipt": receipt,
             "tz": TimeZone.current.identifier,
         ]
         guard let json = encode(input) else {
@@ -193,6 +194,34 @@ enum Bridge {
         } catch {
             return SpendResult(error: "出参解不开：\(error.localizedDescription)")
         }
+    }
+
+    /// 让模型看一眼小票，认出金额、商家、日期、科目。
+    ///
+    /// 图片走 data URL，不传路径——Go 那头够不着 iCloud 里的文件。
+    /// 账本里已有的科目一起传过去，让它从里头挑而不是自己编一个。
+    static func readReceipt(image: Data, model: ModelConfig,
+                            accounts: [String]) -> ReceiptRead {
+        let url = "data:image/jpeg;base64," + image.base64EncodedString()
+        guard let data = try? JSONEncoder().encode(
+                ReceiptReq(image: url, model: model, accounts: accounts,
+                           tz: TimeZone.current.identifier)),
+              let json = String(data: data, encoding: .utf8) else {
+            return ReceiptRead(error: "入参编码失败")
+        }
+        let out = callReadReceipt(json)
+        do {
+            return try JSONDecoder().decode(ReceiptRead.self, from: Data(out.utf8))
+        } catch {
+            return ReceiptRead(error: "出参解不开：\(error.localizedDescription)")
+        }
+    }
+
+    private struct ReceiptReq: Encodable {
+        let image: String
+        let model: ModelConfig
+        let accounts: [String]
+        let tz: String
     }
 
     /// 把一条健康记录标成「录错了」。
@@ -303,6 +332,14 @@ enum Bridge {
     private static func callSpend(_ json: String) -> String {
         #if canImport(Mobile)
         return MobileSpend(json)
+        #else
+        return #"{"error":"Mobile framework 没连上"}"#
+        #endif
+    }
+
+    private static func callReadReceipt(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileReadReceipt(json)
         #else
         return #"{"error":"Mobile framework 没连上"}"#
         #endif

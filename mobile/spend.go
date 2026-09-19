@@ -33,6 +33,12 @@ type SpendInput struct {
 	To   string `json:"to"`
 	// Commodity 是货币符号，留空按账本里最常见的那个来。
 	Commodity string `json:"commodity"`
+	// Receipt 是小票图片相对 Jarvis 目录的路径，写成账本里的一行注释。
+	//
+	// 只记路径不记图片本身：图片由 Swift 那边存进 iCloud（Go 够不着那个
+	// 目录），而账本是纯文本——把几百 KB 的图塞进去，它就不再是能用
+	// 记事本打开的东西了。
+	Receipt string `json:"receipt"`
 
 	TZ string `json:"tz"`
 }
@@ -99,6 +105,7 @@ func Spend(inputJSON string) string {
 		Date:   when,
 		Status: '*',
 		Payee:  strings.TrimSpace(in.Payee),
+		Note:   receiptNote(in.Receipt),
 		Postings: []ledger.Posting{
 			{Account: strings.TrimSpace(in.To), Amount: in.Amount,
 				HasAmount: true, Commodity: commodity},
@@ -249,3 +256,15 @@ func Reverse(inputJSON string) string {
 
 // 冲账那笔的摘要前缀。界面靠它认出哪些是冲账，也靠它挡住「冲账的冲账」。
 const reversePrefix = "冲账："
+
+// receiptNote 把小票路径写成账本里那行注释。
+//
+// 前缀用中文「小票」而不是 receipt：这份账本是用户自己拿记事本也会打开的
+// 东西，而这个项目通篇是中文。ledger-cli 不关心注释里写什么。
+func receiptNote(path string) string {
+	p := strings.TrimSpace(path)
+	if p == "" {
+		return ""
+	}
+	return "小票: " + p
+}

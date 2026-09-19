@@ -464,18 +464,45 @@ final class Store: ObservableObject, AskEvents {
         return await writeBack(ledger: updated)
     }
 
+    /// 存一张小票，返回它相对 Jarvis 目录的路径。
+    ///
+    /// **图片先落盘，再谈识别。** 识别可能失败（模型不支持看图、没网、
+    /// 密钥过期），但那张图是用户拍下来的资产，不该因为认不出来就丢掉。
+    func keepReceipt(_ data: Data, payee: String, at when: Date) async -> String? {
+        do {
+            return try await Task.detached(priority: .userInitiated) { [vault] in
+                try vault.saveReceipt(data, payee: payee, at: when)
+            }.value
+        } catch {
+            fail("小票存不下来：\(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// 让模型认一张小票。
+    func readReceipt(_ data: Data) async -> ReceiptRead {
+        let model = modelWithKey
+        // 只给支出科目：认小票认的是花钱，给一堆资产账户只会让它挑错。
+        let accounts = (snapshot.ledger?.accounts ?? [])
+            .filter { $0.kind == "expense" }
+            .map(\.name)
+        return await Task.detached(priority: .userInitiated) {
+            Bridge.readReceipt(image: data, model: model, accounts: accounts)
+        }.value
+    }
+
     /// 记一笔账。
     ///
     /// 财务页一直是只读的：余额、账户、流水都看得见，可「刚花了 35 块」
     /// 只能开口跟秘书说一句——一个记账 app 在手机上记不了账。
     @discardableResult
     func spend(payee: String, amount: Double, from: String, to: String,
-               date: String = "") async -> Bool {
+               date: String = "", receipt: String = "") async -> Bool {
         guard !thinking else { return false }   // 秘书正拿着旧账本干活，别插队
         let book = ledger
         let r = await Task.detached(priority: .userInitiated) {
             Bridge.spend(ledger: book, date: date, payee: payee,
-                         amount: amount, from: from, to: to)
+                         amount: amount, from: from, to: to, receipt: receipt)
         }.value
 
         if let err = r.error, !err.isEmpty {

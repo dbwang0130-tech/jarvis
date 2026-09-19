@@ -536,6 +536,16 @@ struct ModelCheck: Codable {
     var error: String?
 }
 
+/// 认小票的结果。**都要拿给人过目**，不直接落账。
+struct ReceiptRead: Codable {
+    var amount: Double = 0
+    var payee = ""
+    var date = ""
+    /// 猜的支出科目，只会是账本里已有的那些之一；拿不准就是空的。
+    var account = ""
+    var error: String?
+}
+
 /// 标「录错了」的结果。health 只在真改过之后才有。
 struct VoidHealthResult: Codable {
     var message = ""
