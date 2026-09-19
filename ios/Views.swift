@@ -319,6 +319,7 @@ struct TodosView: View {
             }
         }
         .searchable(text: $keyword, prompt: "找点什么")
+        .safeAreaInset(edge: .top, spacing: 0) { OverdueBar() }
         .overlay { EmptyHint(show: groups.isEmpty && !store.loading,
                                  text: "没有待办", icon: "checklist") }
         .overlay { LoadingHint(isEmpty: groups.isEmpty) }
@@ -798,6 +799,72 @@ struct Stat: View {
         .background(emphasize ? AnyShapeStyle(Brand.soft)
                               : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
                     in: .rect(cornerRadius: Brand.radius))
+    }
+}
+
+/// 逾期堆起来的时候，给一条「都挪到今天」。
+///
+/// **这是最该自动化的重复劳动**：逾期的事会一直堆着，而清理它们的动作
+/// 完全一样——左滑、推迟、下一条。十条就是三十个动作，而人想做的只是
+/// 「这些今天再说」。
+///
+/// 不自动挪：什么该挪、什么该干脆放弃，只有人知道。这里只把那一下从
+/// 三十个动作压成两个（点一下、点头）。
+struct OverdueBar: View {
+    @EnvironmentObject var store: Store
+    @State private var asking = false
+    @State private var working = false
+
+    private var overdue: [Item] {
+        store.snapshot.todos.filter { $0.overdue && !$0.isDone }
+    }
+
+    var body: some View {
+        if !overdue.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.arrow.circlepath")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text("\(overdue.count) 件逾期")
+                    .font(.footnote.weight(.medium))
+                Spacer(minLength: 0)
+                Button {
+                    asking = true
+                } label: {
+                    if working {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("都挪到今天").font(.footnote.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Brand.primary)
+                .disabled(working || store.thinking)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .background(Color.orange.opacity(0.12), in: .capsule)
+            .padding(.horizontal, 12).padding(.bottom, 6)
+            .confirmationDialog("把 \(overdue.count) 件逾期的挪到今天？",
+                                isPresented: $asking, titleVisibility: .visible) {
+                Button("都挪过来") { move() }
+                Button("算了", role: .cancel) {}
+            } message: {
+                Text("只改它们的计划时间，内容不动。"
+                     + "不想做的那几件，挪之前先标成「不做了」。")
+            }
+        }
+    }
+
+    private func move() {
+        let refs = overdue.map(\.ref)
+        working = true
+        Task {
+            // 用 today 而不是 postpone：postpone 的 days 零值按 1 天算
+            //（「推迟」默认推一天），表达不出「挪到今天」。
+            let ok = await store.act("today", on: "", refs: refs)
+            working = false
+            ok ? Haptics.done() : Haptics.failure()
+        }
     }
 }
 

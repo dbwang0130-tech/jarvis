@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func act(t *testing.T, in ActInput) ActOutput {
@@ -360,5 +361,93 @@ func TestActDeleteChecksTitle(t *testing.T) {
 				t.Fatalf("话没说到点上：%s", out.Error)
 			}
 		})
+	}
+}
+
+// 一堆逾期的事要一起挪到今天，一条条来就是一条条读盘写盘。
+//
+// **从后往前办**是这条的要害：给一条没排过期的事加 SCHEDULED 会多一行，
+// 它下面所有条目的行号都往后挪。从前往后办的话，第二条开始的 ref 就全
+// 指错了——轻则报「引用已失效」，重则改到隔壁那条头上。
+func TestActBatchPostpone(t *testing.T) {
+	const three = `* TODO 头一件
+* TODO 第二件
+* TODO 第三件
+`
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": three},
+		Refs:  []string{"a.org:0", "a.org:1", "a.org:2"},
+		Op:    "postpone", Days: 1, TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("批量挪不动：%s", out.Error)
+	}
+	got := out.Files["a.org"]
+
+	// 三条都得排上期，而且**各是各的**——错位的话会出现两条 SCHEDULED
+	// 挤在同一个条目下面，另一条一个都没有。
+	if n := strings.Count(got, "SCHEDULED:"); n != 3 {
+		t.Fatalf("排上期的有 %d 条，该是 3 条：\n%s", n, got)
+	}
+	for _, title := range []string{"头一件", "第二件", "第三件"} {
+		i := strings.Index(got, title)
+		if i < 0 {
+			t.Fatalf("%s 不见了：\n%s", title, got)
+		}
+		rest := got[i:]
+		end := strings.Index(rest[1:], "* TODO")
+		if end >= 0 {
+			rest = rest[:end+1]
+		}
+		if !strings.Contains(rest, "SCHEDULED:") {
+			t.Fatalf("%s 底下没排上期（错位了）：\n%s", title, got)
+		}
+	}
+}
+
+// 一条失败不该让其余的白办：一起挪十条，其中一条被别处删了，另外九条
+// 该照挪。
+func TestActBatchPartialFailure(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": "* TODO 在的\n"},
+		Refs:  []string{"a.org:0", "a.org:99"},
+		Op:    "postpone", Days: 1, TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("不该整批失败：%s", out.Error)
+	}
+	if !strings.Contains(out.Message, "1 条没成") {
+		t.Errorf("没说清哪条没成：%s", out.Message)
+	}
+	if !strings.Contains(out.Files["a.org"], "SCHEDULED:") {
+		t.Errorf("在的那条也没办成：\n%s", out.Files["a.org"])
+	}
+}
+
+// 一条都没办成才算整批失败——不然界面会以为改了，其实一个字没动。
+func TestActBatchAllFail(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": "* TODO 在的\n"},
+		Refs:  []string{"a.org:98", "a.org:99"},
+		Op:    "postpone", Days: 1, TZ: "Asia/Shanghai",
+	})
+	if out.Error == "" {
+		t.Fatal("一条都没办成，该报错")
+	}
+}
+
+// 「挪到今天」得是自己一个动作：postpone 的 days 零值按 1 天算
+// （「推迟」默认推一天），再给 0 一个特殊含义就成了魔法值。
+func TestActToday(t *testing.T) {
+	out := act(t, ActInput{
+		Files: map[string]string{"a.org": "* TODO 上周就该做的\n  SCHEDULED: <2026-09-01 一>\n"},
+		Ref:   "a.org:0", Op: "today", TZ: "Asia/Shanghai",
+	})
+	if out.Error != "" {
+		t.Fatalf("挪不过来：%s", out.Error)
+	}
+	today := time.Now().Format("2006-01-02")
+	if !strings.Contains(out.Files["a.org"], "SCHEDULED: <"+today) {
+		t.Fatalf("没挪到今天（该是 %s）：\n%s", today, out.Files["a.org"])
 	}
 }

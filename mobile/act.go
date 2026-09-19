@@ -3,6 +3,8 @@ package mobile
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,10 +25,16 @@ type ActInput struct {
 	Files map[string]string `json:"files"`
 	Ref   string            `json:"ref"`
 	// Op 是要做的事：done / start / stop / postpone / cancel / undone /
-	// create / check / priority / state / schedule / deadline / note / delete。
+	// create / check / priority / state / schedule / deadline / note /
+	// delete / today。
 	Op string `json:"op"`
 	// Days 给 postpone 用，推迟几天，零值按 1 天算。
 	Days int `json:"days"`
+	// Refs 是一次办好几条时的目标清单。给了它就不看 Ref。
+	//
+	// 为什么要有批量：一堆逾期的事要一起挪到今天，一条条来就是一条条
+	// 读盘写盘——十条就是十趟，每趟都要把全部 org 文件解析一遍。
+	Refs []string `json:"refs"`
 	// Index 给 check 用：勾正文里的第几个复选框，从 1 数起。
 	// 跟工具那边对外的说法一致——界面和用户说的都是「第二项」。
 	Index int `json:"index"`
@@ -83,7 +91,12 @@ func Act(inputJSON string) string {
 	ws := orgtools.NewWorkspace(coll, cfg)
 	tools := toolsByName(orgtools.NewSkill(ws))
 
-	msg, err := runOp(tools, in)
+	var msg string
+	if len(in.Refs) > 0 {
+		msg, err = runBatch(tools, in)
+	} else {
+		msg, err = runOp(tools, in)
+	}
 	if err != nil {
 		return marshal(&ActOutput{Error: err.Error()})
 	}
@@ -94,6 +107,64 @@ func Act(inputJSON string) string {
 		return marshal(&ActOutput{Error: fmt.Sprintf("读回改动失败：%v", err)})
 	}
 	return marshal(&out)
+}
+
+// runBatch 对一串条目做同一件事。
+//
+// **从后往前办。** ref 是「文件:行号」，而有些动作会让行数变——
+// 给一条没排过期的事加 SCHEDULED，它下面所有条目的行号都往后挪一行。
+// 从前往后办的话，第二条开始的 ref 就全指错了（轻则报「引用已失效」，
+// 重则改到隔壁那条头上）。从行号大的开始，改动只影响它后面，而后面的
+// 已经办完了。
+//
+// 一条失败不影响其余：一起挪十条，其中一条被别处删了，不该让另外九条
+// 也白挪。最后把办成几条、哪几条没成一起报出来。
+func runBatch(tools map[string]agent.Tool, in ActInput) (string, error) {
+	refs := append([]string(nil), in.Refs...)
+	sort.Slice(refs, func(i, j int) bool {
+		fi, li := splitRefLine(refs[i])
+		fj, lj := splitRefLine(refs[j])
+		if fi != fj {
+			return fi < fj
+		}
+		return li > lj // 同一个文件里，行号大的先办
+	})
+
+	var done int
+	var fails []string
+	for _, ref := range refs {
+		one := in
+		one.Ref = ref
+		one.Refs = nil
+		if _, err := runOp(tools, one); err != nil {
+			fails = append(fails, err.Error())
+			continue
+		}
+		done++
+	}
+
+	switch {
+	case done == 0 && len(fails) > 0:
+		return "", fmt.Errorf("一条都没办成：%s", strings.Join(fails, "；"))
+	case len(fails) > 0:
+		return fmt.Sprintf("办好了 %d 条，%d 条没成：%s",
+			done, len(fails), strings.Join(fails, "；")), nil
+	default:
+		return fmt.Sprintf("办好了 %d 条", done), nil
+	}
+}
+
+// splitRefLine 把 "work.org:12" 拆成文件名和行号，拆不开就当行号 0。
+func splitRefLine(ref string) (string, int) {
+	i := strings.LastIndex(ref, ":")
+	if i < 0 {
+		return ref, 0
+	}
+	n, err := strconv.Atoi(ref[i+1:])
+	if err != nil {
+		return ref, 0
+	}
+	return ref[:i], n
 }
 
 func toolsByName(s agent.Skill) map[string]agent.Tool {
@@ -230,6 +301,12 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 				err.Error() + "）", nil
 		}
 		return msg + "（这个文件没有取消态，标成了完成并记了一笔）", nil
+
+	case "today":
+		// 挪到今天。不能靠 postpone 传 days=0 来表达——那边零值按 1 天算
+		//（「推迟」默认就是推一天），再给 0 一个特殊含义就成了魔法值。
+		return call("schedule_item",
+			map[string]any{"ref": in.Ref, "time": time.Now().Format("2006-01-02")})
 
 	case "postpone":
 		days := in.Days

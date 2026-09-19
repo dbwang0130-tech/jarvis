@@ -80,11 +80,13 @@ enum Bridge {
                     days: Int = 0, title: String = "",
                     scheduled: String = "", priority: String = "",
                     index: Int = 0, file: String = "",
-                    state: String = "", text: String = "") -> ActResult {
+                    state: String = "", text: String = "",
+                    refs: [String] = []) -> ActResult {
         let input: [String: Any] = [
             "files": files, "ref": ref, "op": op, "days": days,
             "title": title, "scheduled": scheduled, "priority": priority,
             "index": index, "file": file, "state": state, "text": text,
+            "refs": refs,
             "tz": TimeZone.current.identifier,
         ]
         guard let json = encode(input) else {
