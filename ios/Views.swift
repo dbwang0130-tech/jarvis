@@ -1167,8 +1167,16 @@ struct ChatView: View {
                     // 想说的话可能不止一行，让它自己长，最多六行。
                     TextField("说点什么", text: $draft, axis: .vertical)
                         .lineLimit(1...6)
-                        .padding(.horizontal, 16)
+                        .padding(.leading, 16)
+                        .padding(.trailing, 4)
                         .padding(.vertical, 11)
+                        // 麦克风摆在输入框**里面**右侧，不另起一颗：
+                        // 输入区就那么宽，再加一颗独立的圆钮，输入框会
+                        // 被挤到放不下一行字。
+                        .overlay(alignment: .trailingLastTextBaseline) {
+                            MicButton(draft: $draft)
+                                .offset(y: 6)
+                        }
                         .glassEffect(.regular, in: .capsule)
                         .focused($focused)
 
