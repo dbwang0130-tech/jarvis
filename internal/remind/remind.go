@@ -103,3 +103,86 @@ func (s *Store) Save(reminded map[string]int64) error {
 	}
 	return config.WriteAtomic(s.Path, raw, 0o600)
 }
+
+// BriefHour 是每天什么时候说那一句。
+//
+// 八点：多数人已经起来、还没开始干活，这会儿知道「今天有什么」还来得及
+// 调整；再早会把人吵醒，再晚就只是通报了。
+const BriefHour = 8
+
+// Brief 攒出每天早上那一句：今天几件事、哪些今天截止、有几件逾期。
+//
+// **为什么要有这一句**：Check 只认排了具体钟点的事，而截止和逾期本来就
+// 没有钟点——「周五前交报告」不会响，「昨天就该做完的」也不会响，
+// 而那两样恰恰是最容易忘的。
+//
+// 为什么是一句而不是一堆：给每条截止都排个通知，一天弹七八次，人会把
+// 通知整个关掉，那就一条都收不到了。
+//
+// 每天只发一次：靠 reminded 里那把带日期的键挡住——launchd 每五分钟跑
+// 一趟，不挡的话八点到九点之间会响十二次。
+func Brief(coll *org.Collection, now time.Time, reminded map[string]int64) string {
+	if now.Hour() != BriefHour {
+		return ""
+	}
+	key := "brief:" + now.Format("2006-01-02")
+	if _, done := reminded[key]; done {
+		return ""
+	}
+
+	opts := agenda.DefaultOptions()
+	opts.Now = now
+	day0 := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	ag := agenda.Build(coll, day0, 1, opts)
+	if len(ag.Days) == 0 {
+		return ""
+	}
+
+	// 逾期项就混在第一天里（Kind 是 KindOverdue），不是单独一摊。
+	// 混着数的话，「今天 5 件事」里其实有 3 件是上周欠的——那是两回事。
+	var todo, due, overdue int
+	var first string
+	for _, it := range ag.Days[0].Items {
+		if it.Node.IsDone() {
+			continue
+		}
+		if it.Kind == agenda.KindOverdue {
+			overdue++
+			continue
+		}
+		todo++
+		if it.Kind == agenda.KindDeadline && it.DaysLeft <= 0 {
+			due++
+		}
+		// 先办哪件：按 agenda 排好的顺序取第一条，排了钟点的带上钟点。
+		if first == "" {
+			if it.HasTime {
+				first = it.Start.Format("15:04") + " " + org.Plain(it.Node.Title)
+			} else {
+				first = org.Plain(it.Node.Title)
+			}
+		}
+	}
+
+	var parts []string
+	if todo > 0 {
+		parts = append(parts, fmt.Sprintf("%d 件事", todo))
+	}
+	if due > 0 {
+		parts = append(parts, fmt.Sprintf("%d 件今天截止", due))
+	}
+	if overdue > 0 {
+		parts = append(parts, fmt.Sprintf("%d 件逾期", overdue))
+	}
+	// 什么都没有就别响——「今天没事」也是一次打扰。
+	if len(parts) == 0 {
+		return ""
+	}
+
+	reminded[key] = now.Unix()
+	text := "今天：" + strings.Join(parts, " · ")
+	if first != "" {
+		text += "。先办 " + first
+	}
+	return text
+}

@@ -356,7 +356,8 @@ final class Store: ObservableObject, AskEvents {
     func refreshReminders() async {
         let s = settings
         await Notifier.reschedule(from: snapshot,
-                                  leadMinutes: s.remindLead, enabled: s.remind)
+                                  leadMinutes: s.remindLead, enabled: s.remind,
+                                  brief: s.brief, briefHour: s.briefHour)
     }
 
     /// 叫停正在跑的那一轮。已经做完的改动会照常写回来，不会白干。
@@ -631,6 +632,12 @@ struct Settings: Codable {
     /// 到点提醒，以及提前几分钟。
     var remind = true
     var remindLead = 10
+    /// 每天早上那一条简报，以及几点发。
+    ///
+    /// 默认开着：这是这个 app 唯一一次**主动开口**。不开的话它只在被问到
+    /// 时才说话，而「今天有什么」恰恰是最不该等人问的。
+    var brief = true
+    var briefHour = 8
 
     var apiKey: String {
         get { Keychain.read(key: "jarvis.apiKey") ?? "" }
@@ -640,7 +647,7 @@ struct Settings: Codable {
     private static let storeKey = "jarvis.settings"
 
     enum CodingKeys: String, CodingKey {
-        case model, profile, mail, remind, remindLead
+        case model, profile, mail, remind, remindLead, brief, briefHour
     }
 
     /// 传给 Go 的那份：现从钥匙串取密码填上，只带配全了的账号。
@@ -665,6 +672,8 @@ struct Settings: Codable {
         mail = try c.decodeIfPresent([MailAccount].self, forKey: .mail) ?? []
         remind = try c.decodeIfPresent(Bool.self, forKey: .remind) ?? true
         remindLead = try c.decodeIfPresent(Int.self, forKey: .remindLead) ?? 10
+        brief = try c.decodeIfPresent(Bool.self, forKey: .brief) ?? true
+        briefHour = try c.decodeIfPresent(Int.self, forKey: .briefHour) ?? 8
     }
 
     static func load() -> Settings {

@@ -57,7 +57,18 @@ func runRemind() error {
 	}
 	store := &remind.Store{Path: filepath.Join(config.Dir(), "reminded.json")}
 	reminded := store.Load()
-	for _, text := range remind.Check(coll, time.Now(), reminded) {
+	now := time.Now()
+
+	// 每天早上那一句。Check 只认排了具体钟点的事，而截止和逾期本来就没有
+	// 钟点——「周五前交报告」不会响，「昨天就该做完的」也不会响，
+	// 而那两样恰恰是最容易忘的。
+	if text := remind.Brief(coll, now, reminded); text != "" {
+		if err := remind.Notify(text); err != nil {
+			fmt.Fprintf(os.Stderr, "发通知失败：%v\n", err)
+		}
+	}
+
+	for _, text := range remind.Check(coll, now, reminded) {
 		if err := remind.Notify(text); err != nil {
 			// launchd 把 stdout/stderr 收进 /tmp/jarvis-remind.log，
 			// 发不出去的时候至少在那儿留个痕迹。

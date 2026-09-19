@@ -14,6 +14,8 @@ struct SettingsView: View {
     @State private var checking = false
     @State private var remind = true
     @State private var remindLead = 10
+    @State private var brief = true
+    @State private var briefHour = 8
     @State private var check: ModelCheck?
 
     /// 跟桌面端那份预设表一致。
@@ -99,8 +101,31 @@ struct SettingsView: View {
                         }
                         .onChange(of: remindLead) { _, _ in saveRemind() }
                     }
+
+                    // 这是整个 app 唯一一次主动开口。
+                    Toggle(isOn: $brief) {
+                        Label("每天早上说一句", systemImage: "sun.horizon")
+                    }
+                    .onChange(of: brief) { _, on in
+                        if on { Task { _ = await Notifier.requestPermission(); saveRemind() } }
+                        else { saveRemind() }
+                    }
+
+                    if brief {
+                        Picker(selection: $briefHour) {
+                            ForEach([6, 7, 8, 9, 10], id: \.self) { h in
+                                Text("\(h):00").tag(h)
+                            }
+                        } label: {
+                            Label("几点说", systemImage: "alarm")
+                        }
+                        .onChange(of: briefHour) { _, _ in saveRemind() }
+                    }
                 } footer: {
-                    Text("提醒是在打开 app 时一次性排好的——iOS 不让 app 在后台一直醒着。"
+                    Text("「到点提醒」只管排了具体钟点的事。"
+                         + "**今天有几件、哪些今天截止、有几件逾期**，靠早上那一句——"
+                         + "截止和逾期本来就没有钟点，却最容易忘。\n\n"
+                         + "提醒是在打开 app 时一次性排好的——iOS 不让 app 在后台一直醒着。"
                          + "所以在电脑上新加的事，手机上得打开一次才会排上它的提醒。")
                 }
 
@@ -218,6 +243,8 @@ struct SettingsView: View {
         var s = store.settings
         s.remind = remind
         s.remindLead = remindLead
+        s.brief = brief
+        s.briefHour = briefHour
         s.save()
         store.settings = s
         Task { await store.refreshReminders() }
@@ -232,6 +259,8 @@ struct SettingsView: View {
         apiKey = s.apiKey
         remind = s.remind
         remindLead = s.remindLead
+        brief = s.brief
+        briefHour = s.briefHour
     }
 
     private func save() {
