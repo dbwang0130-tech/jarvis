@@ -24,8 +24,51 @@ struct TodayView: View {
 
     var body: some View {
         switch size {
-        case .systemSmall: small
-        default:           medium
+        case .systemSmall:        small
+        case .accessoryRectangular: lockRect
+        case .accessoryInline:      lockInline
+        default:                  medium
+        }
+    }
+
+    // MARK: 锁屏
+    //
+    // 锁屏上系统把整块抹成单色，头像、进度环、橙色秒表条全都不成立——
+    // 那几样靠颜色和图形说话。这里只剩文字，所以每个字都得算数：
+    // 第一行说「还剩什么」，第二行说「先办哪件」。
+
+    private var lockRect: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(headline)
+                .font(.headline)
+                .widgetAccentable()
+            if let run = snap.running, let at = run.startedAt {
+                // 正在做的那件，秒表照样自己走——锁屏上尤其有用：
+                // 抬手看一眼就知道这件事开了多久。
+                HStack(spacing: 4) {
+                    Image(systemName: "stopwatch").font(.caption2)
+                    Text(at, style: .timer).font(.caption.monospacedDigit())
+                }
+                Text(run.title).font(.caption).lineLimit(1)
+            } else if let first = snap.items.first {
+                Text(first.time.isEmpty ? first.title : "\(first.time) \(first.title)")
+                    .font(.caption)
+                    .lineLimit(2)
+            } else {
+                Text(snap.emptyHint).font(.caption)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 时间旁边那一行，只有一行的地方。
+    private var lockInline: some View {
+        if let run = snap.running {
+            Text("正在做 " + run.title)
+        } else if let first = snap.items.first {
+            Text(first.time.isEmpty ? first.title : "\(first.time) \(first.title)")
+        } else {
+            Text(headline)
         }
     }
 

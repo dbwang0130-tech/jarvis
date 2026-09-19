@@ -27,7 +27,11 @@ struct TodayWidget: Widget {
         }
         .configurationDisplayName("今天")
         .description("今天还剩什么，正在做的那件会自己走秒。")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        // 锁屏那几种一起支持：「今天还剩什么」是抬腕就想知道的事，
+        // 为它解锁进主屏太重了。锁屏上系统会把整块抹成单色，所以那几种
+        // 布局得能只靠文字站住（见 TodayView 里的 accessory 分支）。
+        .supportedFamilies([.systemSmall, .systemMedium,
+                            .accessoryRectangular, .accessoryInline])
     }
 }
 

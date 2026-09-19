@@ -8,5 +8,10 @@
 
 # gomobile 生成的，每次 make ios-framework 重建
 ios/Mobile.xcframework/
+
+# xcodebuild 不带 -derivedDataPath 跑时会在这儿堆编译产物。
+# 平时 make ios-install 走的是 DerivedData，不碰这里；
+# 单独 -target 编一次就会冒出来，一不留神能提交进去四百多个文件。
+ios/build/
 # Xcode 的个人状态（窗口布局、断点），不该进仓库
 **/xcuserdata/
