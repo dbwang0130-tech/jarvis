@@ -17,6 +17,7 @@
 		23E73D661E879A0EBBD9DDA2 /* Intents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A45511E2548529E93AF2CB /* Intents.swift */; };
 		0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F1B6CBE154F3A41E575653 /* ItemView.swift */; };
 		FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED29F84A2C8136AC729D9F6 /* Keychain.swift */; };
+		1D59D9329B5A48399CCF4B58 /* LocalModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C6929D4CB7B808FF0273B76 /* LocalModel.swift */; };
 		92FC9F6976C5724D4F2C680D /* MailBodyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4B5769A10A945FEA42C7B2 /* MailBodyView.swift */; };
 		92D10A1535135C1E20339B5E /* MailDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7DC35E434D241BDE803CC35 /* MailDetail.swift */; };
 		CF5C83BA4B0A39263BFA68AB /* MailSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A5C0D585A76B6DAE4286283 /* MailSettings.swift */; };
@@ -85,6 +86,7 @@
 		E5A45511E2548529E93AF2CB /* Intents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents.swift; sourceTree = "<group>"; };
 		E8F1B6CBE154F3A41E575653 /* ItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemView.swift; sourceTree = "<group>"; };
 		EED29F84A2C8136AC729D9F6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		8C6929D4CB7B808FF0273B76 /* LocalModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModel.swift; sourceTree = "<group>"; };
 		7B4B5769A10A945FEA42C7B2 /* MailBodyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailBodyView.swift; sourceTree = "<group>"; };
 		D7DC35E434D241BDE803CC35 /* MailDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailDetail.swift; sourceTree = "<group>"; };
 		1A5C0D585A76B6DAE4286283 /* MailSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailSettings.swift; sourceTree = "<group>"; };
@@ -140,6 +142,7 @@
 				E5A45511E2548529E93AF2CB /* Intents.swift */,
 				E8F1B6CBE154F3A41E575653 /* ItemView.swift */,
 				EED29F84A2C8136AC729D9F6 /* Keychain.swift */,
+				8C6929D4CB7B808FF0273B76 /* LocalModel.swift */,
 				7B4B5769A10A945FEA42C7B2 /* MailBodyView.swift */,
 				D7DC35E434D241BDE803CC35 /* MailDetail.swift */,
 				1A5C0D585A76B6DAE4286283 /* MailSettings.swift */,
@@ -318,6 +321,7 @@
 				23E73D661E879A0EBBD9DDA2 /* Intents.swift in Sources */,
 				0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */,
 				FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */,
+				1D59D9329B5A48399CCF4B58 /* LocalModel.swift in Sources */,
 				92FC9F6976C5724D4F2C680D /* MailBodyView.swift in Sources */,
 				92D10A1535135C1E20339B5E /* MailDetail.swift in Sources */,
 				CF5C83BA4B0A39263BFA68AB /* MailSettings.swift in Sources */,
