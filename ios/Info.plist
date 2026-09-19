@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 别的 app 分享图片过来时，分享菜单里会出现 Jarvis。
+	     点了之后系统把图拷进本 app 的 Inbox，再由 onOpenURL 接住。
+
+	     为什么不做 Share Extension：图最终要存进 iCloud，而那需要用户
+	     授权的安全作用域书签——只有主 app 握着，扩展进程够不着。何况
+	     分享一张小票多半要跟着说一句话（「这张记一下」），那个小窗
+	     也容纳不了。打开 app 反而是对的。
+
+	     其余的键交给 GENERATE_INFOPLIST_FILE 去补，这儿只写它生成不出来
+	     的这一项（INFOPLIST_KEY_ 那套加不了数组结构）。 -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>图片</string>
+			<key>LSHandlerRank</key>
+			<!-- Alternate 而不是 Owner：图片不是这个 app 的专属格式，
+			     抢成默认打开方式会很讨嫌。 -->
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.image</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

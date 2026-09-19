@@ -31,6 +31,7 @@
 		15EE763C5605E7A1623AD205 /* QuickAdd.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03CFB3EDEEED276C5A9D5B27 /* QuickAdd.swift */; };
 		F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7CAA3A267067C3AC9942A5 /* Session.swift */; };
 		EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */; };
+		E6B91211C95E59F87266753B /* SharedImages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DDC9246807E690D1683459F /* SharedImages.swift */; };
 		FC23004741C28D3A879C33E2 /* SpendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C50616DC0BB4CB2080FAA2E /* SpendView.swift */; };
 		621910C5F045309EAEBB1B6A /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090A09C1465CE23ABD827A8F /* Store.swift */; };
 		BC9F10B66AE5A92DAA1557A5 /* Tools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */; };
@@ -102,6 +103,7 @@
 		03CFB3EDEEED276C5A9D5B27 /* QuickAdd.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAdd.swift; sourceTree = "<group>"; };
 		FF7CAA3A267067C3AC9942A5 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		7DDC9246807E690D1683459F /* SharedImages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedImages.swift; sourceTree = "<group>"; };
 		5C50616DC0BB4CB2080FAA2E /* SpendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendView.swift; sourceTree = "<group>"; };
 		090A09C1465CE23ABD827A8F /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tools.swift; sourceTree = "<group>"; };
@@ -111,6 +113,7 @@
 		998532162849BDD8C4ED0133 /* WidgetShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetShared.swift; sourceTree = "<group>"; };
 		855B81ABF2C6B53CD2B61F83 /* WidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetViews.swift; sourceTree = "<group>"; };
 		164C0316A3825EF4C698B340 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		044014C3347BB3203DC8A2FD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		DC57EAABB38F68D74718337B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A069981AD14109903A0DF231 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		F72C3D408040F7EF956AD77D /* Mobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Mobile.xcframework; sourceTree = "<group>"; };
@@ -160,6 +163,7 @@
 				03CFB3EDEEED276C5A9D5B27 /* QuickAdd.swift */,
 				FF7CAA3A267067C3AC9942A5 /* Session.swift */,
 				6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */,
+				7DDC9246807E690D1683459F /* SharedImages.swift */,
 				5C50616DC0BB4CB2080FAA2E /* SpendView.swift */,
 				090A09C1465CE23ABD827A8F /* Store.swift */,
 				4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */,
@@ -169,6 +173,7 @@
 				998532162849BDD8C4ED0133 /* WidgetShared.swift */,
 				855B81ABF2C6B53CD2B61F83 /* WidgetViews.swift */,
 				164C0316A3825EF4C698B340 /* Assets.xcassets */,
+				044014C3347BB3203DC8A2FD /* Info.plist */,
 				DC57EAABB38F68D74718337B /* PrivacyInfo.xcprivacy */,
 				A069981AD14109903A0DF231 /* LaunchScreen.storyboard */,
 				F72C3D408040F7EF956AD77D /* Mobile.xcframework */,
@@ -341,6 +346,7 @@
 				15EE763C5605E7A1623AD205 /* QuickAdd.swift in Sources */,
 				F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */,
 				EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */,
+				E6B91211C95E59F87266753B /* SharedImages.swift in Sources */,
 				FC23004741C28D3A879C33E2 /* SpendView.swift in Sources */,
 				621910C5F045309EAEBB1B6A /* Store.swift in Sources */,
 				BC9F10B66AE5A92DAA1557A5 /* Tools.swift in Sources */,
@@ -425,6 +431,7 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "读你在「健康」里记下的体重、睡眠、步数这些，存进你自己的健康记录文件。只读不写，也不上传。";
@@ -464,6 +471,7 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "读你在「健康」里记下的体重、睡眠、步数这些，存进你自己的健康记录文件。只读不写，也不上传。";

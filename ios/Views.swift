@@ -19,7 +19,11 @@ struct RootView: View {
         .environmentObject(store)
         // 通知点击要能找到 store。AppDelegate 那边挂 delegate 时 store
         // 还没建出来，所以反过来由这儿交过去。
-        .onAppear { NotificationRouter.store = store }
+        .onAppear {
+            NotificationRouter.store = store
+            // 冷启动时 onOpenURL 比这儿还早，攒下的图这会儿交出来。
+            SharedImages.flush(to: store)
+        }
         .tint(Brand.primary)
         // 图标那个人是圆润的软塑感，字跟着圆一点才像一家人。
         .fontDesign(.rounded)
@@ -1044,6 +1048,19 @@ struct ChatView: View {
             // Siri / 快捷指令带进来的那一件事。起来时取一次；切回前台也
             // 取一次——app 已经开着的时候喊 Siri，走的是后面那条。
             .task { await takeIntent() }
+            // 别的 app 分享进来的图：落进输入框，等人补一句话再发。
+            //
+            // 不直接发出去——分享一张图过来多半是要问点什么（「这张小票
+            // 记一下」），替他发了反而得重来一轮。
+            .onChange(of: store.sharedShots) { _, incoming in
+                guard !incoming.isEmpty else { return }
+                for data in incoming where shots.count < PhotoButton.maxShots {
+                    shots.append(data)
+                }
+                store.sharedShots = []
+                focused = true
+                Haptics.done()
+            }
             .onChange(of: phase) { _, now in
                 if now == .active { Task { await takeIntent() } }
             }

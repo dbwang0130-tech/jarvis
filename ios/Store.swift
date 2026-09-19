@@ -16,6 +16,12 @@ final class Store: ObservableObject, AskEvents {
     }
     @Published var loading = false
 
+    /// 从别的 app 分享进来的图，等着界面来取。
+    ///
+    /// 跟通知那个标记一个路子：图是系统投递给 app 的（onOpenURL），
+    /// 而那会儿界面可能还没建出来，没法直接递给谁。
+    @Published var sharedShots: [Data] = []
+
     /// 点通知进来要办的事。
     ///
     /// 界面看到它就打开邮件页并立刻收一次——通知里说的是「点一下，我这就

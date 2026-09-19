@@ -25,6 +25,7 @@ IOS = pathlib.Path(__file__).resolve().parent
 FRAMEWORK = "Mobile.xcframework"
 ASSETS = "Assets.xcassets"
 PRIVACY = "PrivacyInfo.xcprivacy"
+APP_PLIST = "Info.plist"
 LAUNCH = "LaunchScreen.storyboard"
 ENTITLEMENTS = "Jarvis.entitlements"
 
@@ -117,6 +118,15 @@ def main() -> None:
                       f'{{isa = PBXBuildFile; fileRef = {assets_ref} /* {ASSETS} */; }};')
         resources.append(f'\t\t\t\t{assets_build} /* {ASSETS} in Resources */,')
         children.append(f'\t\t\t\t{assets_ref} /* {ASSETS} */,')
+
+    # Info.plist 只是被 build settings 指着，不参与编译也不进资源，
+    # 但列进工程里 Xcode 的导航器才看得到。
+    if (IOS / APP_PLIST).is_file():
+        plist_ref = uid("fr:appplist")
+        refs.append(f'\t\t{plist_ref} /* {APP_PLIST} */ = {{isa = PBXFileReference; '
+                    f'lastKnownFileType = text.plist.xml; path = {APP_PLIST}; '
+                    f'sourceTree = "<group>"; }};')
+        children.append(f'\t\t\t\t{plist_ref} /* {APP_PLIST} */,')
 
     # 隐私清单要进 bundle（不是 Info.plist 的一部分），所以走资源那条路。
     priv_ref, priv_build = uid("fr:privacy"), uid("bf:privacy")
@@ -240,6 +250,7 @@ def main() -> None:
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "读你在「健康」里记下的体重、睡眠、步数这些，存进你自己的健康记录文件。只读不写，也不上传。";

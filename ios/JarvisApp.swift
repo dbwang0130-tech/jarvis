@@ -23,6 +23,11 @@ struct JarvisApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // 别的 app 分享图片过来：系统把文件拷进本 app 的 Inbox，
+                // 再把 URL 投给这儿。
+                .onOpenURL { url in
+                    SharedImages.take(url)
+                }
         }
     }
 }
