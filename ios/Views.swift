@@ -1014,6 +1014,8 @@ struct ChatView: View {
     @State private var askClear = false
     /// Siri 说「记一笔账」时带来的金额，交给财务页把表单摆好。
     @State private var spendAmount: Double?
+    /// 这一轮要一起发出去的图。
+    @State private var shots: [Data] = []
     @State private var entered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var phase
@@ -1162,21 +1164,30 @@ struct ChatView: View {
             // 输入区浮在内容之上，不再用一条实心底栏压着——下面的话能透出来，
             // 屏幕显得高一些。GlassEffectContainer 让挨着的两块玻璃算作一体，
             // 各自算各自的会在缝隙处叠出一道亮边。
+            // 挑好的图摆在输入框上面：发出去之前得看得见自己挑了什么，
+            // 也得能反悔。
+            if !shots.isEmpty {
+                ShotStrip(shots: $shots)
+            }
+
             GlassEffectContainer(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
                     // 想说的话可能不止一行，让它自己长，最多六行。
-                    // 麦克风摆在输入框**里面**右侧，不另起一颗：输入区就
-                    // 那么宽，再加一颗独立的圆钮，输入框会被挤到放不下
-                    // 一行字。
+                    // 麦克风和相机摆在输入框**里面**右侧，不另起两颗：
+                    // 输入区就那么宽，再加两颗独立的圆钮，输入框会被挤到
+                    // 放不下一行字。
                     //
                     // 用 HStack 而不是 overlay：overlay 叠在 padding 之后的
                     // 整块区域上，靠 alignment 加 offset 去凑位置，多行输入
                     // 长高之后就会飘。摆进 HStack，位置是算出来的。
                     HStack(alignment: .bottom, spacing: 2) {
-                        TextField("说点什么", text: $draft, axis: .vertical)
+                        TextField(shots.isEmpty ? "说点什么" : "问问这张图",
+                                  text: $draft, axis: .vertical)
                             .lineLimit(1...6)
                             .padding(.vertical, 11)
                             .focused($focused)
+                        PhotoButton(shots: $shots)
+                            .padding(.bottom, 2)
                         MicButton(draft: $draft)
                             .padding(.bottom, 2)
                     }
@@ -1209,16 +1220,20 @@ struct ChatView: View {
     private var needsKey: Bool { store.settings.apiKey.isEmpty }
 
     private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.thinking
+        // 光发图不说话也行——「这是什么」有时候不必打字。
+        let hasText = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return (hasText || !shots.isEmpty) && !store.thinking
     }
 
     private func submit() {
         let q = draft
+        let imgs = shots
         draft = ""
+        shots = []
         Haptics.tap()
         // 不在这儿收键盘：刚发完还想接着补一句是常事。
         // 等它真动起手来（操作列表冒出来）再收，那会儿是要看它干什么。
-        Task { await store.send(q) }
+        Task { await store.send(q, images: imgs) }
     }
 
     private func startWith(_ text: String) {

@@ -725,6 +725,11 @@ struct AskInput: Codable {
     var health: String = ""
     /// 邮箱账号。空的话这一轮就没有邮件能力。
     var accounts: [MailAccountInput] = []
+    /// 这一轮随话一起发的图片（data URL）。
+    ///
+    /// **只跟这一轮走，不进会话存档**：图片按 token 算贵得多，存进历史
+    /// 每轮都重发一遍，几轮下来就把上下文撑爆了、钱也白花。
+    var images: [String] = []
 }
 
 /// 传给 Go 的邮箱账号。密码从 iOS 钥匙串取出来现填，不进 UserDefaults。

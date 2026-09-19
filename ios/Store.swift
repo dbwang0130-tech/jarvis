@@ -171,9 +171,10 @@ final class Store: ObservableObject, AskEvents {
         await send(question)
     }
 
-    func send(_ question: String) async {
+    func send(_ question: String, images: [Data] = []) async {
         let text = question.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !thinking else { return }
+        // 光发图不说话也行——「这是什么」有时候不必打字。
+        guard !text.isEmpty || !images.isEmpty, !thinking else { return }
         guard settings.model.provider.isEmpty == false,
               settings.apiKey.isEmpty == false else {
             lastError = "还没配模型，去设置里填一下"
@@ -183,7 +184,11 @@ final class Store: ObservableObject, AskEvents {
         // 这条只为让界面立刻有反应。传给 Go 的 history 必须是**这轮之前**的——
         // agent.Ask 自己会把提问追加进去，把它一起传过去就成了两条。
         let history = messages.filter { $0.role != "__local" }
-        messages.append(Message(role: "user", content: text))
+        // 存档里只留一句「[图片]」，不留图本身：会话存档会反复读写，
+        // 塞几张几百 KB 的图进去，它就不再是个能随手读的小文件了。
+        let shown = images.isEmpty ? text
+                                   : (text.isEmpty ? "[图片]" : "[图片] " + text)
+        messages.append(Message(role: "user", content: shown))
         steps = []
         thinking = true
         defer { thinking = false }
@@ -191,10 +196,11 @@ final class Store: ObservableObject, AskEvents {
         var model = settings.model
         model.apiKey = settings.apiKey
 
-        let input = AskInput(files: files, ledger: ledger, question: text,
+        var input = AskInput(files: files, ledger: ledger, question: text,
                              history: history, model: model, profile: settings.profile,
                              memory: memory, health: health,
                              accounts: settings.mailAccounts())
+        input.images = images.map { "data:image/jpeg;base64," + $0.base64EncodedString() }
 
         let out = await Task.detached(priority: .userInitiated) { [weak self] in
             Bridge.ask(input, events: self)

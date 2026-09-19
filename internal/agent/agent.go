@@ -237,12 +237,23 @@ func weekdayCN(t time.Time) string {
 
 // Ask 向秘书提一个问题或下达一条指令，emit 用于接收中间进度。
 func (a *Agent) Ask(ctx context.Context, input string, emit func(Event)) (string, error) {
+	return a.AskWith(ctx, input, nil, emit)
+}
+
+// AskWith 跟 Ask 一样，但这一轮可以带几张图。
+//
+// **图片只跟当前这一轮走。** 它们挂在刚追加的那条用户消息上，随着对话
+// 往下走会留在 History 里——这是有意的：模型下一步调工具时可能还要回头
+// 看那张图（「把小票上的金额记下来」是两步）。但 Swift 那边不会把图片
+// 存进会话存档，所以下次启动 app 时它们不会跟着回来。
+func (a *Agent) AskWith(ctx context.Context, input string, images []string,
+	emit func(Event)) (string, error) {
 	if emit == nil {
 		emit = func(Event) {}
 	}
 	a.maybeCompact(ctx, emit)
 
-	a.History = append(a.History, Message{Role: "user", Content: input})
+	a.History = append(a.History, Message{Role: "user", Content: input, Images: images})
 	tools := a.wireTools()
 
 	for step := 0; step < a.MaxSteps; step++ {

@@ -33,6 +33,12 @@ type AskInput struct {
 	Ledger string `json:"ledger"`
 	// Question 是用户这次说的话。
 	Question string `json:"question"`
+	// Images 是这一轮随话一起发的图片（data URL）。
+	//
+	// **只跟这一轮走，不进历史。** 图片按 token 算贵得多，留在历史里
+	// 每轮都重发一遍，几轮下来就把上下文撑爆了、钱也白花。人要是还想
+	// 问这张图，再发一次就是。
+	Images []string `json:"images"`
 	// History 是之前几轮的对话，原样从上次的出参里拿回来。
 	History []agent.Message `json:"history"`
 	// TZ 是设备的时区名，见 SetTimeZone。
@@ -222,7 +228,7 @@ func askWith(inputJSON string, host Host) string {
 
 	var steps []Step
 	ctx := startCancelable()
-	reply, err := ag.Ask(ctx, in.Question, hostEmit(host, &steps))
+	reply, err := ag.AskWith(ctx, in.Question, in.Images, hostEmit(host, &steps))
 	endCancelable()
 
 	// 被叫停时**不能当成失败**：工具已经改过的文件就在临时目录里，
