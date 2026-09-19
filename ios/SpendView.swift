@@ -15,6 +15,8 @@ struct SpendView: View {
 
     /// 账本里已有的科目，按大类分好。
     let accounts: [Account]
+    /// 从 Siri 带进来的金额，进来就填好。
+    var preset: Double?
 
     @State private var payee = ""
     @State private var amount = ""
@@ -127,7 +129,13 @@ struct SpendView: View {
                 }
             }
             .onAppear {
-                focused = true
+                if let a = preset, amount.isEmpty {
+                    // 金额已经说过了，光标就别再往那儿跳——该填的是
+                    // 「买的什么」。
+                    amount = trimZeros(a)
+                } else {
+                    focused = true
+                }
                 // 上次用的那两个先填上——连着记几笔多半是同一张卡。
                 if from.isEmpty { from = sources.first?.name ?? "" }
                 if to.isEmpty { to = targets.first?.name ?? "" }

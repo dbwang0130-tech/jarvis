@@ -117,6 +117,8 @@ struct ToolStrip: View {
 /// 手势本身就说明了它是临时的。
 struct ToolSheet: View {
     let tool: Tool
+    /// Siri 说「记一笔账」时带来的金额，一路传到那张表单。
+    var spendAmount: Double?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -137,7 +139,7 @@ struct ToolSheet: View {
         case .planner: PlannerView()
         case .health:  HealthTab()
         case .mail:    MailTab()
-        case .ledger:  LedgerTab()
+        case .ledger:  LedgerTab(spendAmount: spendAmount)
         }
     }
 }

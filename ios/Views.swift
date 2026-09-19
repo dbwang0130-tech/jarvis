@@ -391,6 +391,8 @@ struct TodosView: View {
 
 struct LedgerTab: View {
     @EnvironmentObject var store: Store
+    /// Siri 带来的金额：有的话一进来就把记账表单摆开，金额先填上。
+    var spendAmount: Double?
     @State private var showTxns = false
     @State private var adding = false
 
@@ -468,7 +470,13 @@ struct LedgerTab: View {
             }
         }
         .sheet(isPresented: $adding) {
-            SpendView(accounts: store.snapshot.ledger?.accounts ?? [])
+            SpendView(accounts: store.snapshot.ledger?.accounts ?? [],
+                      preset: spendAmount)
+        }
+        // Siri 说了金额就直接摆开表单——人已经开口说过「记一笔 35」，
+        // 再让他自己点一下「+」等于白说。
+        .task {
+            if spendAmount != nil { adding = true }
         }
     }
 }
@@ -1004,8 +1012,11 @@ struct ChatView: View {
     @State private var openSettings = false
     @State private var tool: Tool?
     @State private var askClear = false
+    /// Siri 说「记一笔账」时带来的金额，交给财务页把表单摆好。
+    @State private var spendAmount: Double?
     @State private var entered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var phase
     @FocusState private var focused: Bool
     /// 发送键跟着字号长。写死 38 的话，输入框在无障碍档位下长高了，
     /// 旁边这颗还是原样，看着像掉在坑里。
@@ -1021,12 +1032,18 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             // 秘书要做收不回来的事（比如发信）会停在这儿等。
             .sheet(item: $store.pending) { ConfirmSheet(ask: $0) }
-            .sheet(item: $tool) { ToolSheet(tool: $0) }
+            .sheet(item: $tool) { ToolSheet(tool: $0, spendAmount: spendAmount) }
             // 点了「该收信了」那条通知：直接开邮件页，那边看到标记会自己
             // 收一次。通知里说的是「点一下，我这就去收」，那就得真去收，
             // 不能把人扔在对话页自己找。
             .onChange(of: store.wantsMailCheck) { _, want in
                 if want { tool = .mail }
+            }
+            // Siri / 快捷指令带进来的那一件事。起来时取一次；切回前台也
+            // 取一次——app 已经开着的时候喊 Siri，走的是后面那条。
+            .task { await takeIntent() }
+            .onChange(of: phase) { _, now in
+                if now == .active { Task { await takeIntent() } }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -1195,6 +1212,24 @@ struct ChatView: View {
     private func startWith(_ text: String) {
         draft = text
         focused = true
+    }
+
+    /// 取走 Siri / 快捷指令留下的那件事。
+    ///
+    /// 说的话直接发出去，不填进输入框等人再按一下——人已经开口说过了，
+    /// 再让他确认一遍等于白说。记账则是把表单摆好：科目得挑，而挑科目
+    /// 要看到账本里有哪些，Siri 那头给不了。
+    private func takeIntent() async {
+        guard let task = IntentInbox.take() else { return }
+        switch task {
+        case .say(let text):
+            let q = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !q.isEmpty else { return }
+            await store.send(q)
+        case .spend(let amount):
+            spendAmount = amount
+            tool = .ledger
+        }
     }
 
     // 工具调用和系统提示那些中间消息不用给人看。
