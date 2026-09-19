@@ -1185,31 +1185,43 @@ struct ChatView: View {
             // 也得能反悔。
             if !shots.isEmpty {
                 ShotStrip(shots: $shots)
+                    // **得有自己的底。** 这一条跟输入框一样浮在对话之上，
+                    // 没有底的话下面滚过去的气泡会从图的缝隙里透上来，
+                    // 看着像是图片糊了——跟「还没填模型密钥」那条当初
+                    // 踩的是同一个坑。
+                    .background(.bar, in: .rect(cornerRadius: Brand.radius))
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
             }
 
             GlassEffectContainer(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
                     // 想说的话可能不止一行，让它自己长，最多六行。
-                    // 麦克风和相机摆在输入框**里面**右侧，不另起两颗：
-                    // 输入区就那么宽，再加两颗独立的圆钮，输入框会被挤到
-                    // 放不下一行字。
+                    // 相机在左、麦克风在右，**分开站**。
+                    //
+                    // 三颗都堆在右边（相机、麦克风，外面还有发送）的话，
+                    // 指头落下去那一片全是按钮，想发图点成了发送、想说话
+                    // 点成了发图。左右分开，误点就没了。
                     //
                     // 用 HStack 而不是 overlay：overlay 叠在 padding 之后的
                     // 整块区域上，靠 alignment 加 offset 去凑位置，多行输入
                     // 长高之后就会飘。摆进 HStack，位置是算出来的。
+                    //
+                    // 垂直方向按**底部**对齐，但两颗按钮各往上提 5pt：
+                    // TextField 自带 11pt 的上下留白，纯按底边对齐的话，
+                    // 按钮会沉到那片留白里，看着比文字低一截。
                     HStack(alignment: .bottom, spacing: 2) {
+                        PhotoButton(shots: $shots)
+                            .padding(.bottom, 5)
                         TextField(shots.isEmpty ? "说点什么" : "问问这张图",
                                   text: $draft, axis: .vertical)
                             .lineLimit(1...6)
                             .padding(.vertical, 11)
                             .focused($focused)
-                        PhotoButton(shots: $shots)
-                            .padding(.bottom, 2)
                         MicButton(draft: $draft)
-                            .padding(.bottom, 2)
+                            .padding(.bottom, 5)
                     }
-                    .padding(.leading, 16)
-                    .padding(.trailing, 5)
+                    .padding(.horizontal, 6)
                     .glassEffect(.regular, in: .capsule)
 
                     Button(action: submit) {
