@@ -133,6 +133,16 @@ type Config struct {
 	Profile  Profile       `json:"profile"`
 	Behavior Behavior      `json:"behavior"`
 	Accounts []MailAccount `json:"accounts"`
+	// MailCheckTimes 是每天什么时候自动收一次信，形如 ["08:30", "12:00"]。
+	//
+	// 空着就不自动收。这件事只有装了后台提醒（launchd 每五分钟跑一次
+	// `jarvis remind`）才会发生——手机上办不到，iOS 不让 app 在后台按点
+	// 醒来连网。
+	//
+	// 为什么要能设好几个：收信这事的节奏因人而异，有人早上看一次就够，
+	// 有人上午下午各一次。定成固定间隔（比如「每两小时」）的话，半夜
+	// 也在收，白白吵醒你的电脑。
+	MailCheckTimes []string `json:"mail_check_times,omitempty"`
 }
 
 // Default 返回默认配置。

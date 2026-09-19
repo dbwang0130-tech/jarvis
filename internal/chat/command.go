@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/dabao/jarvis/internal/agent"
@@ -33,6 +34,7 @@ var commands = []command{
 	{"/mouse", "[on|off]", "鼠标滚轮 / 拖选复制，二选一"},
 	{"/dream", "", "整理记忆"},
 	{"/remind", "", "装上后台提醒"},
+	{"/mailcheck", "[时间...]", "每天几点自动收信（如 08:30 12:00），留空看当前设置"},
 	{"/remindrm", "", "移除后台提醒"},
 	{"/clear", "", "清空对话上下文"},
 	{"/new", "", "另起一个会话"},
@@ -111,6 +113,8 @@ func (s *Session) runCommand(input string) bool {
 		s.cfg.Agent.Model = arg
 		s.saveCfg()
 		s.reloadAgent("已切换模型 " + arg)
+	case "/mailcheck":
+		s.setMailCheck(arg)
 	case "/theme":
 		if arg == "" {
 			note("当前主题：%s", s.cfg.Theme)
@@ -366,4 +370,56 @@ func (s *Session) addMail() {
 	s.mailS.SetConfig(s.cfg)
 	s.saveCfg()
 	s.reloadAgent("已添加邮箱 " + name)
+}
+
+// setMailCheck 设定每天几点自动收信。
+//
+// 这件事只有装了后台提醒才会发生——launchd 每五分钟跑一次 `jarvis remind`，
+// 到点那一趟顺手连一次 IMAP。没装的话说清楚，别让人以为设了就会收。
+func (s *Session) setMailCheck(arg string) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		if len(s.cfg.MailCheckTimes) == 0 {
+			note("还没设自动收信。用法：/mailcheck 08:30 12:00 18:00")
+		} else {
+			note("每天 %s 自动收信", strings.Join(s.cfg.MailCheckTimes, "、"))
+			if !remindInstalled() {
+				fail("但后台提醒还没装，这几个点不会真的去收——先 /remind")
+			}
+		}
+		return
+	}
+
+	if arg == "off" || arg == "关" {
+		s.cfg.MailCheckTimes = nil
+		s.saveCfg()
+		note("不再自动收信")
+		return
+	}
+
+	var times []string
+	for _, f := range strings.Fields(arg) {
+		if !validHM(f) {
+			fail("%q 看不懂，要 08:30 这样的写法", f)
+			return
+		}
+		times = append(times, f)
+	}
+	s.cfg.MailCheckTimes = times
+	s.saveCfg()
+	note("每天 %s 自动收信", strings.Join(times, "、"))
+	if !remindInstalled() {
+		fail("后台提醒还没装，这几个点不会真的去收——先 /remind")
+	}
+}
+
+// validHM 认 8:30 / 08:30 这两种写法。
+func validHM(s string) bool {
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 {
+		return false
+	}
+	h, err1 := strconv.Atoi(parts[0])
+	m, err2 := strconv.Atoi(parts[1])
+	return err1 == nil && err2 == nil && h >= 0 && h <= 23 && m >= 0 && m <= 59
 }

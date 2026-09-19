@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dabao/jarvis/internal/chat"
 	"github.com/dabao/jarvis/internal/config"
+	"github.com/dabao/jarvis/internal/mail"
 	"github.com/dabao/jarvis/internal/remind"
 )
 
@@ -68,6 +70,16 @@ func runRemind() error {
 		}
 	}
 
+	// 到点收信。这是**桌面端独有**的：launchd 每五分钟给一次运行机会，
+	// 拿它真的连一趟 IMAP。手机上办不到——iOS 不让 app 在后台按点醒来连网。
+	if slot, due := remind.MailDue(cfg.MailCheckTimes, now, reminded); due {
+		if text := checkMail(cfg, slot); text != "" {
+			if err := remind.Notify(text); err != nil {
+				fmt.Fprintf(os.Stderr, "发通知失败：%v\n", err)
+			}
+		}
+	}
+
 	for _, text := range remind.Check(coll, now, reminded) {
 		if err := remind.Notify(text); err != nil {
 			// launchd 把 stdout/stderr 收进 /tmp/jarvis-remind.log，
@@ -76,4 +88,56 @@ func runRemind() error {
 		}
 	}
 	return store.Save(reminded)
+}
+
+// checkMail 收一趟信，把「有几封新的、都是谁来的」攒成一句话。
+//
+// **不自动分拣。** 判断要紧不要紧要调模型，而这是个在后台自己跑的任务：
+// 人可能不在电脑前，一天三趟悄悄花钱不合适；何况看一眼发件人多半就知道
+// 要不要紧了。想让秘书过一遍，打开 app 说一句就是。
+//
+// 一封新的都没有就不吭声——「没有新邮件」也是一次打扰。
+func checkMail(cfg config.Config, slot string) string {
+	if len(cfg.Enabled()) == 0 {
+		return ""
+	}
+	sess := mail.NewSession(cfg)
+	defer sess.Close()
+
+	r := sess.Sync()
+	if len(r.New) == 0 {
+		// 连不上也不吵人：网不好、密码过期这类事，留在日志里就行，
+		// 没必要每两小时弹一次「收信失败」。
+		for name, err := range r.Errors {
+			fmt.Fprintf(os.Stderr, "%s 收信失败：%v\n", name, err)
+		}
+		return ""
+	}
+
+	// 列几个发件人，不列主题：通知栏就那么宽，主题多半被截断，
+	// 而「谁来的信」才是决定现在要不要去看的那个信息。
+	var who []string
+	seen := map[string]bool{}
+	for _, it := range r.New {
+		name := it.Msg.FromName
+		if name == "" {
+			name = it.Msg.FromAddr
+		}
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		if len(who) < 3 {
+			who = append(who, name)
+		}
+	}
+
+	text := fmt.Sprintf("%s 收信：%d 封新的", slot, len(r.New))
+	if len(who) > 0 {
+		text += "，来自 " + strings.Join(who, "、")
+		if len(seen) > len(who) {
+			text += " 等"
+		}
+	}
+	return text
 }

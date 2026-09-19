@@ -11,6 +11,7 @@ import (
 
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/config"
+	"strconv"
 )
 
 // Skill 是对 jarvis 配置文件的读写技能。
@@ -133,6 +134,7 @@ func (s *Skill) toolSet() agent.Tool {
 				"theme":              str("界面主题：dark / light / auto"),
 				"files":              arr("org 文件或目录列表"),
 				"inbox":              str("新建条目默认写入的文件"),
+				"mail_check_times":   arr("每天几点自动收信，如 [\"08:30\", \"12:00\"]；空数组表示不自动收。要装了后台提醒才生效"),
 			}),
 		},
 		run: func(raw string) (string, bool, error) {
@@ -222,6 +224,7 @@ type patch struct {
 	Theme            *string   `json:"theme"`
 	Files            *[]string `json:"files"`
 	Inbox            *string   `json:"inbox"`
+	MailCheckTimes   *[]string `json:"mail_check_times"`
 }
 
 func (p *patch) apply(cfg *config.Config) {
@@ -285,6 +288,17 @@ func (p *patch) apply(cfg *config.Config) {
 	if p.Inbox != nil {
 		cfg.Inbox = *p.Inbox
 	}
+	if p.MailCheckTimes != nil {
+		// 顺手滤掉写错的：配置是人手写的、也可能是模型填的，留着一个
+		// "八点半" 在那儿，到点那趟只会默默跳过，没人知道为什么不收信。
+		var ok []string
+		for _, t := range *p.MailCheckTimes {
+			if hhmmOK(t) {
+				ok = append(ok, t)
+			}
+		}
+		cfg.MailCheckTimes = ok
+	}
 }
 
 func (p *patch) summary() string {
@@ -335,4 +349,15 @@ func mask(s string) string {
 		return strings.Repeat("*", len(r))
 	}
 	return string(r[:4]) + "…" + string(r[len(r)-4:])
+}
+
+// hhmmOK 认 8:30 / 08:30 这两种写法。
+func hhmmOK(s string) bool {
+	parts := strings.Split(strings.TrimSpace(s), ":")
+	if len(parts) != 2 {
+		return false
+	}
+	h, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+	m, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+	return err1 == nil && err2 == nil && h >= 0 && h <= 23 && m >= 0 && m <= 59
 }

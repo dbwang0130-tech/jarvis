@@ -193,3 +193,35 @@ func TestSavedConfigIsPrivate(t *testing.T) {
 		t.Fatalf("配置文件权限是 %o，该是 600", perm)
 	}
 }
+
+// 自动收信的时间点由秘书代设是常事（「以后每天早上八点半和下午六点收信」），
+// 而写错的那个到点只会默默跳过，没人知道为什么不收——所以入口处就滤掉。
+func TestSetMailCheckTimes(t *testing.T) {
+	s, path := newSkill(t, config.Default())
+
+	call(t, s, "set_config", map[string]any{
+		"mail_check_times": []string{"08:30", "八点半", "18:00", "25:70"},
+	})
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"08:30", "18:00"}
+	if len(cfg.MailCheckTimes) != len(want) {
+		t.Fatalf("存下来的是 %v，该是 %v", cfg.MailCheckTimes, want)
+	}
+	for i, w := range want {
+		if cfg.MailCheckTimes[i] != w {
+			t.Errorf("第 %d 个是 %q，该是 %q", i, cfg.MailCheckTimes[i], w)
+		}
+	}
+
+	// 空数组是「不再自动收信」，不是「没传」——这跟数值字段那个已知的
+	// 零值问题不是一回事：切片能分清 nil 和空。
+	call(t, s, "set_config", map[string]any{"mail_check_times": []string{}})
+	cfg, _ = config.Load(path)
+	if len(cfg.MailCheckTimes) != 0 {
+		t.Errorf("没关掉：%v", cfg.MailCheckTimes)
+	}
+}
