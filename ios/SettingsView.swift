@@ -146,6 +146,30 @@ struct SettingsView: View {
                          + "所以在电脑上新加的事，手机上得打开一次才会排上它的提醒。")
                 }
 
+                // 端上模型的状态。不摆出来的话，用不了的时候界面只是
+                // 少一颗按钮，人不知道是没这功能还是坏了。
+                Section {
+                    HStack {
+                        Label("端上模型", systemImage: "cpu")
+                        Spacer()
+                        if LocalModel.available {
+                            Label("可用", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .labelStyle(.titleAndIcon)
+                                .font(.caption)
+                        } else {
+                            Text(LocalModel.unavailableReason ?? "用不了")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                } footer: {
+                    Text("用它把「明天三点跟老张开会」这种话拆成字段填进表单："
+                         + "在这台设备上算，不联网、不花钱、一个字不上传。"
+                         + "用不了也不影响别的——那只是省几下打字。")
+                }
+
                 Section {
                     NavigationLink {
                         MailAccountsView()

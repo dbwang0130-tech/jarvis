@@ -14,6 +14,10 @@ struct QuickAddView: View {
     @State private var priority = ""
     @State private var file = ""
     @State private var saving = false
+    @State private var parsing = false
+    /// 已经认过一次了，别一直挂着那颗按钮——认出来的东西就在下面摆着，
+    /// 人改完之后再让他「重认」只会把改动冲掉。
+    @State private var parsed = false
     @FocusState private var focused: Bool
 
     enum When: String, CaseIterable {
@@ -31,6 +35,36 @@ struct QuickAddView: View {
                         .lineLimit(1...3)
                         .focused($focused)
                         .onSubmit(save)
+                        // 说一句，下面的字段自己填好。
+                        //
+                        // 端上模型只做**提取**，填进表单让人过目，从不直接
+                        // 落盘——它把「三点」听成「三十」的时候，那一眼是
+                        // 唯一的拦截点。
+                        .overlay(alignment: .trailingLastTextBaseline) {
+                            MicButton(draft: $title).offset(y: 6)
+                        }
+                }
+
+                if LocalModel.available && !title.trimmed.isEmpty && !parsed {
+                    Section {
+                        Button {
+                            Task { await autofill() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if parsing {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Image(systemName: "wand.and.sparkles")
+                                }
+                                Text(parsing ? "读一下…" : "从这句话里认出时间")
+                                Spacer(minLength: 0)
+                            }
+                            .font(.subheadline)
+                        }
+                        .disabled(parsing)
+                    } footer: {
+                        Text("在这台设备上认，不联网、不花钱。认完你再看一眼。")
+                    }
                 }
 
                 Section("什么时候") {
@@ -90,6 +124,57 @@ struct QuickAddView: View {
             }
         }
         .onAppear { focused = true }
+    }
+
+    /// 让端上模型把这句话拆开，填进下面的字段。
+    ///
+    /// **只填空着的**：人已经挑了日期又去认一遍，认出来的把他挑的冲掉，
+    /// 那比不认还糟。
+    private func autofill() async {
+        let said = title.trimmed
+        guard !said.isEmpty, !parsing else { return }
+        parsing = true
+        defer { parsing = false }
+
+        guard let got = await LocalModel.parseTask(said) else {
+            parsed = true   // 认不出来就别再摆那颗按钮了
+            return
+        }
+        parsed = true
+
+        if !got.title.trimmed.isEmpty {
+            title = got.title.trimmed
+        }
+        guard when == .none, let day = parseDay(got.date) else { return }
+
+        // 只说了日期没说钟点，就别自作主张定个时刻——不带时刻的条目
+        // 是整天的事，不会到点弹提醒，这对「买牛奶」正合适。
+        if let clock = parseClock(got.time) {
+            at = Calendar.current.date(bySettingHour: clock.0, minute: clock.1,
+                                       second: 0, of: day) ?? day
+            when = .pick
+        } else {
+            at = day
+            when = .pick
+            // 正好是今天或明天的话，用那两个现成的档，比摆个日期选择器清楚。
+            if Calendar.current.isDateInToday(day) { when = .today }
+            if Calendar.current.isDateInTomorrow(day) { when = .tomorrow }
+        }
+        Haptics.done()
+    }
+
+    private func parseDay(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: s.trimmed)
+    }
+
+    private func parseClock(_ s: String) -> (Int, Int)? {
+        let parts = s.trimmed.split(separator: ":")
+        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]),
+              (0...23).contains(h), (0...59).contains(m) else { return nil }
+        return (h, m)
     }
 
     private func save() {
