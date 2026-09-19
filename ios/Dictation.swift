@@ -29,6 +29,14 @@ final class Dictation: ObservableObject {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private let engine = AVAudioEngine()
 
+    /// 松手比启动还快时，记一笔「起来了就马上停」。
+    ///
+    /// **这是个真会发生的竞态**：start() 是异步的（要问两个权限、开音频
+    /// 会话），而按一下松手只要一百毫秒。松手那会儿 listening 还是 false，
+    /// 停止的处理被挡掉；等 start() 跑完把 listening 置为 true——麦克风
+    /// 就再也关不掉了，状态栏那个红点一直亮着。
+    private var stopWanted = false
+
     /// 这台机器能不能本机识别中文。
     ///
     /// 静态属性而不是每次问一遍：界面要拿它决定显不显示麦克风按钮，
@@ -44,6 +52,7 @@ final class Dictation: ObservableObject {
         guard !listening else { return }
         text = ""
         problem = nil
+        stopWanted = false
 
         guard await authorize() else { return }
         guard let recognizer, recognizer.isAvailable else {
@@ -68,6 +77,13 @@ final class Dictation: ObservableObject {
         req.requiresOnDeviceRecognition = true  // 一个字不上传
         request = req
 
+        // 权限和音频会话都办完了，这会儿再看一眼手还在不在——
+        // 不在就当没开始过。
+        if stopWanted {
+            finish()
+            return
+        }
+
         task = recognizer.recognitionTask(with: req) { [weak self] result, error in
             guard let self else { return }
             Task { @MainActor in
@@ -85,15 +101,21 @@ final class Dictation: ObservableObject {
     }
 
     /// 停下，把听到的交出去。
+    ///
+    /// 随时能调，包括 start() 还没跑完的时候——那种情况下记个标记，
+    /// 等它起来了自己收摊。
     @discardableResult
     func stop() -> String {
+        stopWanted = true
         let said = text
         finish()
         return said
     }
 
     private func finish() {
-        guard listening || engine.isRunning else { return }
+        // 别用 listening 单独判：start() 半路上被叫停时它还是 false，
+        // 而音频会话和 tap 可能已经开了，不收拾就一直挂着。
+        guard listening || engine.isRunning || task != nil else { return }
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         request?.endAudio()
@@ -151,13 +173,19 @@ struct MicButton: View {
     @Binding var draft: String
     @StateObject private var dictation = Dictation()
     @State private var before = ""
+    /// 手指还按着。
+    ///
+    /// **不能用 dictation.listening 判**：DragGesture 的 onChanged 一秒
+    /// 能来几十次，而 start() 是异步的——那段时间里 listening 一直是 false，
+    /// 于是每一次 onChanged 都会再起一个 start()。
+    @State private var pressing = false
 
     var body: some View {
         if Dictation.available {
             Image(systemName: dictation.listening ? "waveform" : "mic.fill")
                 .font(.system(.headline, weight: .semibold))
                 .foregroundStyle(dictation.listening ? Color.white : Color.secondary)
-                .frame(width: 38, height: 38)
+                .frame(width: 34, height: 34)
                 .background {
                     if dictation.listening {
                         Circle().fill(Brand.primary)
@@ -168,13 +196,17 @@ struct MicButton: View {
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { _ in
-                            guard !dictation.listening else { return }
+                            guard !pressing else { return }
+                            pressing = true
                             before = draft
                             Haptics.tap()
                             Task { await dictation.start() }
                         }
                         .onEnded { _ in
-                            guard dictation.listening else { return }
+                            guard pressing else { return }
+                            pressing = false
+                            // 不看 listening：start() 可能还没跑完，
+                            // 那种情况 stop() 会记个标记让它起来就收。
                             dictation.stop()
                             Haptics.done()
                         })

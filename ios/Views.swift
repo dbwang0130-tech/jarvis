@@ -1165,20 +1165,24 @@ struct ChatView: View {
             GlassEffectContainer(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
                     // 想说的话可能不止一行，让它自己长，最多六行。
-                    TextField("说点什么", text: $draft, axis: .vertical)
-                        .lineLimit(1...6)
-                        .padding(.leading, 16)
-                        .padding(.trailing, 4)
-                        .padding(.vertical, 11)
-                        // 麦克风摆在输入框**里面**右侧，不另起一颗：
-                        // 输入区就那么宽，再加一颗独立的圆钮，输入框会
-                        // 被挤到放不下一行字。
-                        .overlay(alignment: .trailingLastTextBaseline) {
-                            MicButton(draft: $draft)
-                                .offset(y: 6)
-                        }
-                        .glassEffect(.regular, in: .capsule)
-                        .focused($focused)
+                    // 麦克风摆在输入框**里面**右侧，不另起一颗：输入区就
+                    // 那么宽，再加一颗独立的圆钮，输入框会被挤到放不下
+                    // 一行字。
+                    //
+                    // 用 HStack 而不是 overlay：overlay 叠在 padding 之后的
+                    // 整块区域上，靠 alignment 加 offset 去凑位置，多行输入
+                    // 长高之后就会飘。摆进 HStack，位置是算出来的。
+                    HStack(alignment: .bottom, spacing: 2) {
+                        TextField("说点什么", text: $draft, axis: .vertical)
+                            .lineLimit(1...6)
+                            .padding(.vertical, 11)
+                            .focused($focused)
+                        MicButton(draft: $draft)
+                            .padding(.bottom, 2)
+                    }
+                    .padding(.leading, 16)
+                    .padding(.trailing, 5)
+                    .glassEffect(.regular, in: .capsule)
 
                     Button(action: submit) {
                         Image(systemName: store.thinking ? "ellipsis" : "arrow.up")
