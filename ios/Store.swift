@@ -15,6 +15,13 @@ final class Store: ObservableObject, AskEvents {
         didSet { overdueCount = snapshot.todos.filter { $0.overdue }.count }
     }
     @Published var loading = false
+
+    /// 点通知进来要办的事。
+    ///
+    /// 界面看到它就打开邮件页并立刻收一次——通知里说的是「点一下，我这就
+    /// 去收」，那就得真去收，而不是把人扔在对话页自己找。办完清空，
+    /// 免得下次切回前台又触发一遍。
+    @Published var wantsMailCheck = false
     @Published var lastError: String? {
         // 新的一条盖上来时，旧的那个重试办法就不作数了——照着它再试一次，
         // 试的是上一件事。谁报错谁顺手设 retry（`fail(_:retry:)`）。
@@ -358,6 +365,10 @@ final class Store: ObservableObject, AskEvents {
         await Notifier.reschedule(from: snapshot,
                                   leadMinutes: s.remindLead, enabled: s.remind,
                                   brief: s.brief, briefHour: s.briefHour)
+        // 收信提醒单独排：它是每天重复的，不跟着日程走，reschedule 里那趟
+        // 全清也不该把它带走。
+        await Notifier.scheduleMailChecks(s.mailCheckTimes,
+                                          enabled: !s.mailCheckTimes.isEmpty && !s.mail.isEmpty)
     }
 
     /// 叫停正在跑的那一轮。已经做完的改动会照常写回来，不会白干。
@@ -633,6 +644,12 @@ struct Settings: Codable {
     /// 到点提醒，以及提前几分钟。
     var remind = true
     var remindLead = 10
+    /// 每天几点提醒收信，形如 ["08:30", "18:00"]。
+    ///
+    /// 手机上到点只能**提醒**，不能自己去收——iOS 不让 app 在后台按点
+    /// 醒来连网。点一下通知 app 起来，那会儿在前台，才真的能连。
+    var mailCheckTimes: [String] = []
+
     /// 每天早上那一条简报，以及几点发。
     ///
     /// 默认开着：这是这个 app 唯一一次**主动开口**。不开的话它只在被问到
@@ -649,6 +666,7 @@ struct Settings: Codable {
 
     enum CodingKeys: String, CodingKey {
         case model, profile, mail, remind, remindLead, brief, briefHour
+        case mailCheckTimes = "mail_check_times"
     }
 
     /// 传给 Go 的那份：现从钥匙串取密码填上，只带配全了的账号。
@@ -675,6 +693,7 @@ struct Settings: Codable {
         remindLead = try c.decodeIfPresent(Int.self, forKey: .remindLead) ?? 10
         brief = try c.decodeIfPresent(Bool.self, forKey: .brief) ?? true
         briefHour = try c.decodeIfPresent(Int.self, forKey: .briefHour) ?? 8
+        mailCheckTimes = try c.decodeIfPresent([String].self, forKey: .mailCheckTimes) ?? []
     }
 
     static func load() -> Settings {

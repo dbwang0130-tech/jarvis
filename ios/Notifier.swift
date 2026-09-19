@@ -79,6 +79,63 @@ enum Notifier {
         }
     }
 
+    // MARK: - 到点提醒收信
+
+    /// 通知点击之后要办的事，写在 userInfo 里。
+    static let kindKey = "jarvis.kind"
+    static let kindMailCheck = "mailcheck"
+
+    /// 每天到点提醒一次「该收信了」，点一下 app 会自动收。
+    ///
+    /// **iOS 上只能做到这一步。** 系统不让 app 在后台按点醒来连网，所以
+    /// 「到点自己收好、把结果弹出来」在手机上办不到（桌面端有 launchd
+    /// 那个执行机会，见 `jarvis remind` 那条路）。
+    ///
+    /// 能做的是把那一下压到最短：通知到点弹出，点一下 app 起来、直接进
+    /// 邮件页、自己开始收——人只出一个动作，剩下的照旧是自动的。
+    ///
+    /// 用 repeats 的日历触发器：一个时间点只占一条待发名额（上限 64 条，
+    /// 「到点提醒」那些已经占掉不少），而且不必每次打开 app 都往后补排。
+    static func scheduleMailChecks(_ times: [String], enabled: Bool) async {
+        let center = UNUserNotificationCenter.current()
+        // 只撤自己这批，别动「到点提醒」和早上那条简报——它们是另一条路
+        // 排的，整个 removeAll 会把它们一起端掉。
+        let pending = await center.pendingNotificationRequests()
+        let mine = pending.map(\.identifier).filter { $0.hasPrefix(mailCheckPrefix) }
+        center.removePendingNotificationRequests(withIdentifiers: mine)
+
+        guard enabled, await isAuthorized() else { return }
+
+        for t in times {
+            guard let (h, m) = parseHM(t) else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = "该收信了"
+            content.body = "点一下，我这就去收"
+            content.sound = .default
+            content.userInfo = [kindKey: kindMailCheck]
+
+            var comps = DateComponents()
+            comps.hour = h
+            comps.minute = m
+            let request = UNNotificationRequest(
+                identifier: "\(mailCheckPrefix)\(h):\(m)",
+                content: content,
+                trigger: UNCalendarNotificationTrigger(dateMatching: comps, repeats: true))
+            try? await center.add(request)
+        }
+    }
+
+    private static let mailCheckPrefix = "jarvis.mailcheck."
+
+    /// 认 8:30 / 08:30 两种写法。写错的跳过——设置界面只让人从选择器里挑，
+    /// 但配置是存成字符串的，将来从别处同步过来一个怪值不该让整批排不上。
+    static func parseHM(_ s: String) -> (Int, Int)? {
+        let parts = s.split(separator: ":")
+        guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]),
+              (0...23).contains(h), (0...59).contains(m) else { return nil }
+        return (h, m)
+    }
+
     // MARK: - 每天早上那一条
 
     /// 每天早上一条简报：今天几件事、哪些今天截止、有几件逾期。
@@ -183,5 +240,35 @@ enum Notifier {
         f.dateFormat = "yyyy-MM-dd HH:mm"
         guard let at = f.date(from: "\(day) \(start)") else { return nil }
         return at.addingTimeInterval(-Double(lead) * 60)
+    }
+}
+
+/// 接住通知点击。
+///
+/// 通知里说的是「点一下，我这就去收」，那就得真去收——没有这一层的话，
+/// 点开只是把 app 叫起来，人还得自己去找邮件页，等于什么都没替他做。
+///
+/// 为什么要单独一个对象：UNUserNotificationCenterDelegate 是 UIKit 的
+/// 协议，得由一个长期活着的对象持有。SwiftUI 这边没有天然的落脚点，
+/// 所以挂在 App 上（`@UIApplicationDelegateAdaptor` 那套）。
+final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
+    /// 点击要办的事送到这儿。Store 在主线程上创建，所以回主线程再动它。
+    static weak var store: Store?
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse) async {
+        let info = response.notification.request.content.userInfo
+        guard info[Notifier.kindKey] as? String == Notifier.kindMailCheck else { return }
+        await MainActor.run { Self.store?.wantsMailCheck = true }
+    }
+
+    /// app 正开着的时候也把通知显示出来。
+    ///
+    /// 默认行为是前台不显示——可这条通知的全部意义就是「提醒你现在去收」，
+    /// 人正看着别的页面时尤其需要它冒出来。
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification) async
+        -> UNNotificationPresentationOptions {
+        [.banner, .sound]
     }
 }

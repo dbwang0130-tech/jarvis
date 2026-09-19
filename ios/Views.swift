@@ -17,6 +17,9 @@ struct RootView: View {
             }
         }
         .environmentObject(store)
+        // 通知点击要能找到 store。AppDelegate 那边挂 delegate 时 store
+        // 还没建出来，所以反过来由这儿交过去。
+        .onAppear { NotificationRouter.store = store }
         .tint(Brand.primary)
         // 图标那个人是圆润的软塑感，字跟着圆一点才像一家人。
         .fontDesign(.rounded)
@@ -1019,6 +1022,12 @@ struct ChatView: View {
             // 秘书要做收不回来的事（比如发信）会停在这儿等。
             .sheet(item: $store.pending) { ConfirmSheet(ask: $0) }
             .sheet(item: $tool) { ToolSheet(tool: $0) }
+            // 点了「该收信了」那条通知：直接开邮件页，那边看到标记会自己
+            // 收一次。通知里说的是「点一下，我这就去收」，那就得真去收，
+            // 不能把人扔在对话页自己找。
+            .onChange(of: store.wantsMailCheck) { _, want in
+                if want { tool = .mail }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { askClear = true } label: {

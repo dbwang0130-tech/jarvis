@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var remindLead = 10
     @State private var brief = true
     @State private var briefHour = 8
+    @State private var mailCheckTimes: [String] = []
     @State private var check: ModelCheck?
 
     /// 跟桌面端那份预设表一致。
@@ -120,6 +121,22 @@ struct SettingsView: View {
                             Label("几点说", systemImage: "alarm")
                         }
                         .onChange(of: briefHour) { _, _ in saveRemind() }
+                    }
+                    // 到点提醒收信。手机上只能提醒，不能自己去收——
+                    // 点一下通知 app 起来，那会儿在前台才真的能连。
+                    if !store.settings.mail.isEmpty {
+                        NavigationLink {
+                            MailCheckTimes(times: $mailCheckTimes, onChange: saveRemind)
+                        } label: {
+                            HStack {
+                                Label("提醒收信", systemImage: "envelope.badge.clock")
+                                Spacer()
+                                Text(mailCheckTimes.isEmpty ? "关"
+                                     : mailCheckTimes.joined(separator: " "))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 } footer: {
                     Text("「到点提醒」只管排了具体钟点的事。"
@@ -245,6 +262,7 @@ struct SettingsView: View {
         s.remindLead = remindLead
         s.brief = brief
         s.briefHour = briefHour
+        s.mailCheckTimes = mailCheckTimes
         s.save()
         store.settings = s
         Task { await store.refreshReminders() }
@@ -261,6 +279,7 @@ struct SettingsView: View {
         remindLead = s.remindLead
         brief = s.brief
         briefHour = s.briefHour
+        mailCheckTimes = s.mailCheckTimes
     }
 
     private func save() {
@@ -273,5 +292,86 @@ struct SettingsView: View {
         s.save()
         store.settings = s
         dismiss()
+    }
+}
+
+/// 每天几点提醒收信。可以设好几个。
+///
+/// **为什么是「好几个点」而不是「每隔 N 小时」**：固定间隔的话半夜也在响。
+/// 收信的节奏因人而异，有人早上看一次就够，有人上午下午各一次。
+struct MailCheckTimes: View {
+    @Binding var times: [String]
+    let onChange: () -> Void
+
+    @State private var adding = false
+    @State private var newTime = Date()
+
+    var body: some View {
+        List {
+            Section {
+                if times.isEmpty {
+                    Text("还没设。到点会提醒你，点一下就自动收。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(times, id: \.self) { t in
+                    Text(t).font(.body.monospacedDigit())
+                }
+                .onDelete { idx in
+                    times.remove(atOffsets: idx)
+                    onChange()
+                }
+
+                Button {
+                    newTime = Calendar.current.date(
+                        bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+                    adding = true
+                } label: {
+                    Label("加一个时间", systemImage: "plus")
+                }
+            } footer: {
+                Text("手机上到点只能**提醒**——iOS 不让 app 在后台按点醒来连网。"
+                     + "点一下那条通知，app 会打开邮件页并立刻收一次。\n\n"
+                     + "电脑上装了后台提醒的话（`/remind`），那边是真的到点自己收。")
+            }
+        }
+        .navigationTitle("提醒收信")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { EditButton() }
+        .sheet(isPresented: $adding) { picker }
+    }
+
+    private var picker: some View {
+        NavigationStack {
+            DatePicker("几点", selection: $newTime, displayedComponents: [.hourAndMinute])
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .padding()
+                .navigationTitle("加一个时间")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("算了") { adding = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("加上") { add() }
+                    }
+                }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func add() {
+        adding = false
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm"
+        let t = f.string(from: newTime)
+        // 已经有了就不重复加——同一个点排两条通知，到点会响两声。
+        guard !times.contains(t) else { return }
+        times.append(t)
+        times.sort()
+        onChange()
+        Haptics.done()
     }
 }

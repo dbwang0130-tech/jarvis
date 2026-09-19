@@ -129,6 +129,13 @@ struct MailTab: View {
             Text("移进垃圾箱，服务器上还能找回来。")
         }
         .task { reload() }
+        // 从「该收信了」那条通知点进来的：立刻收一次，别让人再点一下
+        // 右上角。标记用完就清，免得下次切回前台又收一遍。
+        .task(id: store.wantsMailCheck) {
+            guard store.wantsMailCheck else { return }
+            store.wantsMailCheck = false
+            await sync()
+        }
         // 关键词变了要重分一次组。分组结果存在 @State 里（见上面那段注释），
         // 不重分的话，输进关键词列表纹丝不动。
         .task(id: keyword) {
