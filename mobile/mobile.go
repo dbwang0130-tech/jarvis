@@ -423,6 +423,24 @@ type LedgerView struct {
 	Debts    float64    `json:"debts"`
 	Accounts []Account  `json:"accounts"`
 	Recent   []TxnBrief `json:"recent"`
+	// Month 是这个自然月到今天为止的收支。
+	//
+	// 记账最先想知道的就是「这个月花了多少」，而这一页以前只给净资产和
+	// 余额——那是「还剩多少」，回答不了「花得凶不凶」。
+	Month MonthFlow `json:"month"`
+}
+
+// MonthFlow 是一个月的收支，以及跟上月同期的比较。
+type MonthFlow struct {
+	Income  float64 `json:"income"`
+	Expense float64 `json:"expense"`
+	// LastExpense 是**上个月同一天为止**的支出，不是上月全月。
+	//
+	// 跟全月比没有参考意义：每个月初都会显得「比上月少花很多」，到月底
+	// 又追平——那不是花钱习惯变了，只是天数不一样。同期比才说明问题。
+	LastExpense float64 `json:"last_expense"`
+	// Days 是这个月已经过了几天，界面拿它说「才过了 N 天」。
+	Days int `json:"days"`
 }
 
 // Account 是一个账户的余额。
@@ -803,7 +821,38 @@ func buildLedger(b *ledger.Book) *LedgerView {
 		brief.Index = i
 		v.Recent = append(v.Recent, brief)
 	}
+	v.Month = monthFlow(b, time.Now())
 	return v
+}
+
+// monthFlow 算这个月到今天为止的收支，以及上个月同期的支出。
+//
+// **跟上月同期比，不跟上月全月比**：每个月初都会显得「比上月少花很多」，
+// 到月底又追平——那不是花钱习惯变了，只是天数不一样。
+func monthFlow(b *ledger.Book, now time.Time) MonthFlow {
+	loc := now.Location()
+	thisStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+	income, expense := b.IncomeExpense(thisStart)
+
+	// 上个月同一天为止。上月天数少时（这个月 31 号、上个月只有 30 天）
+	// AddDate 会滚到下个月 1 号，正好就是「整个上月」，不必特殊照顾。
+	lastStart := thisStart.AddDate(0, -1, 0)
+	lastEnd := lastStart.AddDate(0, 0, now.Day())
+	var lastExpense float64
+	for _, tx := range b.Transactions {
+		if tx.Date.Before(lastStart) || !tx.Date.Before(lastEnd) {
+			continue
+		}
+		for _, p := range tx.Resolved() {
+			if strings.HasPrefix(p.Account, "Expenses:") {
+				lastExpense += p.Amount
+			}
+		}
+	}
+	return MonthFlow{
+		Income: income, Expense: expense,
+		LastExpense: lastExpense, Days: now.Day(),
+	}
 }
 
 func weekday(t time.Time) string {

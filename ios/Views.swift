@@ -404,6 +404,9 @@ struct LedgerTab: View {
                                 Stat(name: "资产", value: l.assets)
                                 Stat(name: "负债", value: -l.debts)
                             }
+                            // 净资产回答的是「还剩多少」，回答不了「花得凶
+                            // 不凶」——而打开记账 app 最先想知道的是后者。
+                            MonthCard(flow: l.month)
                         }
                         .listRowInsets(EdgeInsets(top: 8, leading: 8,
                                                   bottom: 8, trailing: 8))
@@ -795,6 +798,82 @@ struct Stat: View {
         .background(emphasize ? AnyShapeStyle(Brand.soft)
                               : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
                     in: .rect(cornerRadius: Brand.radius))
+    }
+}
+
+/// 这个月花了多少。
+///
+/// 摆在净资产下面，因为它回答的是另一个问题：净资产是「还剩多少」，
+/// 这张卡是「花得凶不凶」。记了一个月的账，最先想知道的就是这个。
+///
+/// **跟上月同期比，不跟上月全月比**：每个月初都会显得「比上月少花很多」，
+/// 到月底又追平——那不是花钱习惯变了，只是天数不一样。
+struct MonthCard: View {
+    let flow: MonthFlow
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("这个月花了")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(moneyRound(flow.expense))
+                        .font(.system(.title2, design: .rounded).weight(.semibold))
+                        .monospacedDigit()
+                    Text("元").font(.caption).foregroundStyle(.secondary)
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 3) {
+                if flow.income > 0 {
+                    Text("进账 " + moneyRound(flow.income))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.green)
+                }
+                compare
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(Color(.secondarySystemGroupedBackground),
+                    in: .rect(cornerRadius: Brand.radius))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(spoken)
+    }
+
+    /// 跟上月同期比。差得不到一块钱就不说了——那是噪声，不是趋势。
+    @ViewBuilder
+    private var compare: some View {
+        if let d = flow.delta, abs(d) >= 1 {
+            Label {
+                Text("比上月同期" + (d > 0 ? "多 " : "少 ") + moneyRound(abs(d)))
+            } icon: {
+                Image(systemName: d > 0 ? "arrow.up.right" : "arrow.down.right")
+            }
+            .font(.caption2.monospacedDigit())
+            // 多花是橙的不是红的：花钱不是错，红色留给真出问题的地方。
+            .foregroundStyle(d > 0 ? Color.orange : Color.green)
+        } else if flow.days <= 3 {
+            // 月初还没几天，比出来的数没意义，直说就是了。
+            Text("这个月才过了 \(flow.days) 天")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var spoken: String {
+        var s = "这个月花了 \(moneyRound(flow.expense)) 元"
+        if flow.income > 0 { s += "，进账 \(moneyRound(flow.income)) 元" }
+        if let d = flow.delta, abs(d) >= 1 {
+            s += "，比上月同期" + (d > 0 ? "多" : "少") + " \(moneyRound(abs(d))) 元"
+        }
+        return s
     }
 }
 

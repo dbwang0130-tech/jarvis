@@ -196,12 +196,35 @@ struct TxnBrief: Codable, Identifiable {
     var isIncome: Bool { kind == "income" }
 }
 
+/// 这个月到今天为止的收支，以及跟上月同期的比较。
+struct MonthFlow: Codable {
+    var income: Double = 0
+    var expense: Double = 0
+    /// 上个月**同一天为止**的支出，不是上月全月——跟全月比的话，每个月初
+    /// 都会显得「比上月少花很多」，到月底又追平。
+    var lastExpense: Double = 0
+    var days: Int = 0
+
+    /// 比上月同期多花/少花多少。上月同期一分没花时不比——
+    /// 从 0 涨上来说「多花了 100%」没有意义。
+    var delta: Double? {
+        guard lastExpense > 0 else { return nil }
+        return expense - lastExpense
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case income, expense, days
+        case lastExpense = "last_expense"
+    }
+}
+
 struct LedgerView: Codable {
     var net: Double
     var assets: Double
     var debts: Double
     var accounts: [Account]
     var recent: [TxnBrief]
+    var month = MonthFlow()
 }
 
 /// 健康记录整理好的样子。
