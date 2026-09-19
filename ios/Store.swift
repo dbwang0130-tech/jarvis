@@ -22,6 +22,15 @@ final class Store: ObservableObject, AskEvents {
     /// 而那会儿界面可能还没建出来，没法直接递给谁。
     @Published var sharedShots: [Data] = []
 
+    /// 点了到点提醒，要打开的那一条（ref）。
+    ///
+    /// 不打开的话，人点进来只看到对话页——刚才那条提醒说的是什么事，
+    /// 反倒要自己去翻。
+    @Published var wantsItem: String?
+
+    /// 点了早上那条简报，要打开日程。
+    @Published var wantsPlanner = false
+
     /// 点通知进来要办的事。
     ///
     /// 界面看到它就打开邮件页并立刻收一次——通知里说的是「点一下，我这就

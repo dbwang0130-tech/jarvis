@@ -1020,6 +1020,10 @@ struct ChatView: View {
     @State private var spendAmount: Double?
     /// 这一轮要一起发出去的图。
     @State private var shots: [Data] = []
+    /// 点通知点开的那一条。
+    @State private var notified: Item?
+    /// 听写。摆在这一层是为了让发送那一下够得着它。
+    @StateObject private var dictation = Dictation()
     @State private var entered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var phase
@@ -1045,6 +1049,19 @@ struct ChatView: View {
             .onChange(of: store.wantsMailCheck) { _, want in
                 if want { tool = .mail }
             }
+            // 点了到点提醒：直接把那一条打开。
+            .onChange(of: store.wantsItem) { _, ref in
+                guard let ref, let item = findItem(ref) else { return }
+                store.wantsItem = nil
+                notified = item
+            }
+            // 点了早上那条简报：打开日程。
+            .onChange(of: store.wantsPlanner) { _, want in
+                guard want else { return }
+                store.wantsPlanner = false
+                tool = .planner
+            }
+            .sheet(item: $notified) { ItemDetail(item: $0) }
             // Siri / 快捷指令带进来的那一件事。起来时取一次；切回前台也
             // 取一次——app 已经开着的时候喊 Siri，走的是后面那条。
             .task { await takeIntent() }
@@ -1218,7 +1235,7 @@ struct ChatView: View {
                             .lineLimit(1...6)
                             .padding(.vertical, 11)
                             .focused($focused)
-                        MicButton(draft: $draft)
+                        MicButton(draft: $draft, dictation: dictation)
                             .padding(.bottom, 5)
                     }
                     .padding(.horizontal, 6)
@@ -1255,6 +1272,10 @@ struct ChatView: View {
     }
 
     private func submit() {
+        // 人说完顺手就点发送，这会儿麦克风还开着是说不过去的——红点亮着，
+        // 而且尾音还会继续往输入框里写字。
+        dictation.stop()
+
         let q = draft
         let imgs = shots
         draft = ""
@@ -1268,6 +1289,16 @@ struct ChatView: View {
     private func startWith(_ text: String) {
         draft = text
         focused = true
+    }
+
+    /// 按 ref 找那条日程。
+    ///
+    /// 日程和待办两摊都要找：到点提醒排的是有钟点的事（在 days 里），
+    /// 而人从别处点进来的可能是任何一条。找不到就不开——文件在电脑上
+    /// 被改过之后，行号可能已经指向别处了，宁可不开也别开错一条。
+    private func findItem(_ ref: String) -> Item? {
+        store.snapshot.days.flatMap(\.items).first { $0.ref == ref }
+            ?? store.snapshot.todos.first { $0.ref == ref }
     }
 
     /// 取走 Siri / 快捷指令留下的那件事。

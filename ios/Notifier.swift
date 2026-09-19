@@ -63,7 +63,7 @@ enum Notifier {
                 content.title = item.title
                 content.body = body(for: item, lead: leadMinutes)
                 content.sound = .default
-                content.userInfo = ["ref": item.ref]
+                content.userInfo = [kindKey: kindItem, refKey: item.ref]
 
                 let comps = Calendar.current.dateComponents(
                     [.year, .month, .day, .hour, .minute], from: at)
@@ -82,8 +82,16 @@ enum Notifier {
     // MARK: - 到点提醒收信
 
     /// 通知点击之后要办的事，写在 userInfo 里。
+    ///
+    /// **每种通知都得说清点了之后去哪儿。** 不标的话，点进来只是把 app
+    /// 打开到对话页——刚才那条提醒说的是什么事，反倒找不着了。
     static let kindKey = "jarvis.kind"
     static let kindMailCheck = "mailcheck"
+    /// 到点提醒某一条日程：点进去直接打开那一条。
+    static let kindItem = "item"
+    /// 早上那条简报：点进去打开日程。
+    static let kindBrief = "brief"
+    static let refKey = "ref"
 
     /// 每天到点提醒一次「该收信了」，点一下 app 会自动收。
     ///
@@ -167,6 +175,7 @@ enum Notifier {
             content.title = today ? "今天" : dayTitleCN(at)
             content.body = text
             content.sound = .default
+            content.userInfo = [kindKey: kindBrief]
 
             let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: at)
             let request = UNNotificationRequest(
@@ -258,8 +267,25 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse) async {
         let info = response.notification.request.content.userInfo
-        guard info[Notifier.kindKey] as? String == Notifier.kindMailCheck else { return }
-        await MainActor.run { Self.store?.wantsMailCheck = true }
+        let kind = info[Notifier.kindKey] as? String
+        let ref = info[Notifier.refKey] as? String
+
+        await MainActor.run {
+            switch kind {
+            case Notifier.kindMailCheck:
+                Self.store?.wantsMailCheck = true
+            case Notifier.kindItem:
+                // 点的是哪条提醒，就打开哪一条——不然人进来只看到对话页，
+                // 刚才说的那件事反倒要自己去翻。
+                Self.store?.wantsItem = ref
+            case Notifier.kindBrief:
+                Self.store?.wantsPlanner = true
+            default:
+                // 认不出来的（比如旧版本排下的那些没带标记的通知）就
+                // 只打开 app，别猜。
+                break
+            }
+        }
     }
 
     /// app 正开着的时候也把通知显示出来。

@@ -128,6 +128,16 @@ final class Dictation: ObservableObject {
             false, options: .notifyOthersOnDeactivation)
     }
 
+    /// 兜底：这个对象被丢掉时（页面关了、sheet 划走了），麦克风也得收。
+    ///
+    /// 正常路径上 stop() 已经收拾过了，这儿是防漏网的——只碰 engine，
+    /// 不碰那几个 @MainActor 的属性（deinit 不在主线程上）。
+    /// 不收的话麦克风一直开着，状态栏那个红点不灭，人会以为被偷听。
+    nonisolated deinit {
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+    }
+
     private func beginAudio() throws {
         let session = AVAudioSession.sharedInstance()
         // .measurement 关掉系统的语音增强处理：那套是给通话调的，
@@ -171,7 +181,12 @@ final class Dictation: ObservableObject {
 /// 改字就行。
 struct MicButton: View {
     @Binding var draft: String
-    @StateObject private var dictation = Dictation()
+    /// **由外面持有**，不是自己 @StateObject。
+    ///
+    /// 点发送那一下要能把它停掉（人说完顺手就点发送，这会儿麦克风还开着
+    /// 是说不过去的），而发送按钮在输入区那一层——按钮自己攥着的话，
+    /// 外面够不着。
+    @ObservedObject var dictation: Dictation
     @State private var before = ""
     /// 手指还按着。
     ///

@@ -15,6 +15,9 @@ struct QuickAddView: View {
     @State private var file = ""
     @State private var saving = false
     @State private var parsing = false
+    /// 这一页自己的听写。记一条这儿没有「发送」那一下，但存下来时
+    /// 同样该把麦克风收掉。
+    @StateObject private var dictation = Dictation()
     /// 已经认过一次了，别一直挂着那颗按钮——认出来的东西就在下面摆着，
     /// 人改完之后再让他「重认」只会把改动冲掉。
     @State private var parsed = false
@@ -41,7 +44,7 @@ struct QuickAddView: View {
                         // 落盘——它把「三点」听成「三十」的时候，那一眼是
                         // 唯一的拦截点。
                         .overlay(alignment: .trailingLastTextBaseline) {
-                            MicButton(draft: $title).offset(y: 6)
+                            MicButton(draft: $title, dictation: dictation).offset(y: 6)
                         }
                 }
 
@@ -178,6 +181,7 @@ struct QuickAddView: View {
     }
 
     private func save() {
+        dictation.stop()   // 说完顺手点「记下」，别让麦克风还开着
         let text = title.trimmed
         guard !text.isEmpty, !saving else { return }
         saving = true
