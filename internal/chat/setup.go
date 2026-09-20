@@ -7,6 +7,7 @@ import (
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/ledger"
+	"github.com/mattn/go-runewidth"
 )
 
 // 配置向导：把散在七八个 / 命令里的设置串成一条路走完。
@@ -283,4 +284,15 @@ func (s *Session) showConfigSummary() {
 	} {
 		note("%s  %s", pad(l.k, 6), l.v)
 	}
+}
+
+// sectionTitle 是一行带标题的分隔线。原先住在视图渲染里，视图删掉之后
+// 只剩配置向导在用，就跟着搬了过来。
+func sectionTitle(name string) string {
+	w := width() - 2
+	if w > 76 {
+		w = 76
+	}
+	line := strings.Repeat("─", max(0, w-runewidth.StringWidth(name)-3))
+	return cyan + "── " + bold + name + reset + " " + cyan + line + reset
 }

@@ -90,19 +90,6 @@ func TestConfirmLinesAreRectangular(t *testing.T) {
 	}
 }
 
-func TestViewCycle(t *testing.T) {
-	v := viewChat
-	for range viewNames {
-		v = v.next()
-	}
-	if v != viewChat {
-		t.Fatalf("转一圈应回到秘书视图，现在是 %v", v)
-	}
-	if viewChat.prev() != view(len(viewNames)-1) {
-		t.Fatal("秘书视图往前应到最后一个视图")
-	}
-}
-
 // fakeSession 造一个不接终端的会话，用来测确认框的按键流转。
 func fakeSession(p *agent.Pending) *Session {
 	s := &Session{
@@ -162,7 +149,6 @@ func TestDecideNumberPicksDirectly(t *testing.T) {
 
 func TestInsertPutsMessageBackInTheBox(t *testing.T) {
 	r := &reader{ch: make(chan event, 1)}
-	r.boxed.Store(true)
 	r.insert("帮我把今天的邮件理一下")
 
 	if got := string(r.buf); got != "帮我把今天的邮件理一下" {

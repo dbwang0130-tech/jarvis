@@ -21,9 +21,7 @@ const (
 	evLine   eventKind = iota // 完整一行
 	evCtrlC                   // 打断
 	evEOF                     // Ctrl+D / 输入结束
-	evView                    // 切换视图，line 为 next / prev
-	evRedraw                  // 刷新当前视图
-	evFocus                   // 在别的视图里打字：回秘书视图，line 是那个字符
+	evRedraw                  // 重新读一遍 org 文件并整屏重画
 	evPick                    // 确认框里的按键：up / down / enter / esc / 数字
 )
 
@@ -44,13 +42,10 @@ type reader struct {
 	busy atomic.Bool
 	// picking 为真时按键全部交给确认框，不参与行编辑。
 	picking atomic.Bool
-	// boxed 为真时画出输入框；只有秘书视图才画，别的视图只留状态栏。
-	boxed atomic.Bool
-
-	mu     sync.Mutex
-	buf    []rune
-	cur    int  // 光标在 buf 中的位置
-	masked bool // 密码模式：回显成圆点
+	mu      sync.Mutex
+	buf     []rune
+	cur     int  // 光标在 buf 中的位置
+	masked  bool // 密码模式：回显成圆点
 
 	hist    []string
 	histIdx int
@@ -70,7 +65,6 @@ func newReader() (*reader, error) {
 		return nil, err
 	}
 	r := &reader{ch: make(chan event, 16), fd: fd, old: old, histIdx: -1}
-	r.boxed.Store(true)
 	go r.loop()
 	go r.watchResize()
 	return r, nil
@@ -331,18 +325,6 @@ func (r *reader) handleKey(k key) bool {
 		return true
 	}
 
-	// 不在秘书视图时没有输入框：打字即切回秘书视图接着输入。
-	// 字得在这儿当场落进缓冲——交给主 goroutine 去插的话，紧跟着
-	// 的下一个按键可能先跑到，顺序就乱了。
-	if !r.isBoxed() && k.kind == kRune {
-		r.setBoxed(true)
-		if k.r != 'i' && k.r != 'I' {
-			r.insert(string(k.r))
-		}
-		r.ch <- event{kind: evFocus}
-		return true
-	}
-
 	switch k.kind {
 	case kRune:
 		r.edit(func() { r.insertRunes([]rune{k.r}) })
@@ -368,8 +350,6 @@ func (r *reader) handleKey(k key) bool {
 		r.edit(func() { r.cur = len(r.buf) })
 	case kDelete:
 		r.edit(r.deleteForward)
-	case kShiftTab:
-		r.ch <- event{kind: evView, line: "prev"}
 	case kAltB:
 		r.edit(func() { r.cur = r.wordLeft() })
 	case kAltF:
@@ -422,12 +402,9 @@ func (r *reader) handleCtrl(rn rune) bool {
 		}
 		r.ch <- event{kind: evEOF}
 		return false
-	case 0x09: // tab：正在打命令就补全，否则换下一个视图
-		if r.completeCommand() {
-			return true
-		}
-		r.ch <- event{kind: evView, line: "next"}
-	case 0x12: // ctrl+r：重画当前视图
+	case 0x09: // tab：补全正在打的命令
+		r.completeCommand()
+	case 0x12: // ctrl+r：重读 org 文件并重画
 		r.ch <- event{kind: evRedraw}
 	case 0x0b: // ctrl+k：删到行尾
 		r.edit(func() { r.killTo(len(r.buf)) })
@@ -634,16 +611,7 @@ func (r *reader) setMasked(on bool) {
 // 这里只管内容。
 func (r *reader) draw() { scr.refresh() }
 
-// setBoxed 切换要不要画输入框（只有秘书视图画）。
-func (r *reader) setBoxed(on bool) {
-	if r.boxed.Swap(on) != on {
-		scr.refresh()
-	}
-}
-
-func (r *reader) isBoxed() bool { return r.boxed.Load() }
-
-// insert 把一段文字塞进输入缓冲（从别的视图打字、或打断退回来时用）。
+// insert 把一段文字塞进输入缓冲（打断时把没答复的那句退回来）。
 func (r *reader) insert(text string) {
 	r.mu.Lock()
 	rs := []rune(text)
@@ -654,14 +622,9 @@ func (r *reader) insert(text string) {
 
 // inputLines 交出输入框那几行，以及光标落在框里第几行第几列。
 // 候选命令和状态栏是底部区里另外的段，不归这儿管。
-// 不在秘书视图时没有输入框，返回 nil。
 func (r *reader) inputLines() ([]string, int, int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-	if !r.boxed.Load() {
-		return nil, 0, -1
-	}
 
 	w := frameWidth() - 1
 	if w < 24 {
@@ -699,9 +662,6 @@ func (r *reader) inputLines() ([]string, int, int) {
 
 // hintLines 列出跟当前输入匹配的命令，由 screen 摆在输入框上面。
 func (r *reader) hintLines() []string {
-	if !r.boxed.Load() {
-		return nil
-	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

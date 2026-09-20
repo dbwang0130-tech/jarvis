@@ -11,7 +11,6 @@ import (
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/browser"
 	"github.com/dabao/jarvis/internal/config"
-	"github.com/dabao/jarvis/internal/configskill"
 	"github.com/dabao/jarvis/internal/health"
 	"github.com/dabao/jarvis/internal/ledger"
 	"github.com/dabao/jarvis/internal/mail"
@@ -19,7 +18,6 @@ import (
 	"github.com/dabao/jarvis/internal/org"
 	"github.com/dabao/jarvis/internal/orgtools"
 	"github.com/dabao/jarvis/internal/session"
-	"github.com/dabao/jarvis/internal/workflow"
 )
 
 // 极简 ANSI 配色（流式模式不依赖 lipgloss）。
@@ -69,8 +67,6 @@ type Session struct {
 	pending   *agent.Pending
 	box       *confirm
 
-	// view 是状态栏上显示的当前视图，tab 轮换。
-	view view
 	// lastCtrlC 用于「再按一次 ctrl+c 退出」。
 	lastCtrlC time.Time
 	// live 是正文的可重画区域：每来一点增量就整段重渲染。
@@ -116,7 +112,7 @@ func Run(cont bool) error {
 	scr.inputLines = rd.inputLines
 	scr.hintLines = rd.hintLines
 	scr.statusFn = s.statusLine
-	scr.onResize = s.refreshView
+	scr.onResize = scr.refresh
 	scr.enter(s.cfg.MouseOn())
 	defer scr.leave()
 
@@ -181,8 +177,6 @@ func (s *Session) buildSkills() []agent.Skill {
 		s.ledgerSkill,
 		s.healthSkill,
 		s.browserSkill,
-		workflow.New(filepath.Join(config.Dir(), "workflows.json")),
-		configskill.New(s.cfgPath),
 		s.memSkill,
 	}
 }
@@ -224,7 +218,7 @@ func printBanner() {
  \___/_/   \_\_| \_\ \_/  |___|____/` + reset)
 	// 欢迎块是块招牌，不是回执，所以不带 · 前缀。
 	outln(dim + "  个人助理 · 日程 / 邮件 / 记账 / 浏览器" + reset)
-	outln(dim + "  tab 切视图 · 滚轮翻历史 · /help 看命令" + reset)
+	outln(dim + "  滚轮翻历史 · /help 看命令" + reset)
 }
 
 // statusDot 是状态栏最前面那个点：绿=待命，黄=正忙，红=秘书不可用。
@@ -301,8 +295,7 @@ func (s *Session) echo(line string) {
 
 // statusLine 是输入框下面那一行：视图、模型、上下文、档位与按键提示。
 func (s *Session) statusLine() string {
-	parts := []string{fmt.Sprintf("%s %s%s%s%s %d/%d",
-		s.statusDot(), bold, s.view, reset, dim, int(s.view)+1, len(viewNames))}
+	parts := []string{s.statusDot()}
 	if m := s.modelName(); m != "" {
 		parts = append(parts, m)
 	}
@@ -315,7 +308,6 @@ func (s *Session) statusLine() string {
 	if n := s.queueLen(); n > 0 {
 		parts = append(parts, fmt.Sprintf("%s排队 %d%s", warn, n, reset+dim))
 	}
-	parts = append(parts, "tab 切视图")
 	return dim + "  " + strings.Join(parts, " · ") + reset
 }
 
@@ -340,26 +332,7 @@ func (s *Session) modelName() string {
 	return agent.Presets[s.cfg.Agent.Provider].Model
 }
 
-// setView 切到某个视图：把快照打印出来，并决定要不要留输入框。
-// setView 切到某个视图：内容区整屏换掉，不往对话历史里灌东西。
-func (s *Session) setView(v view) {
-	s.view = v
-	s.reader.setBoxed(v == viewChat)
-	scr.setContent(s.viewLines(v)) // 秘书视图返回 nil，内容区回到聊天历史
-}
-
-// refreshView 重新生成当前视图的内容：org 文件被改过、或者窗口
-// 变了尺寸（内容是按宽度折好行存下来的）之后都要来一遍。
-func (s *Session) refreshView() {
-	if s.view == viewChat {
-		scr.refresh()
-		return
-	}
-	scr.setContent(s.viewLines(s.view))
-}
-
 // readLine 画出输入框读一行。hint 非空时先在框上方打一行提示。
-// 视图切换在这里消化掉，不打断调用方的流程。
 func (s *Session) readLine(hint string) (string, eventKind) {
 	if hint != "" {
 		promptLine(hint)
@@ -374,21 +347,11 @@ func (s *Session) readLine(hint string) (string, eventKind) {
 			return "", evEOF
 		case evCtrlC:
 			return "", evCtrlC
-		case evView:
-			if ev.line == "prev" {
-				s.setView(s.view.prev())
-			} else {
-				s.setView(s.view.next())
-			}
 		case evRedraw:
 			// ctrl+r：重新读一遍 org 文件，把外部改动也捞进来。
 			if err := s.coll.Reload(); err != nil {
 				fail("%s", err.Error())
 			}
-			s.refreshView()
-		case evFocus:
-			// 字已经由 reader 当场落进输入框了，这儿只管把视图切回来。
-			s.view = viewChat
 			scr.refresh()
 		}
 	}
@@ -554,9 +517,6 @@ func (s *Session) emit(e agent.Event) {
 		scr.startSpin() // 又开始干活了，转圈接着转
 	case agent.EventToolResult:
 		msg(lvResult, "%s", e.Text)
-		if e.Changed {
-			s.refreshView() // 秘书改了东西，别让视图停在旧内容上
-		}
 	case agent.EventError:
 		msg(lvError, "%s", e.Text)
 	case agent.EventAuto:

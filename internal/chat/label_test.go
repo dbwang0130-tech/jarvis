@@ -6,14 +6,12 @@ import (
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/browser"
 	"github.com/dabao/jarvis/internal/config"
-	"github.com/dabao/jarvis/internal/configskill"
 	"github.com/dabao/jarvis/internal/health"
 	"github.com/dabao/jarvis/internal/ledger"
 	"github.com/dabao/jarvis/internal/mail"
 	"github.com/dabao/jarvis/internal/memory"
 	"github.com/dabao/jarvis/internal/org"
 	"github.com/dabao/jarvis/internal/orgtools"
-	"github.com/dabao/jarvis/internal/workflow"
 )
 
 // 每个工具都得有中文标签，否则界面上直接露出英文工具名。
@@ -32,8 +30,6 @@ func TestEveryToolHasALabel(t *testing.T) {
 		ledger.NewSkill(""),
 		health.New(""),
 		browser.New(cfg),
-		workflow.New(""),
-		configskill.New(""),
 		memory.New(""),
 	}
 	// 内置的那两个不在任何 skill 里，单独点名。

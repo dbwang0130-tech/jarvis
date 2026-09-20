@@ -28,9 +28,7 @@ func typeKeys(t *testing.T, r *reader, keys string) {
 func newTestReader(t *testing.T) *reader {
 	t.Helper()
 	captureTerm(t)
-	r := &reader{ch: make(chan event, 16), histIdx: -1}
-	r.boxed.Store(true)
-	return r
+	return &reader{ch: make(chan event, 16), histIdx: -1}
 }
 
 func TestLineEditingKeys(t *testing.T) {
@@ -274,47 +272,6 @@ func TestPageKeysScroll(t *testing.T) {
 	typeKeys(t, r, "\x1b[6~")
 	if scr.offset != 0 {
 		t.Fatalf("PageDown 该翻回来，实际 %d", scr.offset)
-	}
-}
-
-// 在别的视图里打字：字当场就得落进输入框，不能等主 goroutine 回头再插，
-// 否则紧跟着的按键会抢在前面，顺序就乱了。
-func TestTypingInOtherViewKeepsOrder(t *testing.T) {
-	fresh(t)
-	r := newTestReader(t)
-	r.setBoxed(false)
-
-	typeKeys(t, r, "abc")
-	if got := string(r.buf); got != "abc" {
-		t.Fatalf("输入框里该是 abc，实际 %q", got)
-	}
-	if !r.isBoxed() {
-		t.Fatal("打了字就该切回秘书视图")
-	}
-	// 只发了一次切视图通知，不是每个字一次。
-	n := 0
-	for len(r.ch) > 0 {
-		if (<-r.ch).kind == evFocus {
-			n++
-		}
-	}
-	if n != 1 {
-		t.Fatalf("切视图通知发了 %d 次，该只发第一次", n)
-	}
-}
-
-// i 只把视图切回来，不落字。
-func TestIOnlyFocuses(t *testing.T) {
-	fresh(t)
-	r := newTestReader(t)
-	r.setBoxed(false)
-
-	typeKeys(t, r, "i")
-	if got := string(r.buf); got != "" {
-		t.Fatalf("i 不该落字，输入框里却有 %q", got)
-	}
-	if !r.isBoxed() {
-		t.Fatal("i 该把视图切回来")
 	}
 }
 
@@ -661,7 +618,7 @@ func TestTabCompletesCommand(t *testing.T) {
 		t.Fatalf("该补成 %q，得到 %q", want, got)
 	}
 
-	// 多个匹配：补到公共前缀，并且不切视图。
+	// 多个匹配：补到公共前缀。
 	r = newTestReader(t)
 	typeKeys(t, r, "/m\t")
 	if got := string(r.buf); got != commonPrefix(matchCommands("/m")) {
@@ -669,20 +626,20 @@ func TestTabCompletesCommand(t *testing.T) {
 	}
 	select {
 	case ev := <-r.ch:
-		t.Fatalf("还在补全就不该切视图：%+v", ev)
+		t.Fatalf("补全不该往外发事件：%+v", ev)
 	default:
 	}
 
-	// 不是在打命令：tab 照旧切视图。
+	// 不是在打命令：tab 什么都不做，尤其不能往输入框里塞个制表符。
 	r = newTestReader(t)
 	typeKeys(t, r, "你好\t")
+	if got := string(r.buf); got != "你好" {
+		t.Fatalf("tab 不该落字，输入框里是 %q", got)
+	}
 	select {
 	case ev := <-r.ch:
-		if ev.kind != evView {
-			t.Fatalf("普通输入时 tab 该切视图：%+v", ev)
-		}
+		t.Fatalf("普通输入时 tab 不该发事件：%+v", ev)
 	default:
-		t.Fatal("tab 没反应")
 	}
 }
 
@@ -911,13 +868,6 @@ func TestSetupSurvivesBadOrgPath(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(s.startupWarn, " "), "/setup") {
 		t.Fatalf("提示该指出怎么修：%v", s.startupWarn)
-	}
-
-	// 空集合下各视图都得画得出来，不能崩。
-	for _, v := range []view{viewAgenda, viewTodos, viewMail, viewLedger} {
-		if lines := s.viewLines(v); len(lines) == 0 {
-			t.Errorf("%s 视图什么都没画", v)
-		}
 	}
 }
 

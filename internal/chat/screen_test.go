@@ -53,7 +53,6 @@ func (h *harness) text() string { return strings.Join(h.screen(), "\n") }
 // testReader 造一个不碰真终端的输入框。
 func testReader() *reader {
 	r := &reader{ch: make(chan event, 8), histIdx: -1}
-	r.boxed.Store(true)
 	return r
 }
 
