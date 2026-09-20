@@ -14,12 +14,9 @@ var toolLabels = map[string]string{
 	"plan": "制定计划", "step_done": "标记完成",
 	// 日程
 	"list_agenda": "查看日程", "list_todos": "查看待办", "find_free_slots": "寻找空档",
-	"get_item": "查看条目", "schedule_item": "安排时间", "set_deadline": "设置截止",
-	"set_todo_state": "修改状态", "set_priority": "设置优先级", "create_item": "新建条目",
-	"set_repeat": "设置循环", "delete_item": "删除条目", "clock_in": "开始计时",
-	"clock_out": "结束计时", "add_note": "记笔记", "demote_item": "降级",
-	"toggle_checkbox": "勾选清单",
-	"promote_item":    "升级", "move_item": "移动条目",
+	"get_item": "查看条目", "update_item": "修改条目", "create_item": "新建条目",
+	"delete_item": "删除条目", "clock_in": "开始计时", "clock_out": "结束计时",
+	"add_note": "记笔记", "toggle_checkbox": "勾选清单", "move_item": "移动条目",
 	// 邮件
 	"list_mail": "查看邮件", "triage": "整理邮件", "refresh_mail": "同步邮件",
 	"load_more_mail": "加载更早邮件", "mark_read": "标记已读", "clean_mail": "清理邮件",
@@ -30,13 +27,9 @@ var toolLabels = map[string]string{
 	"record_vital": "记体征", "record_meal": "记饮食",
 	"set_health_profile": "填基础信息", "list_health": "查健康记录",
 	// 浏览器
-	"browser_navigate": "打开网页", "browser_text": "提取文本", "browser_links": "提取链接",
-	"browser_click": "点击", "browser_type": "输入", "browser_submit": "提交",
-	"browser_exec_js": "执行JS", "browser_title": "读标题", "browser_url": "读网址",
-	// 配置、工作流、记忆
-	"read_config": "读配置", "set_config": "改配置", "remove_mail_account": "删除邮箱",
-	"list_workflows": "列出工作流", "save_workflow": "保存工作流",
-	"run_workflow": "运行工作流", "delete_workflow": "删除工作流",
+	"browser_navigate": "打开网页", "browser_click": "点击", "browser_type": "输入",
+	"browser_submit": "提交", "browser_exec_js": "执行JS",
+	// 记忆
 	"remember": "记住偏好",
 }
 

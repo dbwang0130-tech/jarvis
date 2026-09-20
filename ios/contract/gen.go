@@ -96,12 +96,12 @@ DEADLINE: <2026-09-18 Fri>
 			{Role: "user", Content: "把周会挪到周五"},
 			{Role: "assistant", ToolCalls: []agent.ToolCall{{
 				ID: "call_1", Type: "function",
-				Function: agent.FunctionCall{Name: "schedule_item", Arguments: `{"ref":"work.org:9"}`},
+				Function: agent.FunctionCall{Name: "update_item", Arguments: `{"ref":"work.org:9"}`},
 			}}},
-			{Role: "tool", ToolCallID: "call_1", Name: "schedule_item", Content: "已安排"},
+			{Role: "tool", ToolCallID: "call_1", Name: "update_item", Content: "已安排"},
 			{Role: "assistant", Content: "挪好了。"},
 		},
-		Steps:  []mobile.Step{{Kind: "tool", Name: "schedule_item", Text: "ref=work.org:9"}},
+		Steps:  []mobile.Step{{Kind: "tool", Name: "update_item", Text: "ref=work.org:9"}},
 		Memory: "记着：他讨厌开会",
 	})
 	if err != nil {

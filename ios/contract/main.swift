@@ -95,7 +95,7 @@ check("AskOutput(干完活)") {
     // 只调工具那条消息 content 是空的，但必须能解出来而不是抛错。
     let toolCaller = a.history[1]
     guard toolCaller.role == "assistant", toolCaller.content.isEmpty,
-          toolCaller.toolCalls?.first?.function?.name == "schedule_item" else {
+          toolCaller.toolCalls?.first?.function?.name == "update_item" else {
         throw Err("只调工具的那条消息解错了：\(toolCaller)")
     }
     return "reply=\(a.reply) history=\(a.history.count) steps=\(a.steps?.count ?? 0)"

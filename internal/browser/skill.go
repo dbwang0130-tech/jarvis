@@ -40,17 +40,19 @@ func (s *Skill) Describe(b *strings.Builder) {
 
 func (s *Skill) Instructions() string {
 	return `浏览器自动化：
-1. 打开页面用 browser_navigate；提取信息优先用 browser_text、browser_links，或用 browser_exec_js 精确抓取。
+1. 打开页面用 browser_navigate，抓取一律用 browser_exec_js。
+   取文本 Array.from(document.querySelectorAll(sel)).map(e=>e.innerText.trim())，
+   取链接再带上 e.href；结果用 JSON.stringify 返回。
 2. 结果保持精简：只取用户要的字段，不整页拉取，省 token。不截图。
 3. 点击、输入、提交会真的在浏览器里产生作用，按风险档位执行；涉及付款、删除、发送时先确认。
-4. 操作前先看 browser_url / browser_title 确认自己在哪个页面。
+4. 不确定自己在哪个页面，用 browser_exec_js 取 location.href 和 document.title；
+   browser_navigate 本来就会把这两样返回给你。
 5. 如果 browser_navigate 返回「需要登录」，立刻停下，请用户登录，等他说「登录好了」再继续；绝不要自己填密码、验证码或扫码。用户说登录不了时，按他的指示换方式、换站点或跳过。`
 }
 
 func (s *Skill) Tools() []agent.Tool {
 	return []agent.Tool{
-		s.toolNavigate(), s.toolText(), s.toolLinks(),
-		s.toolTitle(), s.toolURL(),
+		s.toolNavigate(),
 		s.toolClick(), s.toolType(), s.toolSubmit(), s.toolEval(),
 	}
 }
@@ -159,98 +161,6 @@ func (s *Skill) toolNavigate() agent.Tool {
 				return fmt.Sprintf("⚠ 页面需要登录（%s）。请立刻停下，等用户登录完成后再继续；不要自己填密码。", why), false, nil
 			}
 			return fmt.Sprintf("已打开：%s\n标题：%s", loc, title), false, nil
-		},
-	}
-}
-
-func (s *Skill) toolText() agent.Tool {
-	return tool{
-		spec: agent.ToolSpec{
-			Name:        "browser_text",
-			Description: "提取匹配 CSS 选择器的元素的纯文本，最多约 2000 字。用于抓取标题、价格、列表等。",
-			Parameters:  obj(map[string]any{"selector": str("CSS 选择器，如 .price、#result、a.title")}, "selector"),
-		},
-		readonly: true,
-		run: func(raw string) (string, bool, error) {
-			var a struct {
-				Selector string `json:"selector"`
-			}
-			if err := json.Unmarshal([]byte(raw), &a); err != nil {
-				return "", false, err
-			}
-			sel := strings.TrimSpace(a.Selector)
-			if sel == "" {
-				return "", false, fmt.Errorf("必须提供 selector")
-			}
-			expr := fmt.Sprintf(`Array.from(document.querySelectorAll(%s)).map(e=>(e.innerText||e.textContent||'').trim()).filter(Boolean).join('\n')`, jsStr(sel))
-			out, err := s.evalString(expr)
-			if err != nil {
-				return "", false, err
-			}
-			return truncate(out, 2000), false, nil
-		},
-	}
-}
-
-func (s *Skill) toolLinks() agent.Tool {
-	return tool{
-		spec: agent.ToolSpec{
-			Name:        "browser_links",
-			Description: "提取匹配选择器的链接（文字 + 地址），最多 50 条，每条一行。",
-			Parameters:  obj(map[string]any{"selector": str("CSS 选择器，默认 a")}),
-		},
-		readonly: true,
-		run: func(raw string) (string, bool, error) {
-			var a struct {
-				Selector string `json:"selector"`
-			}
-			_ = json.Unmarshal([]byte(raw), &a)
-			sel := strings.TrimSpace(a.Selector)
-			if sel == "" {
-				sel = "a"
-			}
-			expr := fmt.Sprintf(`Array.from(document.querySelectorAll(%s)).slice(0,50).map(a=>(a.innerText||a.textContent||'').trim().replace(/\s+/g,' ')+' | '+(a.href||'')).filter(x=>x.trim()).join('\n')`, jsStr(sel))
-			out, err := s.evalString(expr)
-			if err != nil {
-				return "", false, err
-			}
-			return truncate(out, 3000), false, nil
-		},
-	}
-}
-
-func (s *Skill) toolTitle() agent.Tool {
-	return tool{
-		spec: agent.ToolSpec{
-			Name:        "browser_title",
-			Description: "返回当前页面标题。",
-			Parameters:  obj(map[string]any{}),
-		},
-		readonly: true,
-		run: func(string) (string, bool, error) {
-			var title string
-			if err := s.Client.run(chromedp.Title(&title)); err != nil {
-				return "", false, err
-			}
-			return title, false, nil
-		},
-	}
-}
-
-func (s *Skill) toolURL() agent.Tool {
-	return tool{
-		spec: agent.ToolSpec{
-			Name:        "browser_url",
-			Description: "返回当前页面地址。",
-			Parameters:  obj(map[string]any{}),
-		},
-		readonly: true,
-		run: func(string) (string, bool, error) {
-			var loc string
-			if err := s.Client.run(chromedp.Location(&loc)); err != nil {
-				return "", false, err
-			}
-			return loc, false, nil
 		},
 	}
 }

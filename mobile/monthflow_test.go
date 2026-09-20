@@ -70,5 +70,5 @@ func TestMonthFlowEmpty(t *testing.T) {
 	if got.Days != time.Now().Day() {
 		t.Errorf("天数不对：%d", got.Days)
 	}
-	fmt.Sprint(got) // 只是确认不炸
+	_ = fmt.Sprint(got) // 只是确认不炸
 }

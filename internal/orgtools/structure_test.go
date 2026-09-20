@@ -11,13 +11,13 @@ import (
 func TestDemoteAndPromote(t *testing.T) {
 	ws, path := newWS(t)
 
-	run(t, ws, "demote_item", map[string]any{"ref": refTo(t, ws, "每周组会")})
+	run(t, ws, "move_item", map[string]any{"ref": refTo(t, ws, "每周组会"), "level_delta": 1})
 	got := readBack(t, path)
 	if !strings.Contains(got, "** TODO 每周组会") {
 		t.Fatalf("没降一级：\n%s", got)
 	}
 
-	run(t, ws, "promote_item", map[string]any{"ref": refTo(t, ws, "每周组会")})
+	run(t, ws, "move_item", map[string]any{"ref": refTo(t, ws, "每周组会"), "level_delta": -1})
 	got = readBack(t, path)
 	if !strings.Contains(got, "* TODO 每周组会") || strings.Contains(got, "** TODO 每周组会") {
 		t.Fatalf("没升回来：\n%s", got)
@@ -32,7 +32,7 @@ func TestDemoteAndPromote(t *testing.T) {
 func TestDemoteKeepsChildren(t *testing.T) {
 	ws, path := newWS(t)
 
-	run(t, ws, "demote_item", map[string]any{"ref": refTo(t, ws, "写毕业论文")})
+	run(t, ws, "move_item", map[string]any{"ref": refTo(t, ws, "写毕业论文"), "level_delta": 1})
 	got := readBack(t, path)
 
 	if !strings.Contains(got, "** NEXT [#A] 写毕业论文") {
@@ -100,8 +100,8 @@ func TestFindFreeSlots(t *testing.T) {
 // 过去某一天，或者直接跳过一整轮。
 func TestSetRepeat(t *testing.T) {
 	ws, path := newWS(t)
-	run(t, ws, "set_repeat", map[string]any{
-		"ref": refTo(t, ws, "补开题报告"), "rule": "+1m",
+	run(t, ws, "update_item", map[string]any{
+		"ref": refTo(t, ws, "补开题报告"), "repeat": "+1m",
 	})
 	got := readBack(t, path)
 	if !strings.Contains(got, "+1m") {

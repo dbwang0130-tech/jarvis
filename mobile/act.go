@@ -208,14 +208,14 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 	case "done":
 		// 还在计时就先收尾，不然那条 CLOCK 一直挂着。收不掉不算事。
 		_, _ = call("clock_out", ref)
-		return call("set_todo_state", map[string]any{"ref": in.Ref, "state": "DONE"})
+		return call("update_item", map[string]any{"ref": in.Ref, "state": "DONE"})
 
 	case "undone":
-		return call("set_todo_state", map[string]any{"ref": in.Ref, "state": "TODO"})
+		return call("update_item", map[string]any{"ref": in.Ref, "state": "TODO"})
 
 	case "start":
 		// NEXT 不是每个文件都有，没有就算了，计时照样开始。
-		msg, err := call("set_todo_state", map[string]any{"ref": in.Ref, "state": "NEXT"})
+		msg, err := call("update_item", map[string]any{"ref": in.Ref, "state": "NEXT"})
 		clocked, cerr := call("clock_in", ref)
 		if cerr != nil {
 			if err != nil {
@@ -255,16 +255,16 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 		// 排期和截止一直只能靠 postpone 往后挪整天——挪到「下周三下午三点」
 		// 或者干脆取消排期，都只能开口说一句。两个动作共用 Scheduled 字段
 		// 传时间，留空是取消。
-		tool := "schedule_item"
+		key := "scheduled"
 		if in.Op == "deadline" {
-			tool = "set_deadline"
+			key = "deadline"
 		}
-		return call(tool, map[string]any{"ref": in.Ref, "time": in.Scheduled})
+		return call("update_item", map[string]any{"ref": in.Ref, key: in.Scheduled})
 
 	case "priority":
 		// 详情页把优先级摆出来了却改不动——「这事更急了」只能开口说一句。
 		// 留空是去掉优先级，所以不校验非空。
-		return call("set_priority",
+		return call("update_item",
 			map[string]any{"ref": in.Ref, "priority": in.Priority})
 
 	case "state":
@@ -274,7 +274,7 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 		if strings.TrimSpace(in.State) == "" {
 			return "", fmt.Errorf("没说要改成什么状态")
 		}
-		return call("set_todo_state",
+		return call("update_item",
 			map[string]any{"ref": in.Ref, "state": in.State})
 
 	case "check":
@@ -285,11 +285,11 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 
 	case "cancel":
 		// 有取消态就用取消态；没有就标完成并写明是取消的——总好过删掉。
-		if msg, err := call("set_todo_state",
+		if msg, err := call("update_item",
 			map[string]any{"ref": in.Ref, "state": "CANCELLED"}); err == nil {
 			return msg, nil
 		}
-		msg, err := call("set_todo_state", map[string]any{"ref": in.Ref, "state": "DONE"})
+		msg, err := call("update_item", map[string]any{"ref": in.Ref, "state": "DONE"})
 		if err != nil {
 			return "", err
 		}
@@ -305,8 +305,8 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 	case "today":
 		// 挪到今天。不能靠 postpone 传 days=0 来表达——那边零值按 1 天算
 		//（「推迟」默认就是推一天），再给 0 一个特殊含义就成了魔法值。
-		return call("schedule_item",
-			map[string]any{"ref": in.Ref, "time": time.Now().Format("2006-01-02")})
+		return call("update_item",
+			map[string]any{"ref": in.Ref, "scheduled": time.Now().Format("2006-01-02")})
 
 	case "postpone":
 		days := in.Days
@@ -314,7 +314,7 @@ func runOp(tools map[string]agent.Tool, in ActInput) (string, error) {
 			days = 1
 		}
 		when := time.Now().AddDate(0, 0, days).Format("2006-01-02")
-		return call("schedule_item", map[string]any{"ref": in.Ref, "time": when})
+		return call("update_item", map[string]any{"ref": in.Ref, "scheduled": when})
 
 	default:
 		return "", fmt.Errorf("不认识的动作 %q", in.Op)

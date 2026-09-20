@@ -74,54 +74,24 @@ func wsToolDefs() []agent.ToolSpec {
 			}, "ref"),
 		},
 		{
-			Name:        "schedule_item",
-			Description: "设置或修改条目的计划时间（SCHEDULED）。安排任务到具体时间用这个。",
+			Name: "update_item",
+			Description: "修改已有条目：状态、优先级、计划时间、截止时间、循环规则，一次可改多项。" +
+				"参数跟 create_item 同名同义。只传要改的那几项，没传的保持不变；" +
+				"传空字符串表示清除该项（例如 scheduled 传空就是取消计划）。",
 			Parameters: schema(map[string]any{
-				"ref":   str("条目引用，形如 work.org:12"),
-				"title": str("条目标题，用于校验"),
-				"time":  str("计划时间，格式 2006-01-02、2006-01-02 15:04 或 2006-01-02 15:04-16:30；末尾可加循环规则如 +1w；留空表示取消计划"),
-			}, "ref"),
-		},
-		{
-			Name:        "set_deadline",
-			Description: "设置或修改条目的截止时间（DEADLINE）。",
-			Parameters: schema(map[string]any{
-				"ref":   str("条目引用，形如 work.org:12"),
-				"title": str("条目标题，用于校验"),
-				"time":  str("截止时间，格式 2006-01-02 或 2006-01-02 15:04；留空表示取消截止"),
-			}, "ref"),
-		},
-		{
-			Name:        "set_todo_state",
-			Description: "修改条目的 TODO 状态，例如标记完成（DONE）或改为进行中（NEXT）。",
-			Parameters: schema(map[string]any{
-				"ref":   str("条目引用，形如 work.org:12"),
-				"title": str("条目标题，用于校验"),
-				"state": str("目标状态，如 TODO、NEXT、WAITING、DONE、CANCELLED；留空表示去掉状态"),
-			}, "ref"),
-		},
-		{
-			Name:        "set_priority",
-			Description: "设置条目优先级。",
-			Parameters: schema(map[string]any{
-				"ref":      str("条目引用，形如 work.org:12"),
-				"title":    str("条目标题，用于校验"),
-				"priority": str("优先级 A、B 或 C；留空表示去掉优先级"),
-			}, "ref"),
-		},
-		{
-			Name:        "set_repeat",
-			Description: "把条目设成循环任务，或取消循环。条目需要先有计划或截止时间。",
-			Parameters: schema(map[string]any{
-				"ref":   str("条目引用，形如 work.org:12"),
-				"title": str("条目标题，用于校验"),
-				"rule":  str("循环规则：+1d 每天、+1w 每周、+1m 每月、+2w 每两周、.+3d 表示完成后再隔三天；留空表示取消循环"),
+				"ref":       str("条目引用，形如 work.org:12"),
+				"title":     str("条目标题，用于校验"),
+				"state":     str("TODO 状态，如 TODO、NEXT、WAITING、DONE、CANCELLED；空表示去掉状态"),
+				"priority":  str("优先级 A、B 或 C；空表示去掉优先级"),
+				"scheduled": str("计划时间，格式 2006-01-02、2006-01-02 15:04 或 2006-01-02 15:04-16:30；空表示取消计划"),
+				"deadline":  str("截止时间，格式 2006-01-02 或 2006-01-02 15:04；空表示取消截止"),
+				"repeat":    str("循环规则：+1d 每天、+1w 每周、+1m 每月、.+3d 表示完成后再隔三天；空表示取消循环。条目需要先有计划或截止时间"),
 			}, "ref"),
 		},
 		{
 			Name: "delete_item",
 			Description: "删除一个条目及其下属的全部子条目。这是破坏性操作，只在用户明确要求删除时使用；" +
-				"如果只是做完了，应该用 set_todo_state 标记完成。",
+				"如果只是做完了，应该用 update_item 把 state 标成完成。",
 			Parameters: schema(map[string]any{
 				"ref":   str("条目引用，形如 work.org:12"),
 				"title": str("条目标题，必须提供，用于确认删对了条目"),
@@ -134,12 +104,13 @@ func wsToolDefs() []agent.ToolSpec {
 				"title":     str("条目标题"),
 				"state":     str("TODO 状态，默认 TODO"),
 				"priority":  str("优先级 A、B 或 C"),
-				"scheduled": str("计划时间，格式同 schedule_item"),
-				"deadline":  str("截止时间，格式同 set_deadline"),
+				"scheduled": str("计划时间，格式 2006-01-02、2006-01-02 15:04 或 2006-01-02 15:04-16:30"),
+				"deadline":  str("截止时间，格式 2006-01-02 或 2006-01-02 15:04"),
 				"repeat":    str("循环规则，如 +1w 表示每周重复；留空表示不循环"),
 				"tags":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "标签列表"},
 				"body":      str("正文说明，可多行"),
 				"file":      str("写入哪个文件，如 work.org；留空则写入默认收件箱"),
+				"parent":    str("父条目引用，形如 work.org:5；给了就挂到它下面成为子条目，此时 file 忽略"),
 			}, "title"),
 		},
 		{
@@ -178,28 +149,15 @@ func wsToolDefs() []agent.ToolSpec {
 			}, "ref", "index"),
 		},
 		{
-			Name:        "demote_item",
-			Description: "把条目及其子条目降一级（变成更深一层的子任务）。",
+			Name: "move_item",
+			Description: "调整条目及其子条目在大纲里的位置。二选一：" +
+				"给 parent_ref 就挂到那个父条目下（传空字符串则移到文件顶层末尾）；" +
+				"给 level_delta 就原地升降级（+1 降一级变成更深的子任务，-1 升一级）。",
 			Parameters: schema(map[string]any{
-				"ref":   str("条目引用，形如 work.org:12"),
-				"title": str("条目标题，用于校验"),
-			}, "ref"),
-		},
-		{
-			Name:        "promote_item",
-			Description: "把条目及其子条目升一级（减少一层缩进）。",
-			Parameters: schema(map[string]any{
-				"ref":   str("条目引用，形如 work.org:12"),
-				"title": str("条目标题，用于校验"),
-			}, "ref"),
-		},
-		{
-			Name:        "move_item",
-			Description: "把条目及其子条目移动到另一个父条目下（parent_ref 留空则移到文件顶层末尾）。",
-			Parameters: schema(map[string]any{
-				"ref":        str("要移动的条目引用，形如 work.org:12"),
-				"title":      str("条目标题，用于校验"),
-				"parent_ref": str("目标父条目引用，形如 work.org:5；留空移到顶层末尾"),
+				"ref":         str("要移动的条目引用，形如 work.org:12"),
+				"title":       str("条目标题，用于校验"),
+				"parent_ref":  str("目标父条目引用，形如 work.org:5；传空字符串移到顶层末尾"),
+				"level_delta": num("升降几级：+1 降一级，-1 升一级"),
 			}, "ref"),
 		},
 	}
@@ -254,16 +212,8 @@ func (w *Workspace) execOrg(name, rawArgs string) (string, bool, error) {
 		return w.findFree(getStr("date"), getInt("min_minutes", 30))
 	case "get_item":
 		return w.getItem(getStr("ref"), getStr("title"))
-	case "schedule_item":
-		return w.setPlanning(getStr("ref"), getStr("title"), "SCHEDULED", getStr("time"))
-	case "set_deadline":
-		return w.setPlanning(getStr("ref"), getStr("title"), "DEADLINE", getStr("time"))
-	case "set_todo_state":
-		return w.setState(getStr("ref"), getStr("title"), getStr("state"))
-	case "set_priority":
-		return w.setPriority(getStr("ref"), getStr("title"), getStr("priority"))
-	case "set_repeat":
-		return w.setRepeat(getStr("ref"), getStr("title"), getStr("rule"))
+	case "update_item":
+		return w.updateItem(args)
 	case "delete_item":
 		return w.deleteItem(getStr("ref"), getStr("title"))
 	case "create_item":
@@ -276,12 +226,15 @@ func (w *Workspace) execOrg(name, rawArgs string) (string, bool, error) {
 		return w.addNote(getStr("ref"), getStr("title"), getStr("text"))
 	case "toggle_checkbox":
 		return w.toggleBox(getStr("ref"), getStr("title"), getInt("index", 0))
-	case "demote_item":
-		return w.demote(getStr("ref"), getStr("title"))
-	case "promote_item":
-		return w.promote(getStr("ref"), getStr("title"))
 	case "move_item":
-		return w.moveItem(getStr("ref"), getStr("title"), getStr("parent_ref"))
+		if _, ok := args["parent_ref"]; ok {
+			return w.moveItem(getStr("ref"), getStr("title"), getStr("parent_ref"))
+		}
+		if d := getInt("level_delta", 0); d != 0 {
+			return w.shiftLevel(getStr("ref"), getStr("title"), d)
+		}
+		return "", false, fmt.Errorf("要么给 parent_ref（挂到某个父条目下，传空字符串移到顶层），" +
+			"要么给 level_delta（±1 升降级）")
 	}
 	return "", false, fmt.Errorf("未知工具 %q", name)
 }
@@ -517,120 +470,6 @@ func nodeBody(doc *org.Document, n *org.Node) string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-func (w *Workspace) setPlanning(ref, title, key, timeStr string) (string, bool, error) {
-	doc, n, err := w.resolve(ref, title)
-	if err != nil {
-		return "", false, err
-	}
-	var ts *org.Timestamp
-	if timeStr != "" {
-		if ts, err = parseTime(timeStr, w.now()); err != nil {
-			return "", false, err
-		}
-		old := n.Scheduled
-		if key == "DEADLINE" {
-			old = n.Deadline
-		}
-		if old != nil {
-			ts.Repeat, ts.Warn = old.Repeat, old.Warn
-		}
-	}
-	w.snapshot(doc)
-	n = doc.SetPlanning(n, key, ts)
-	if err := w.save(doc); err != nil {
-		return "", false, err
-	}
-
-	label := "计划时间"
-	if key == "DEADLINE" {
-		label = "截止时间"
-	}
-	if ts == nil {
-		w.record(doc, "取消「%s」的%s", n.Title, label)
-		return fmt.Sprintf("已取消「%s」的%s。", n.Title, label), true, nil
-	}
-	w.record(doc, "把「%s」的%s设为 %s", n.Title, label, ts.String())
-	return fmt.Sprintf("已把「%s」的%s设为 %s（新引用 %s）。",
-		n.Title, label, ts.String(), refOf(doc, n)), true, nil
-}
-
-func (w *Workspace) setState(ref, title, state string) (string, bool, error) {
-	doc, n, err := w.resolve(ref, title)
-	if err != nil {
-		return "", false, err
-	}
-	state = strings.ToUpper(strings.TrimSpace(state))
-	old := n.TODO
-	w.snapshot(doc)
-	n, err = doc.SetTodo(n, state)
-	if err != nil {
-		return "", false, fmt.Errorf("%w（该文件可用状态：%s）", err, strings.Join(doc.AllKeywords(), "、"))
-	}
-	if err := w.save(doc); err != nil {
-		return "", false, err
-	}
-	// 重复任务标完成后，org 的做法是把状态退回原样、把计划推到下一个周期。
-	// 照字面说成「从 TODO 改为 TODO」，看着像没生效——模型也会原样转述给用户。
-	repeated := n.TODO == old && n.Scheduled != nil
-	if repeated {
-		next := n.Scheduled.Start.Format("2006-01-02")
-		w.record(doc, "完成「%s」这一次，下次计划推进到 %s", n.Title, next)
-		return fmt.Sprintf("「%s」这一次已完成。这是重复任务，状态回到 %s，下次计划推进到 %s。（新引用 %s）",
-			n.Title, orDash(n.TODO), next, refOf(doc, n)), true, nil
-	}
-
-	w.record(doc, "把「%s」从 %s 改为 %s", n.Title, orDash(old), orDash(n.TODO))
-	return fmt.Sprintf("已把「%s」的状态从 %s 改为 %s。（新引用 %s）",
-		n.Title, orDash(old), orDash(n.TODO), refOf(doc, n)), true, nil
-}
-
-func (w *Workspace) setPriority(ref, title, prio string) (string, bool, error) {
-	doc, n, err := w.resolve(ref, title)
-	if err != nil {
-		return "", false, err
-	}
-	prio = strings.ToUpper(strings.TrimSpace(prio))
-	if prio != "" && (len(prio) != 1 || prio[0] < 'A' || prio[0] > 'Z') {
-		return "", false, fmt.Errorf("优先级 %q 不合法，应为单个字母，如 A", prio)
-	}
-	w.snapshot(doc)
-	n.Priority = prio
-	doc.Lines[n.Line] = n.String()
-	doc.Reparse()
-	n = doc.NodeAt(n.Line)
-	if err := w.save(doc); err != nil {
-		return "", false, err
-	}
-	w.record(doc, "把「%s」的优先级设为 %s", n.Title, orDash(prio))
-	return fmt.Sprintf("已把「%s」的优先级设为 %s。", n.Title, orDash(prio)), true, nil
-}
-
-func (w *Workspace) setRepeat(ref, title, rule string) (string, bool, error) {
-	doc, n, err := w.resolve(ref, title)
-	if err != nil {
-		return "", false, err
-	}
-	r, err := org.ParseRepeat(rule)
-	if err != nil {
-		return "", false, err
-	}
-	w.snapshot(doc)
-	n, err = doc.SetRepeat(n, "", r)
-	if err != nil {
-		return "", false, err
-	}
-	if err := w.save(doc); err != nil {
-		return "", false, err
-	}
-	if r == nil {
-		w.record(doc, "取消「%s」的循环", n.Title)
-		return fmt.Sprintf("「%s」不再循环。", n.Title), true, nil
-	}
-	w.record(doc, "把「%s」设为%s重复", n.Title, r.Describe())
-	return fmt.Sprintf("「%s」现在%s重复，下一次是 %s。（新引用 %s）",
-		n.Title, r.Describe(), nextOccurrence(n).Format("2006-01-02"), refOf(doc, n)), true, nil
-}
-
 func nextOccurrence(n *org.Node) time.Time {
 	if n.Scheduled != nil {
 		return n.Scheduled.Start
@@ -639,6 +478,156 @@ func nextOccurrence(n *org.Node) time.Time {
 		return n.Deadline.Start
 	}
 	return time.Time{}
+}
+
+// updateItem 一次改一个条目的若干项：状态、优先级、计划、截止、循环。
+//
+// 合并之前这是五个工具（schedule_item / set_deadline / set_todo_state /
+// set_priority / set_repeat），每个都要 ref 和 title，光这两项的描述就在
+// 工具表里重复了十几遍。合成一个之后，「没传」和「传了空串」靠字段在不在
+// JSON 里区分——那正是原先「留空表示取消」的语义，只是不必五个工具各说一遍。
+//
+// 改动顺序不能随便调：**状态放最后**。把循环任务标成 DONE 会顺手把计划推到
+// 下一个周期，得先让新的计划时间和循环规则就位，推出来的才是对的那一天。
+//
+// 全程只 snapshot 一次、save 一次。中间每改一步都要接住返回的新节点指针——
+// 写回会重新解析文档，之前那个指针就失效了。
+func (w *Workspace) updateItem(args map[string]any) (string, bool, error) {
+	getStr := func(k string) string {
+		v, _ := args[k].(string)
+		return strings.TrimSpace(v)
+	}
+	has := func(k string) bool { _, ok := args[k]; return ok }
+
+	doc, n, err := w.resolve(getStr("ref"), getStr("title"))
+	if err != nil {
+		return "", false, err
+	}
+	if !has("state") && !has("priority") && !has("scheduled") && !has("deadline") && !has("repeat") {
+		return "", false, fmt.Errorf("没说要改什么：state / priority / scheduled / deadline / repeat 至少给一个")
+	}
+	w.snapshot(doc)
+
+	var done []string
+
+	if has("priority") {
+		prio := strings.ToUpper(getStr("priority"))
+		if prio != "" && (len(prio) != 1 || prio[0] < 'A' || prio[0] > 'Z') {
+			return "", false, fmt.Errorf("优先级 %q 不合法，应为单个字母，如 A", prio)
+		}
+		n.Priority = prio
+		doc.Lines[n.Line] = n.String()
+		doc.Reparse()
+		n = doc.NodeAt(n.Line)
+		done = append(done, "优先级设为 "+orDash(prio))
+	}
+
+	// 计划和截止走同一条路：解析时间、继承原有的循环与提前量，再写回去。
+	setPlan := func(key, timeStr, label string) error {
+		var ts *org.Timestamp
+		if timeStr != "" {
+			var perr error
+			if ts, perr = parseTime(timeStr, w.now()); perr != nil {
+				return perr
+			}
+			old := n.Scheduled
+			if key == "DEADLINE" {
+				old = n.Deadline
+			}
+			if old != nil {
+				ts.Repeat, ts.Warn = old.Repeat, old.Warn
+			}
+		}
+		n = doc.SetPlanning(n, key, ts)
+		if ts == nil {
+			done = append(done, "取消"+label)
+		} else {
+			done = append(done, label+"设为 "+ts.String())
+		}
+		return nil
+	}
+	if has("scheduled") {
+		if err = setPlan("SCHEDULED", getStr("scheduled"), "计划时间"); err != nil {
+			return "", false, err
+		}
+	}
+	if has("deadline") {
+		if err = setPlan("DEADLINE", getStr("deadline"), "截止时间"); err != nil {
+			return "", false, err
+		}
+	}
+
+	if has("repeat") {
+		r, rerr := org.ParseRepeat(getStr("repeat"))
+		if rerr != nil {
+			return "", false, rerr
+		}
+		if n, err = doc.SetRepeat(n, "", r); err != nil {
+			return "", false, err
+		}
+		if r == nil {
+			done = append(done, "不再循环")
+		} else {
+			done = append(done, r.Describe()+"重复")
+		}
+	}
+
+	if has("state") {
+		old := n.TODO
+		if n, err = doc.SetTodo(n, strings.ToUpper(getStr("state"))); err != nil {
+			return "", false, fmt.Errorf("%w（该文件可用状态：%s）", err, strings.Join(doc.AllKeywords(), "、"))
+		}
+		// 重复任务标完成后，org 的做法是把状态退回原样、把计划推到下一个周期。
+		// 照字面说成「从 TODO 改为 TODO」，看着像没生效——模型也会原样转述给用户。
+		if n.TODO == old && n.Scheduled != nil {
+			done = append(done, fmt.Sprintf("这一次已完成，状态回到 %s，下次计划推进到 %s",
+				orDash(n.TODO), n.Scheduled.Start.Format("2006-01-02")))
+		} else {
+			done = append(done, fmt.Sprintf("状态从 %s 改为 %s", orDash(old), orDash(n.TODO)))
+		}
+	}
+
+	if err := w.save(doc); err != nil {
+		return "", false, err
+	}
+	summary := strings.Join(done, "、")
+	w.record(doc, "改「%s」：%s", n.Title, summary)
+	return fmt.Sprintf("已改「%s」：%s。（新引用 %s）",
+		n.Title, summary, refOf(doc, n)), true, nil
+}
+
+// shiftLevel 把条目连同子树升降若干级：正数降级（缩得更深），负数升级。
+// 升级前先算够不够升——升到一半发现顶到天花板，内存里的文档已经改花了。
+func (w *Workspace) shiftLevel(ref, title string, delta int) (string, bool, error) {
+	doc, n, err := w.resolve(ref, title)
+	if err != nil {
+		return "", false, err
+	}
+	if n.Level+delta < 1 {
+		return "", false, fmt.Errorf("「%s」在第 %d 级，升不了 %d 级", n.Title, n.Level, -delta)
+	}
+	w.snapshot(doc)
+	steps := delta
+	if steps < 0 {
+		steps = -steps
+	}
+	for i := 0; i < steps; i++ {
+		if delta > 0 {
+			n = doc.Demote(n)
+		} else {
+			n = doc.Promote(n)
+		}
+	}
+	if err := w.save(doc); err != nil {
+		return "", false, err
+	}
+	dir, lv := "降", delta
+	if delta < 0 {
+		dir, lv = "升", -delta
+	}
+	w.record(doc, "把「%s」%s了 %d 级", n.Title, dir, lv)
+	return fmt.Sprintf("已把「%s」%s了 %d 级（新引用 %s）。",
+		n.Title, dir, lv, refOf(doc, n)), true, nil
 }
 
 func (w *Workspace) deleteItem(ref, title string) (string, bool, error) {
@@ -679,17 +668,28 @@ func (w *Workspace) createItem(args map[string]any) (string, bool, error) {
 		return "", false, fmt.Errorf("必须提供标题")
 	}
 
-	target := getStr("file")
-	doc := w.Coll.Doc(target)
-	if doc == nil && target != "" {
-		return "", false, fmt.Errorf("找不到文件 %s，可用文件：%s", target, strings.Join(w.fileNames(), "、"))
-	}
-	if doc == nil {
-		if doc = w.Coll.Doc(w.Cfg.InboxFile()); doc == nil {
-			if len(w.Coll.Docs) == 0 {
-				return "", false, fmt.Errorf("没有可写入的 org 文件")
+	// 给了父条目就跟着它走：子条目只能跟父亲待在同一个文件里，
+	// 这时候 file 说什么都不算数。
+	var doc *org.Document
+	var parent *org.Node
+	if pref := getStr("parent"); pref != "" {
+		var perr error
+		if doc, parent, perr = w.resolve(pref, ""); perr != nil {
+			return "", false, perr
+		}
+	} else {
+		target := getStr("file")
+		doc = w.Coll.Doc(target)
+		if doc == nil && target != "" {
+			return "", false, fmt.Errorf("找不到文件 %s，可用文件：%s", target, strings.Join(w.fileNames(), "、"))
+		}
+		if doc == nil {
+			if doc = w.Coll.Doc(w.Cfg.InboxFile()); doc == nil {
+				if len(w.Coll.Docs) == 0 {
+					return "", false, fmt.Errorf("没有可写入的 org 文件")
+				}
+				doc = w.Coll.Docs[0]
 			}
-			doc = w.Coll.Docs[0]
 		}
 	}
 
@@ -697,6 +697,7 @@ func (w *Workspace) createItem(args map[string]any) (string, bool, error) {
 		Title:    title,
 		TODO:     strings.ToUpper(getStr("state")),
 		Priority: strings.ToUpper(getStr("priority")),
+		Parent:   parent,
 	}
 	if spec.TODO == "" {
 		spec.TODO = "TODO"
@@ -902,37 +903,6 @@ func (w *Workspace) toggleBox(ref, title string, index int) (string, bool, error
 	w.record(doc, "%s「%s」的第 %d 项", what, n.Title, index)
 	return fmt.Sprintf("%s「%s」里的「%s」，现在 %d/%d。",
 		what, n.Title, strings.TrimSpace(box.Text), done, total), true, nil
-}
-
-func (w *Workspace) demote(ref, title string) (string, bool, error) {
-	doc, n, err := w.resolve(ref, title)
-	if err != nil {
-		return "", false, err
-	}
-	w.snapshot(doc)
-	n = doc.Demote(n)
-	if err := w.save(doc); err != nil {
-		return "", false, err
-	}
-	w.record(doc, "把「%s」降了一级", n.Title)
-	return fmt.Sprintf("已把「%s」降了一级（新引用 %s）。", n.Title, refOf(doc, n)), true, nil
-}
-
-func (w *Workspace) promote(ref, title string) (string, bool, error) {
-	doc, n, err := w.resolve(ref, title)
-	if err != nil {
-		return "", false, err
-	}
-	if n.Level <= 1 {
-		return "", false, fmt.Errorf("「%s」已在顶层，无法再升", n.Title)
-	}
-	w.snapshot(doc)
-	n = doc.Promote(n)
-	if err := w.save(doc); err != nil {
-		return "", false, err
-	}
-	w.record(doc, "把「%s」升了一级", n.Title)
-	return fmt.Sprintf("已把「%s」升了一级（新引用 %s）。", n.Title, refOf(doc, n)), true, nil
 }
 
 func (w *Workspace) moveItem(ref, title, parentRef string) (string, bool, error) {

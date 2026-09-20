@@ -82,7 +82,7 @@ func testModel() ModelConfig {
 // 秘书改了条目，改动要原样交回来给 Swift 写回 iCloud。
 func TestAskReturnsChangedFiles(t *testing.T) {
 	withFakeModel(t,
-		callTool("set_todo_state", `{"ref":"work.org:2","title":"每周组会","state":"DONE"}`),
+		callTool("update_item", `{"ref":"work.org:2","title":"每周组会","state":"DONE"}`),
 		say("标记完成了。"))
 
 	before := "#+TITLE: 工作\n\n* TODO 每周组会\n  SCHEDULED: <2026-09-17 四 10:00>\n"

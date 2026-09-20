@@ -57,7 +57,7 @@ func TestSetTodoStateWritesBack(t *testing.T) {
 	ws, path := newWS(t)
 	ref := refTo(t, ws, "补开题报告")
 
-	if _, changed := run(t, ws, "set_todo_state", map[string]any{
+	if _, changed := run(t, ws, "update_item", map[string]any{
 		"ref": ref, "title": "补开题报告", "state": "DONE",
 	}); !changed {
 		t.Fatal("改了状态却说没动过文件")
@@ -77,8 +77,8 @@ func TestScheduleItem(t *testing.T) {
 	ws, path := newWS(t)
 	ref := refTo(t, ws, "每周组会")
 
-	run(t, ws, "schedule_item", map[string]any{
-		"ref": ref, "title": "每周组会", "time": "2026-10-01 09:30-11:00",
+	run(t, ws, "update_item", map[string]any{
+		"ref": ref, "title": "每周组会", "scheduled": "2026-10-01 09:30-11:00",
 	})
 
 	got := readBack(t, path)
@@ -92,8 +92,8 @@ func TestScheduleItemClearing(t *testing.T) {
 	ws, path := newWS(t)
 	ref := refTo(t, ws, "写毕业论文")
 
-	run(t, ws, "schedule_item", map[string]any{
-		"ref": ref, "title": "写毕业论文", "time": "",
+	run(t, ws, "update_item", map[string]any{
+		"ref": ref, "title": "写毕业论文", "scheduled": "",
 	})
 
 	got := readBack(t, path)
@@ -108,7 +108,7 @@ func TestSetPriority(t *testing.T) {
 	ws, path := newWS(t)
 	ref := refTo(t, ws, "每周组会")
 
-	run(t, ws, "set_priority", map[string]any{
+	run(t, ws, "update_item", map[string]any{
 		"ref": ref, "title": "每周组会", "priority": "B",
 	})
 	if got := readBack(t, path); !strings.Contains(got, "[#B] 每周组会") {
@@ -116,7 +116,7 @@ func TestSetPriority(t *testing.T) {
 	}
 
 	// 留空是去掉优先级。
-	run(t, ws, "set_priority", map[string]any{
+	run(t, ws, "update_item", map[string]any{
 		"ref": refTo(t, ws, "每周组会"), "title": "每周组会", "priority": "",
 	})
 	if got := readBack(t, path); strings.Contains(got, "[#B] 每周组会") {
@@ -191,7 +191,7 @@ func TestToolChangesAreUndoable(t *testing.T) {
 	ws, path := newWS(t)
 	before := readBack(t, path)
 
-	run(t, ws, "set_todo_state", map[string]any{
+	run(t, ws, "update_item", map[string]any{
 		"ref": refTo(t, ws, "每周组会"), "title": "每周组会", "state": "DONE",
 	})
 	run(t, ws, "create_item", map[string]any{"title": "临时加的", "file": "test.org"})
@@ -228,7 +228,7 @@ func TestStaleRefIsRejected(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{
 		"ref": "test.org:999", "title": "每周组会", "state": "DONE",
 	})
-	out, _, err := toolByName(t, ws, "set_todo_state").Run(string(raw))
+	out, _, err := toolByName(t, ws, "update_item").Run(string(raw))
 	if err == nil && !strings.Contains(out, "每周组会") {
 		t.Fatalf("行号不存在时该报错或按标题纠正，得到：%q", out)
 	}
