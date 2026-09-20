@@ -268,12 +268,10 @@ func (s *Session) setAuto(arg string) {
 func (s *Session) help() {
 	var b strings.Builder
 	b.WriteString(dim + `按键：
-  tab / shift+tab       轮换视图：秘书 / 日程 / 待办 / 邮件 / 财务
-                        正在打命令时，tab 是补全
-  任意键                在别的视图里打字，即回到秘书视图接着输入
+  tab / shift+tab       补全 / 命令（轮换候选）
   滚轮 / PageUp PageDown  往回翻历史（输入框钉在下面不动）
   选择文字              按住 option（或 shift）拖；或 /mouse off 换成拖选优先
-  ctrl+r                重新读一遍 org 文件并刷新当前视图
+  ctrl+r                重新读一遍 org 文件（把外部改动捞进来）
   esc / ctrl+c          打断秘书；确认框里是取消
 
 输入：

@@ -215,6 +215,9 @@ func (a *Agent) systemPrompt() string {
 		b.WriteString("判断什么算「要紧」和「关注」，以这段描述为准。\n")
 	}
 
+	b.WriteString("\n最后一条：**动手查之前，先用一句中文说你要干什么**，像这样——\n")
+	b.WriteString("「我看一下这周的日程。」「先去服务器收一趟信。」「查查上个月这笔账。」\n")
+	b.WriteString("一句话，句号收尾，然后就去调工具。第一个字必须是中文。\n")
 	return b.String()
 }
 

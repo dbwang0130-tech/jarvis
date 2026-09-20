@@ -73,7 +73,12 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 - 可选接口 `ReadOnlyTool`：一批工具调用全部只读时，`executeParallel` 并发执行；只要有一个不是，整批串行。所有 skill 的工具适配器都有 `readonly` 字段，新工具别忘了设。
 - 进度通过 `emit(Event)` 回调外抛（`EventDelta` / `EventToolCall` / `EventToolResult` / `EventPending` / `EventAuto` / `EventCompact`…），界面层只消费事件，不碰循环内部。
 - `plan.go` 注入两个内置工具 `plan` / `step_done`，排在工具表最前，用于多步任务的进度展示。
-- `compact.go` 在估算 token 超过 `ContextLimit`（默认 16000）时把早期对话压成一份「交接说明」。
+- `compact.go` 在估算 token 超过 `ContextLimit`（默认 32000）时把早期对话压成一份「交接说明」。
+  **预算算的是一次请求的全部**：系统提示 + 工具声明 + 对话历史。早先只数 History，
+  固定开销一分不算，于是工具表一路长到五十几个、每轮白发两万字节也没人发现——
+  长的那部分根本不在账上。`fixedTokens()` 把这笔算进来并缓存，`SetSkills` 负责作废。
+  （删掉 configskill / workflow、`update_item` 五合一之后，现在是 36 个工具、
+  声明 14KB、行为规则 10KB。）
 - `client.go` 只讲 OpenAI 兼容协议，`Presets` 里列了 deepseek/qwen/kimi/minimax/zhipu/doubao/spark/baichuan/ollama。
 - `build.go` 的 `agent.Build(cfg, skills...)` 是唯一的装配点；未配 provider 时返回 `(nil, err)`，调用方降级而不是崩。
 
@@ -86,12 +91,13 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 | `internal/orgtools` | 日程：`Workspace` 包住 org 文件集合，带快照/撤销/改动记录 |
 | `internal/mail` | 邮件：`Session` 持有连接、编号索引、triage 结论、草稿 |
 | `internal/ledger` | 记账：ledger-cli 纯文本解析与追加 |
+| `internal/health` | 健康：体征与饮食记录。NDJSON 一行一条 FHIR 资源，只追加——手机和电脑两头都在写，整文件重写会互相吃改动 |
 | `internal/browser` | Chrome DevTools 自动化，连不上已有 Chrome 就自己起一个独立 profile |
-| `internal/workflow` | 命名工作流的存取与触发 |
-| `internal/configskill` | 让秘书自己读改配置、删邮箱账号 |
 | `internal/memory` | 跨会话长期记忆（`memory.md`），`/dream` 整理 |
 
-**新增一项能力**：在 `internal/xxx/` 实现 `agent.Skill`，然后在 `internal/chat/chat.go` 的 `buildSkills()` 里加一行。同时在同文件的 `toolLabel` map 里补上工具名到中文标签的映射，否则界面直接显示英文工具名。
+**新增一项能力**：在 `internal/xxx/` 实现 `agent.Skill`，然后在 `internal/chat/chat.go` 的 `buildSkills()` 里加一行。同时在 `internal/agent/label.go` 的 `toolLabels` 表里补上工具名到中文标签的映射，否则界面直接显示英文工具名——那张表桌面端和 iOS 共用一份，`internal/chat/label_test.go` 会守着，漏了就红。
+
+**工具表是要花钱的**：每个工具的声明每一轮都重发一遍，描述写长一点、参数多列一个，都是常驻开销。同一个对象的多项修改合成一个工具（`update_item` 就是 `schedule_item`/`set_deadline`/`set_todo_state`/`set_priority`/`set_repeat` 五个合来的，靠「字段在不在 JSON 里」区分「不动」和「清空」），比摊成五个各带一遍 `ref`+`title` 省得多。
 
 ### 数据层
 
@@ -99,7 +105,7 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 - `internal/agenda`：把 org 条目投影到日期上（计划/截止/事件/逾期）、找空档。
 - `internal/mailbox`：IMAP/SMTP 底层（拉取、解析、垃圾箱探测、发信）。
 - `internal/state`：每个账号的同步进度。**按 UID 而不是时间划增量**——IMAP 的 SINCE 只比日期，按时间会重复拉当天邮件；`UIDValidity` 变了要重新全量。
-- `internal/config`：单份 JSON 配置 `~/.config/jarvis/config.json`（权限 600）。**已知的一处语义冲突**：`configskill` 的 `patch` 用指针区分「没传」和「传了零值」，而 `config.fill()` 把零值当成「这份配置里没有这项」补默认值。结果是 `deadline_warn_days=0`（到期当天才提醒）这类意图存不住——受影响的只有 `deadline_warn_days` / `agenda_days` / `work_hours_end` / `max_steps` 几个数值字段，`skill_test.go` 里有个测试钉着这个行为。真要支持得让 `fill` 按「字段在 JSON 里出现过没有」判断。
+- `internal/config`：单份 JSON 配置 `~/.config/jarvis/config.json`（权限 600）。改配置只有 `/` 命令一条路（`/setup` `/login` `/provider` `/model` `/files` `/ledger` `/theme` `/mailcheck` `/accounts` `/mailrm`）——原先还有个 `configskill` 让模型自己读改，两条路改同一份配置，`deadline_warn_days=0` 这类「传了零值」的意图在 `config.fill()` 那儿被当成「没这项」补回默认。技能删掉之后这个冲突自然没了；真要让模型改配置，得先让 `fill` 按「字段在 JSON 里出现过没有」判断。
 
 配置里的路径（`files` / `inbox` / `ledger_file`）在 `Load` 末尾由 `normalize()` 统一展开成绝对路径（**包括配置文件不存在、直接返回默认值那条路径**），调用方一律假定拿到的就是绝对路径，不必各自记得调 `Expand`——漏掉就会在当前工作目录下造出一个名叫 `~` 的目录。密码和 API key 走 macOS 钥匙串（`KeychainGet`/`KeychainSet`，底层是 `security` 命令），也支持 `password_cmd` / `api_key_cmd` 从外部取。配置里不落明文。
 - `internal/session`：对话历史持久化到 `~/.config/jarvis/sessions/`，时间戳做 id。
@@ -133,8 +139,10 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 
 **启动路径不许把人挡在门外**：配置文件坏了、日程路径不可用，都只记一条 `startupWarn` 然后照常进界面——进去了才能用 `/setup` 修。`config.Load` 出错时返回的也是一份能直接用的默认配置（路径已展开）。新增启动步骤时守住这条：能降级就降级，别 `return err`。**命令表 `commands` 是补全和 `/help` 的单一数据源**——之前两处各写各的，`usage` 里一度挂着个根本不存在的 `/inbox`；新增命令只加表里一行，候选列表和帮助一起更新。
 
-**新增工具后**除了在 `buildSkills()` 注册，还要在 `command.go` 旁边的 `toolLabels` 表里补中文标签，否则界面直接显示英文工具名。
+**新增工具后**除了在 `buildSkills()` 注册，还要在 `internal/agent/label.go` 的 `toolLabels` 表里补中文标签，否则界面直接显示英文工具名。
 
-早先那版 bubbletea 四视图 TUI（`internal/ui`，约 4800 行）已经删掉了——`internal/chat` 是它的完整替代。连带摘掉了 bubbletea / bubbles / lipgloss / termenv 四个直接依赖，直接依赖从 8 个降到 5 个。想翻旧实现的话在 git 历史里（初始提交 `7febf4b`）。**别把 lipgloss/termenv 再引回主程序**：它们会向终端查背景色（OSC 11）并直接从 tty 读应答，把用户按键一起吃掉，表现为「键盘完全没反应」。
+早先那版 bubbletea 四视图 TUI（`internal/ui`，约 4800 行）已经删掉了——`internal/chat` 是它的完整替代。连带摘掉了 bubbletea / bubbles / lipgloss / termenv 四个直接依赖，直接依赖从 8 个降到 5 个。想翻旧实现的话在 git 历史里（初始提交 `7febf4b`）。
+
+后来 `chat` 里又长出过一套 tab 轮换的五视图（日程/待办/邮件/财务，`view.go` 约 350 行），现在也删了：它们做的事跟问一句「今天什么安排」完全重叠，而后者才是这东西的立身之本。tab 从此专职补全命令，`reader` 也不必再管输入框该不该画（原来那个 `boxed` 开关没了；确认框收起输入框走的是 `bottomLocked` 里 `confirmLines != nil` 那条路，跟视图无关）。**别把 lipgloss/termenv 再引回主程序**：它们会向终端查背景色（OSC 11）并直接从 tty 读应答，把用户按键一起吃掉，表现为「键盘完全没反应」。
 
 删掉的东西里有一个 `chat` 没有对应实现的功能：`editor.go` 的「用 $EDITOR 打开条目编辑」。需要的话得重新写。

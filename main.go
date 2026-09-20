@@ -42,8 +42,8 @@ func usage() {
   jarvis -c      继续上次的会话
   jarvis remind  检查一次日程提醒（供 launchd 定时调用）
 
-进去之后：tab 轮换视图（秘书 / 日程 / 待办 / 邮件 / 财务），
-滚轮或 PageUp/PageDown 往回翻历史，/help 看全部命令。
+进去之后：直接说话，滚轮或 PageUp/PageDown 往回翻历史，
+tab 补全 / 命令，/help 看全部命令。
 第一次用先敲 /setup，跟着走一遍就配好了。
 `)
 }
