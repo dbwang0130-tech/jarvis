@@ -2,13 +2,20 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
 
-// DefaultContextLimit 是触发自动压缩的估算 token 数。
-// 取值偏保守，保持上下文清爽，留足生成空间。
-const DefaultContextLimit = 16000
+// DefaultContextLimit 是一次请求的估算 token 预算：系统提示 + 工具声明 +
+// 对话历史，三样加起来。
+//
+// **这个口径是改过的。** 原先它只管 History，固定开销一分不算——于是
+// 16000 的预算看着清爽，真实请求却是 16000 加上小两万字节的工具声明，
+// 一倍还多。工具表一路长到五十几个也没人喊疼，正是因为长的那部分
+// 不在账上。现在固定开销进了账，数字才对得上真实发出去的东西，
+// 上限也跟着提到 32000。
+const DefaultContextLimit = 32000
 
 // compactPrompt 指导模型怎么总结早期对话。
 const compactPrompt = `请把上面这段对话压缩成一份交接说明，供你自己稍后继续工作时阅读。
@@ -35,9 +42,23 @@ func EstimateTokens(msgs []Message) int {
 	return total
 }
 
-// ContextUsage 返回当前上下文占用的估算 token 数与占上限的比例。
+// fixedTokens 估算每一轮都要重发的那部分：系统提示加上全部工具声明。
+// 它不随对话增长，却一直占着窗口，所以必须算进预算里。
+//
+// 结果缓存起来：算一次要把所有技能的提示拼一遍、工具声明序列化一遍，
+// 而状态栏每帧都要问一次占用。技能换了由 SetSkills 负责作废。
+func (a *Agent) fixedTokens() int {
+	if a.fixed == 0 {
+		raw, _ := json.Marshal(a.wireTools())
+		a.fixed = len([]rune(a.systemPrompt()))/2 + len(raw)/3
+	}
+	return a.fixed
+}
+
+// ContextUsage 返回这一轮请求的估算 token 数与占预算的比例。
+// 算的是真实要发出去的全部内容，不只是对话历史。
 func (a *Agent) ContextUsage() (tokens int, ratio float64) {
-	tokens = EstimateTokens(a.History)
+	tokens = a.fixedTokens() + EstimateTokens(a.History)
 	limit := a.contextLimit()
 	if limit <= 0 {
 		return tokens, 0

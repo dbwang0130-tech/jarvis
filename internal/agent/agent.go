@@ -66,8 +66,10 @@ type Agent struct {
 	Now func() time.Time
 	// AutoCompact 为真时上下文接近上限会自动压缩。
 	AutoCompact bool
-	// ContextLimit 是触发压缩的估算 token 数。
+	// ContextLimit 是一次请求的估算 token 预算（提示 + 工具 + 历史）。
 	ContextLimit int
+	// fixed 缓存系统提示加工具声明的估算开销，见 fixedTokens。
+	fixed int
 	// Usage 累计本次会话的 token 用量。
 	Usage Usage
 
@@ -93,6 +95,7 @@ func NewAgent(c *Client, skills []Skill, maxSteps int, auto AutoLevel) *Agent {
 func (a *Agent) SetSkills(skills []Skill) {
 	a.Skills = skills
 	a.tools = a.flattenTools()
+	a.fixed = 0 // 技能变了，固定开销得重算
 }
 
 // flattenTools 把所有技能的工具按名字拍平；核心工具 plan/step_done 排在最前。
@@ -211,6 +214,7 @@ func (a *Agent) systemPrompt() string {
 		b.WriteString("\n关于你的用户：\n" + s + "\n")
 		b.WriteString("判断什么算「要紧」和「关注」，以这段描述为准。\n")
 	}
+
 	return b.String()
 }
 
