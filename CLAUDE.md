@@ -97,7 +97,11 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 
 **新增一项能力**：在 `internal/xxx/` 实现 `agent.Skill`，然后在 `internal/chat/chat.go` 的 `buildSkills()` 里加一行。同时在 `internal/agent/label.go` 的 `toolLabels` 表里补上工具名到中文标签的映射，否则界面直接显示英文工具名——那张表桌面端和 iOS 共用一份，`internal/chat/label_test.go` 会守着，漏了就红。
 
-**工具表是要花钱的**：每个工具的声明每一轮都重发一遍，描述写长一点、参数多列一个，都是常驻开销。同一个对象的多项修改合成一个工具（`update_item` 就是 `schedule_item`/`set_deadline`/`set_todo_state`/`set_priority`/`set_repeat` 五个合来的，靠「字段在不在 JSON 里」区分「不动」和「清空」），比摊成五个各带一遍 `ref`+`title` 省得多。
+**工具表是要花钱的**：每个工具的声明每一轮都重发一遍，描述写长一点、参数多列一个，都是常驻开销。同一个对象的多项修改合成一个工具（`update_item` 就是 `schedule_item`/`set_deadline`/`set_todo_state`/`set_priority`/`set_repeat` 五个合来的），比摊成五个各带一遍 `ref`+`title` 省得多。约束也要写进 schema（`schemaOneOf` 生成 `anyOf`）而不只写在描述的散文里——模型读的是 schema，靠运行期报错纠正要白费一个来回。
+
+**「没给」和「给了空串」是两回事**，这条是 `internal/orgtools/args.go` 的存在理由。`args` 类型把这件事做成方法（`Has` / `OptStr`），`itemPatch` 让 `create_item` 和 `update_item` 读同一份结构：**没提**状态才落默认的 TODO，**给了空串**是要一条不带状态的条目；改的那边同理，没提就不动、给空串才清除。早先两个工具用 `""` 同时兼任两种意思，各记各的约定，`mobile/act.go` 也跟着分裂成两套写法。判据也要一致——`move_item` 的两条分支一度一条按「键在不在」、一条按「值是不是零」。`update_test.go` 里有一组专钉这套语义的用例。
+
+**只读标记是按批生效的**：`executeParallel` 要求整批调用全只读才并发，所以一个技能把 `readonly` 丢光，拖慢的不止它自己——同一轮里本该并发的日程、邮件查询会被一起拉回串行。浏览器技能做工具合并时就这么丢过一次（四个只读工具全并进能改 DOM 的 `browser_exec_js`），编译测试全绿，没有任何地方会响；现在 `label_test.go` 的 `TestEverySkillKeepsAReadOnlyTool` 守着。
 
 ### 数据层
 
