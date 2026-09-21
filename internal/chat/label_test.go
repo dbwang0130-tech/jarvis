@@ -49,3 +49,37 @@ func TestEveryToolHasALabel(t *testing.T) {
 		}
 	}
 }
+
+// 能查东西的技能必须至少留一个标了只读的工具。
+//
+// `executeParallel` 要求**整批**工具调用都只读才并发，所以「只读」是按调用
+// 批次生效的：一个技能把只读标记丢光，代价不止是它自己变慢——同一轮里
+// 本来能并发的日程、邮件查询会被一起拖回串行。
+//
+// 这条以前只靠 CLAUDE.md 一句「新工具别忘了设 readonly」。浏览器技能做
+// 九合五时，四个 readonly 工具全并进了 browser_exec_js，而 exec_js 能改
+// DOM、标不了只读，于是整个技能的只读覆盖率归零——编译、测试全绿，
+// 没有任何地方会响。
+func TestEverySkillKeepsAReadOnlyTool(t *testing.T) {
+	cfg := config.Default()
+	coll := &org.Collection{}
+	for _, sk := range []agent.Skill{
+		orgtools.NewSkill(orgtools.NewWorkspace(coll, cfg)),
+		mail.NewSkill(mail.NewSession(cfg)),
+		ledger.NewSkill(""),
+		health.New(""),
+		browser.New(cfg),
+	} {
+		found := false
+		for _, tl := range sk.Tools() {
+			if ro, ok := tl.(interface{ ReadOnly() bool }); ok && ro.ReadOnly() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("技能 %q 一个只读工具都没有——它的查询会把同一批里"+
+				"别的只读调用一起拖成串行", sk.Name())
+		}
+	}
+}

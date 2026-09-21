@@ -27,8 +27,8 @@ var toolLabels = map[string]string{
 	"record_vital": "记体征", "record_meal": "记饮食",
 	"set_health_profile": "填基础信息", "list_health": "查健康记录",
 	// 浏览器
-	"browser_navigate": "打开网页", "browser_click": "点击", "browser_type": "输入",
-	"browser_submit": "提交", "browser_exec_js": "执行JS",
+	"browser_navigate": "打开网页", "browser_read": "读取网页", "browser_click": "点击",
+	"browser_type": "输入", "browser_submit": "提交", "browser_exec_js": "执行JS",
 	// 记忆
 	"remember": "记住偏好",
 }

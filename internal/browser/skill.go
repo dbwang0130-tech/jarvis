@@ -40,9 +40,9 @@ func (s *Skill) Describe(b *strings.Builder) {
 
 func (s *Skill) Instructions() string {
 	return `浏览器自动化：
-1. 打开页面用 browser_navigate，抓取一律用 browser_exec_js。
-   取文本 Array.from(document.querySelectorAll(sel)).map(e=>e.innerText.trim())，
-   取链接再带上 e.href；结果用 JSON.stringify 返回。
+1. 打开页面用 browser_navigate；读页面内容用 browser_read（给 CSS 选择器，
+   要链接地址就把 links 设为真）。它是只读的，能跟别的查询并发，优先用它。
+   browser_read 表达不了的才用 browser_exec_js 写表达式，结果 JSON.stringify 返回。
 2. 结果保持精简：只取用户要的字段，不整页拉取，省 token。不截图。
 3. 点击、输入、提交会真的在浏览器里产生作用，按风险档位执行；涉及付款、删除、发送时先确认。
 4. 不确定自己在哪个页面，用 browser_exec_js 取 location.href 和 document.title；
@@ -52,7 +52,7 @@ func (s *Skill) Instructions() string {
 
 func (s *Skill) Tools() []agent.Tool {
 	return []agent.Tool{
-		s.toolNavigate(),
+		s.toolNavigate(), s.toolRead(),
 		s.toolClick(), s.toolType(), s.toolSubmit(), s.toolEval(),
 	}
 }
@@ -85,6 +85,10 @@ func obj(props map[string]any, required ...string) map[string]any {
 }
 
 func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
+
+func flag(desc string) map[string]any {
+	return map[string]any{"type": "boolean", "description": desc}
+}
 
 // jsStr 把 Go 字符串安全地转成 JS 字符串字面量，避免选择器里的引号破坏脚本。
 func jsStr(s string) string {
@@ -161,6 +165,53 @@ func (s *Skill) toolNavigate() agent.Tool {
 				return fmt.Sprintf("⚠ 页面需要登录（%s）。请立刻停下，等用户登录完成后再继续；不要自己填密码。", why), false, nil
 			}
 			return fmt.Sprintf("已打开：%s\n标题：%s", loc, title), false, nil
+		},
+	}
+}
+
+// toolRead 是唯一的只读抓取入口。
+//
+// 它一个顶掉了原先的 browser_text 和 browser_links，但**必须留着**：
+// 九合五那一刀把四个 readonly 工具全并进了 browser_exec_js，而 exec_js
+// 能改 DOM、能点按钮，没法标只读。结果整个技能一个只读工具都不剩——
+// executeParallel 要求整批调用全只读才并发，于是一轮里只要捎带一次
+// 网页读取，同轮的日程、邮件查询也跟着退回串行。
+func (s *Skill) toolRead() agent.Tool {
+	return tool{
+		spec: agent.ToolSpec{
+			Name: "browser_read",
+			Description: "读取匹配 CSS 选择器的元素文本，最多约 2000 字，用于抓标题、价格、列表。" +
+				"只读不改页面，能跟别的查询并发；要执行有副作用的脚本用 browser_exec_js。",
+			Parameters: obj(map[string]any{
+				"selector": str("CSS 选择器，如 .price、#result、a.title"),
+				"links":    flag("为真时每行附上链接地址，用于抓链接列表"),
+			}, "selector"),
+		},
+		readonly: true,
+		run: func(raw string) (string, bool, error) {
+			var a struct {
+				Selector string `json:"selector"`
+				Links    bool   `json:"links"`
+			}
+			if err := json.Unmarshal([]byte(raw), &a); err != nil {
+				return "", false, err
+			}
+			sel := strings.TrimSpace(a.Selector)
+			if sel == "" {
+				return "", false, fmt.Errorf("必须提供 selector")
+			}
+			pick := `e=>(e.innerText||e.textContent||'').trim()`
+			if a.Links {
+				pick = `e=>{const t=(e.innerText||e.textContent||'').trim();return e.href?t+' → '+e.href:t}`
+			}
+			expr := fmt.Sprintf(
+				`Array.from(document.querySelectorAll(%s)).map(%s).filter(Boolean).join('\n')`,
+				jsStr(sel), pick)
+			out, err := s.evalString(expr)
+			if err != nil {
+				return "", false, err
+			}
+			return truncate(out, 2000), false, nil
 		},
 	}
 }
