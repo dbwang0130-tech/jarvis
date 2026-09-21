@@ -33,8 +33,8 @@ type event struct {
 // reader 只干两件事：把 stdin 解码成按键事件，交出输入框该占的行。
 // 屏幕怎么摆归 screen 管——它在 alt screen 里整屏自绘，输入框钉在最底下。
 //
-// 按键先经 readKey 解成 key，再按模式分派：确认框挑选项、干活时的打断、
-// 不在秘书视图时的「打字即回来」、剩下的才是行编辑。
+// 按键先经 readKey 解成 key，再按模式分派：确认框挑选项、干活时的打断，
+// 剩下的才是行编辑。
 type reader struct {
 	ch   chan event
 	fd   int
@@ -500,29 +500,25 @@ func (r *reader) edit(f func()) {
 	r.draw()
 }
 
-// completeCommand 把命令补到最长的公共前缀；补不动就返回 false。
-func (r *reader) completeCommand() bool {
+// completeCommand 把命令补到最长的公共前缀。补不动就什么都不做——
+// 候选还列在输入框上面，接着打就是了。
+func (r *reader) completeCommand() {
 	r.mu.Lock()
 	text := string(r.buf)
 	cs := matchCommands(text)
-	if len(cs) == 0 {
-		r.mu.Unlock()
-		return false
-	}
-	// 只剩一条就连空格一起补上，接着打参数。
 	full := commonPrefix(cs)
+	// 只剩一条就连空格一起补上，接着打参数。
 	if len(cs) == 1 && cs[0].args != "" {
 		full += " "
 	}
-	if full == text {
+	if len(cs) == 0 || full == text {
 		r.mu.Unlock()
-		return len(cs) > 1 // 补不动了，但候选还列着，别顺手切了视图
+		return
 	}
 	r.buf = []rune(full)
 	r.cur = len(r.buf)
 	r.mu.Unlock()
 	scr.refresh()
-	return true
 }
 
 // killTo 把光标与 pos 之间的内容剪下来存进 kill，供 ctrl+y 粘回。

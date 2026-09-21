@@ -50,16 +50,11 @@ type screen struct {
 	hintLines    func() []string
 	inputLines   func() (lines []string, curRow, curCol int)
 	statusFn     func() string
-	// content 非空时，内容区显示的是它而不是聊天历史——
-	// 日程、待办这些视图是整屏换掉，不该往对话里灌东西。
-	content []string
 
 	alt bool
 	// curW/curH 是这一帧的尺寸，render 开头定下来供各段共用：
 	// 少几次 ioctl 是其次，主要是窗口正被拖动时各段别拿到不同的宽度。
 	curW, curH int
-	// onResize 在终端尺寸变化时被叫一次，让内容按新宽度重新生成。
-	onResize func()
 	// mouse 为真表示正在收鼠标上报（滚轮能用，代价是拖选被拦）。
 	mouse bool
 	// lastLen 是上一帧内容有多少行，用来在翻历史时抵消新内容的推挤。
@@ -307,12 +302,6 @@ func (s *screen) invalidate() {
 	raw("\033[2J")
 	s.mu.Unlock()
 
-	// 内容是按当时的宽度折好行存下来的，窗口一变就得重新生成，
-	// 否则视图里的内容要么溢出要么留一大片白。回调自己会重画。
-	if s.onResize != nil {
-		s.onResize()
-		return
-	}
 	s.refresh()
 }
 
@@ -339,22 +328,6 @@ func (s *screen) toBottom() {
 	s.render()
 }
 
-// setContent 换掉内容区的内容。传 nil 表示回到聊天历史。
-// 换了来源才重新定位：视图是从上往下读的，滚到顶；聊天回到最新。
-// 同一个视图刷新内容时，滚动位置留着不动。
-func (s *screen) setContent(lines []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if (s.content == nil) != (lines == nil) {
-		s.offset, s.lastLen = 0, 0
-		if lines != nil {
-			s.offset = 1 << 30 // 夹回合法范围后就是顶
-		}
-	}
-	s.content = lines
-	s.render()
-}
-
 // render 整屏画一帧。调用方需持锁。
 func (s *screen) render() {
 	s.curW, s.curH = width(), height()
@@ -365,17 +338,12 @@ func (s *screen) render() {
 		avail = 1
 	}
 
-	// 内容区要么是别的视图的内容，要么是聊天（历史 + 正在流的正文）。
-	// 聊天那路不拼成新切片——那是每帧两次全量复制，而真正要画的只有
-	// 一屏那几十行，按下标取就够了。
-	var head, ls []string
-	if s.content != nil {
-		head = s.content
-	} else {
-		head = s.history
-		if s.liveLines != nil {
-			ls = s.liveLines()
-		}
+	// 内容区是历史加上正在流的正文。不拼成新切片——那是每帧两次全量
+	// 复制，而真正要画的只有一屏那几十行，按下标取就够了。
+	head := s.history
+	var ls []string
+	if s.liveLines != nil {
+		ls = s.liveLines()
 	}
 	total := len(head) + len(ls)
 	at := func(i int) string {
@@ -416,14 +384,10 @@ func (s *screen) render() {
 	}
 
 	// 先把这一帧整屏该长什么样拼出来，再跟上一帧比，只画不一样的行。
-	//
-	// 内容不够一屏时补在哪头有讲究：聊天贴着底（最新的在眼前），
-	// 日程这些视图贴着顶（从头往下读）。
+	// 内容不够一屏时补在上头，让最新的那几行贴着输入框。
 	frame := make([]string, 0, h)
-	if s.content == nil {
-		for i := end - start; i < avail; i++ {
-			frame = append(frame, "")
-		}
+	for i := end - start; i < avail; i++ {
+		frame = append(frame, "")
 	}
 	for i := start; i < end; i++ {
 		frame = append(frame, at(i))
@@ -635,9 +599,6 @@ func wrapANSI(s string, w int) []string {
 	}
 	return outs
 }
-
-// padLeft 按显示宽度左侧补空格，用来把金额右对齐。
-func padLeft(s string, w int) string { return runewidth.FillLeft(s, w) }
 
 // pad 按显示宽度右侧补空格，超出就截断。
 func pad(s string, w int) string {

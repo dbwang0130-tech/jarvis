@@ -268,7 +268,7 @@ func (s *Session) setAuto(arg string) {
 func (s *Session) help() {
 	var b strings.Builder
 	b.WriteString(dim + `按键：
-  tab / shift+tab       补全 / 命令（轮换候选）
+  tab                   补全正在打的 / 命令
   滚轮 / PageUp PageDown  往回翻历史（输入框钉在下面不动）
   选择文字              按住 option（或 shift）拖；或 /mouse off 换成拖选优先
   ctrl+r                重新读一遍 org 文件（把外部改动捞进来）

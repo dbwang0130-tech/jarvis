@@ -32,7 +32,7 @@ func fresh(t *testing.T) *harness {
 	reset := func() {
 		scr.history, scr.offset, scr.lastLen, scr.prev = nil, 0, 0, nil
 		scr.liveLines, scr.confirmLines, scr.inputLines = nil, nil, nil
-		scr.hintLines, scr.statusFn, scr.content = nil, nil, nil
+		scr.hintLines, scr.statusFn = nil, nil
 		scr.spinning, scr.alt, scr.mouse = false, false, false
 	}
 	reset()
@@ -333,43 +333,8 @@ func TestIdleFrameIsCheap(t *testing.T) {
 	}
 }
 
-// 别的视图是整屏换掉内容区，不往对话历史里灌东西——
-// 切来切去之后聊天记录得跟没切过一样。
-func TestViewReplacesContentWithoutTouchingHistory(t *testing.T) {
-	h := fresh(t)
-	func() {
-		tr := testReader()
-		scr.inputLines, scr.hintLines = tr.inputLines, tr.hintLines
-		scr.statusFn = func() string { return "状态栏" }
-	}()
-	out("> /accounts\n")
-	out("  · 还没有邮箱账号\n")
-	before := append([]string(nil), scr.history...)
-
-	scr.setContent([]string{"── 日程 ──", "", "09-15 周二 今天"})
-	got := h.text()
-	if !strings.Contains(got, "09-15 周二 今天") {
-		t.Fatalf("没换成日程：\n%s", got)
-	}
-	if strings.Contains(got, "还没有邮箱账号") {
-		t.Fatalf("切过去之后不该还看到对话：\n%s", got)
-	}
-	if len(scr.history) != len(before) {
-		t.Fatalf("切视图不该动历史：之前 %d 行，现在 %d 行", len(before), len(scr.history))
-	}
-
-	scr.setContent(nil)
-	got = h.text()
-	if !strings.Contains(got, "还没有邮箱账号") {
-		t.Fatalf("切回来该看到原来的对话：\n%s", got)
-	}
-	if strings.Contains(got, "09-15 周二 今天") {
-		t.Fatalf("切回来之后日程不该还留在屏幕上：\n%s", got)
-	}
-}
-
-// 视图是从上往下读的，内容不满一屏时贴着顶；聊天相反，贴着底。
-func TestViewSticksToTopChatSticksToBottom(t *testing.T) {
+// 内容不满一屏时贴着底，最新的那句在眼前、紧挨着输入框。
+func TestChatSticksToBottom(t *testing.T) {
 	h := fresh(t)
 	func() {
 		tr := testReader()
@@ -377,15 +342,8 @@ func TestViewSticksToTopChatSticksToBottom(t *testing.T) {
 		scr.statusFn = func() string { return "状态栏" }
 	}()
 
-	scr.setContent([]string{"第一行", "第二行"})
-	lines := h.screen()
-	if !strings.Contains(lines[0], "第一行") {
-		t.Fatalf("视图该从第一行开始：\n%s", strings.Join(lines, "\n"))
-	}
-
-	scr.setContent(nil)
 	out("聊天第一句\n")
-	lines = h.screen()
+	lines := h.screen()
 	last := -1
 	for i, l := range lines {
 		if strings.Contains(l, "聊天第一句") {

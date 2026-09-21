@@ -112,7 +112,6 @@ func Run(cont bool) error {
 	scr.inputLines = rd.inputLines
 	scr.hintLines = rd.hintLines
 	scr.statusFn = s.statusLine
-	scr.onResize = scr.refresh
 	scr.enter(s.cfg.MouseOn())
 	defer scr.leave()
 
@@ -293,7 +292,7 @@ func (s *Session) echo(line string) {
 	msg(lvUser, "%s", line)
 }
 
-// statusLine 是输入框下面那一行：视图、模型、上下文、档位与按键提示。
+// statusLine 是输入框下面那一行：状态点、模型、上下文占用、档位、排队数。
 func (s *Session) statusLine() string {
 	parts := []string{s.statusDot()}
 	if m := s.modelName(); m != "" {
