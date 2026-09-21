@@ -52,13 +52,16 @@ func (s *Skill) Describe(b *strings.Builder) {
 		// 列宽按最长的那个账户名来。写死 24 的话，
 		// Liabilities:Mortgage:Principal 这种会把后面的数字顶出去，
 		// 整张表就不成列了——模型跟人一样，对不齐的表更容易看串行。
+		// 账户名排一次就够——SortedAccounts() 内部是 SortedFrom(Balances())，
+		// 调一次就重扫一遍账本，而余额表这儿本来就有。
+		names := SortedFrom(bal)
 		w := 0
-		for _, name := range s.Book.SortedAccounts() {
+		for _, name := range names {
 			if len(name) > w {
 				w = len(name)
 			}
 		}
-		for _, name := range s.Book.SortedAccounts() {
+		for _, name := range names {
 			if len(name) == 0 {
 				continue
 			}

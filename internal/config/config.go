@@ -36,7 +36,11 @@ type Agent struct {
 	AutoApprove bool `json:"auto_approve"`
 	// AutoCompact 为真时上下文接近上限会自动压缩成摘要，默认开启。
 	AutoCompact bool `json:"auto_compact"`
-	// ContextLimit 是触发压缩的估算 token 数，零值用内置默认。
+	// ContextLimit 是**一次请求**的估算 token 预算：系统提示 + 工具声明 +
+	// 对话历史，三样加起来。零值用内置默认。
+	//
+	// 这个口径是改过的——早先它只管对话历史，固定开销一分不算。老配置里
+	// 那个量级的数放到新口径下装不下，agent 那边会当没设过（见 contextLimit）。
 	ContextLimit int `json:"context_limit,omitempty"`
 	// TimeoutSec 是模型请求超时秒数，零值用默认 120。
 	TimeoutSec int `json:"timeout_sec,omitempty"`

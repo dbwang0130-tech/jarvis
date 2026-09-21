@@ -8,8 +8,7 @@ import "testing"
 // 每轮白白多发两万字节，而状态栏和压缩阈值都看不见。工具越多漏得越狠，
 // 偏偏工具多正是该压缩的时候。
 func TestContextUsageCountsPromptAndTools(t *testing.T) {
-	a := &Agent{Skills: []Skill{fakeSkill{tools: []Tool{}}}}
-	a.tools = a.flattenTools()
+	a := NewAgent(nil, []Skill{fakeSkill{}}, 10, AutoOff)
 
 	empty, _ := a.ContextUsage()
 	if empty <= 0 {
@@ -23,13 +22,10 @@ func TestContextUsageCountsPromptAndTools(t *testing.T) {
 
 // 工具多了，固定开销就得跟着涨，否则这笔账等于没记。
 func TestFixedTokensGrowWithTools(t *testing.T) {
-	bare := &Agent{Skills: []Skill{fakeSkill{}}}
-	bare.tools = bare.flattenTools()
-
-	loaded := &Agent{Skills: []Skill{fakeSkill{tools: []Tool{
+	bare := NewAgent(nil, []Skill{fakeSkill{}}, 10, AutoOff)
+	loaded := NewAgent(nil, []Skill{fakeSkill{tools: []Tool{
 		&fakeTool{name: "工具一"}, &fakeTool{name: "工具二"},
-	}}}}
-	loaded.tools = loaded.flattenTools()
+	}}}, 10, AutoOff)
 
 	if loaded.fixedTokens() <= bare.fixedTokens() {
 		t.Fatalf("多挂了两个工具，固定开销却没涨：%d vs %d",
@@ -37,13 +33,29 @@ func TestFixedTokensGrowWithTools(t *testing.T) {
 	}
 }
 
-// 换技能要让缓存作废，否则配好邮箱之后账还是旧的。
-func TestSetSkillsResetsFixedTokens(t *testing.T) {
+// 换技能（配好邮箱那一刻）要马上反映到账上。
+func TestSetSkillsChangesFixedTokens(t *testing.T) {
 	a := NewAgent(nil, []Skill{fakeSkill{}}, 10, AutoOff)
 	before := a.fixedTokens()
 
 	a.SetSkills([]Skill{fakeSkill{tools: []Tool{&fakeTool{name: "新来的"}}}})
 	if a.fixedTokens() == before {
-		t.Fatal("换了技能，固定开销还是缓存里那个旧数")
+		t.Fatal("换了技能，固定开销没跟着变")
+	}
+}
+
+// 老配置里存的是旧口径的数（那会儿只管历史，不含提示和工具声明）。
+// 直接拿来用的话，一进门就过压缩线，每轮都在压缩。
+func TestStaleContextLimitFallsBackToDefault(t *testing.T) {
+	a := NewAgent(nil, []Skill{fakeSkill{}}, 10, AutoOff)
+	a.ContextLimit = 16000 // 旧默认值
+
+	// 真实装配下固定开销约九千，16000 连它的两倍都不到。
+	if got := a.contextLimit(9000); got != DefaultContextLimit {
+		t.Fatalf("装不下的旧值该当没设过，得到 %d", got)
+	}
+	// 固定开销小的时候，同一个数是够用的，就该照用户说的办。
+	if got := a.contextLimit(1000); got != 16000 {
+		t.Fatalf("够大的设置该照用，得到 %d", got)
 	}
 }

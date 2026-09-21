@@ -42,8 +42,6 @@ type Event struct {
 	// Tool 是相关的工具名（仅工具事件）。
 	Tool string
 	Text string
-	// Changed 表示这次工具调用修改了本地文件，界面应刷新。
-	Changed bool
 	// Pending 仅 EventPending 使用，界面通过它回传是否批准。
 	Pending *Pending
 	// Err 仅 EventDone 使用，是这一轮提问的失败原因。
@@ -68,8 +66,6 @@ type Agent struct {
 	AutoCompact bool
 	// ContextLimit 是一次请求的估算 token 预算（提示 + 工具 + 历史）。
 	ContextLimit int
-	// fixed 缓存系统提示加工具声明的估算开销，见 fixedTokens。
-	fixed int
 	// Usage 累计本次会话的 token 用量。
 	Usage Usage
 
@@ -95,7 +91,6 @@ func NewAgent(c *Client, skills []Skill, maxSteps int, auto AutoLevel) *Agent {
 func (a *Agent) SetSkills(skills []Skill) {
 	a.Skills = skills
 	a.tools = a.flattenTools()
-	a.fixed = 0 // 技能变了，固定开销得重算
 }
 
 // flattenTools 把所有技能的工具按名字拍平；核心工具 plan/step_done 排在最前。
@@ -333,7 +328,6 @@ func (a *Agent) canParallel(calls []ToolCall) bool {
 func (a *Agent) executeParallel(emit func(Event), calls []ToolCall) {
 	type res struct {
 		content string
-		changed bool
 		err     error
 	}
 	results := make([]res, len(calls))
@@ -343,8 +337,8 @@ func (a *Agent) executeParallel(emit func(Event), calls []ToolCall) {
 		go func(i int, c ToolCall) {
 			defer wg.Done()
 			t := a.lookupTool(c.Function.Name)
-			text, changed, err := t.Run(c.Function.Arguments)
-			results[i] = res{content: text, changed: changed, err: err}
+			text, _, err := t.Run(c.Function.Arguments)
+			results[i] = res{content: text, err: err}
 		}(i, call)
 	}
 	wg.Wait()
@@ -356,7 +350,7 @@ func (a *Agent) executeParallel(emit func(Event), calls []ToolCall) {
 			content = "执行失败：" + r.err.Error()
 		} else if r.content != "" {
 			emit(Event{Kind: EventToolResult, Tool: call.Function.Name,
-				Text: firstLine(r.content), Changed: r.changed})
+				Text: firstLine(r.content)})
 		}
 		a.History = append(a.History, Message{
 			Role:       "tool",
@@ -399,12 +393,12 @@ func (a *Agent) executeCall(emit func(Event), call ToolCall) string {
 		if !<-p.Reply {
 			return "用户拒绝了这个操作，没有执行。请不要重试，改问他想怎么办。"
 		}
-		result, changed, err := p.Do()
+		result, _, err := p.Do()
 		if err != nil {
 			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error()})
 			return "执行失败：" + err.Error()
 		}
-		emit(Event{Kind: EventToolResult, Tool: call.Function.Name, Text: firstLine(result), Changed: changed})
+		emit(Event{Kind: EventToolResult, Tool: call.Function.Name, Text: firstLine(result)})
 		return result
 	}
 
@@ -415,13 +409,13 @@ func (a *Agent) executeCall(emit func(Event), call ToolCall) string {
 		}
 	}
 
-	result, changed, err := t.Run(call.Function.Arguments)
+	result, _, err := t.Run(call.Function.Arguments)
 	if err != nil {
 		emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error()})
 		return "执行失败：" + err.Error()
 	}
 	if result != "" {
-		emit(Event{Kind: EventToolResult, Tool: call.Function.Name, Text: firstLine(result), Changed: changed})
+		emit(Event{Kind: EventToolResult, Tool: call.Function.Name, Text: firstLine(result)})
 	}
 	return result
 }

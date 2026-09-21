@@ -42,32 +42,45 @@ func EstimateTokens(msgs []Message) int {
 	return total
 }
 
-// fixedTokens 估算每一轮都要重发的那部分：系统提示加上全部工具声明。
-// 它不随对话增长，却一直占着窗口，所以必须算进预算里。
+// EstimateToolTokens 估算工具声明占多少 token。工具表跟着每一次请求发，
+// 不随对话增长却一直占着窗口——五十几个工具的声明就有两万多字节。
+// 按字节估而不是按 rune：它是 JSON，绝大部分是 ASCII。
+func EstimateToolTokens(defs []ToolDef) int {
+	raw, _ := json.Marshal(defs)
+	return len(raw) / 3
+}
+
+// fixedTokens 是每一轮都要重发的那部分：系统提示加上全部工具声明。
 //
-// 结果缓存起来：算一次要把所有技能的提示拼一遍、工具声明序列化一遍，
-// 而状态栏每帧都要问一次占用。技能换了由 SetSkills 负责作废。
+// **不缓存。** 这两样里只有工具声明是真不变的：系统提示带着各技能的环境
+// 快照（余额、未读数、当前时间），`/auto` 换档也会换掉一段文案。按技能
+// 集合缓存一次、往后整个会话都用开头那一版，漏算的恰好是会长的那部分。
+// 成本也撑不起缓存——界面那层早按 History 长度缓存了整个 ContextUsage
+// 结果（chat.contextRatio），真打到这儿的只有「又追加了一条消息」和压缩检查。
 func (a *Agent) fixedTokens() int {
-	if a.fixed == 0 {
-		raw, _ := json.Marshal(a.wireTools())
-		a.fixed = len([]rune(a.systemPrompt()))/2 + len(raw)/3
-	}
-	return a.fixed
+	return EstimateTokens([]Message{{Role: "system", Content: a.systemPrompt()}}) +
+		EstimateToolTokens(a.wireTools())
 }
 
 // ContextUsage 返回这一轮请求的估算 token 数与占预算的比例。
 // 算的是真实要发出去的全部内容，不只是对话历史。
 func (a *Agent) ContextUsage() (tokens int, ratio float64) {
-	tokens = a.fixedTokens() + EstimateTokens(a.History)
-	limit := a.contextLimit()
+	fixed := a.fixedTokens()
+	tokens = fixed + EstimateTokens(a.History)
+	limit := a.contextLimit(fixed)
 	if limit <= 0 {
 		return tokens, 0
 	}
 	return tokens, float64(tokens) / float64(limit)
 }
 
-func (a *Agent) contextLimit() int {
-	if a.ContextLimit > 0 {
+// contextLimit 是这一轮的 token 预算。
+//
+// 配置里存着的可能是**旧口径**的数：那会儿这个值只管对话历史，不含系统
+// 提示和工具声明。同一个 16000 放到新口径下连固定开销的两倍都不到，
+// 一进门就到压缩线。装不下的值当没设过，省得老用户升上来之后每轮都在压缩。
+func (a *Agent) contextLimit(fixed int) int {
+	if a.ContextLimit > fixed*2 {
 		return a.ContextLimit
 	}
 	return DefaultContextLimit
