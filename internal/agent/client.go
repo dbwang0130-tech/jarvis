@@ -89,6 +89,15 @@ var Presets = map[string]Preset{
 }
 
 // PresetNames 返回全部预设名，便于提示用户。
+func PresetNames() []string {
+	names := make([]string, 0, len(Presets))
+	for k := range Presets {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // SupportsVision 报告这套配置认不认得图片，以及这个判断靠不靠得住。
 //
 // 只有用着预设默认模型的时候才敢说死——用户自己填了个模型名，我们无从
@@ -106,15 +115,6 @@ func SupportsVision(provider, model string) (vision, known bool) {
 	return false, false
 }
 
-func PresetNames() []string {
-	names := make([]string, 0, len(Presets))
-	for k := range Presets {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // Message 是一条对话消息，字段与 OpenAI chat completions 对齐。
 type Message struct {
 	Role      string     `json:"role"`
@@ -129,10 +129,12 @@ type Message struct {
 	// Images 是随这条消息一起发出去的图片（data URL，形如
 	// `data:image/jpeg;base64,...`）。
 	//
-	// 有图片时 content 要从一个字符串变成「文本块 + 图片块」的数组，
-	// 这是 OpenAI 兼容接口对多模态的规定格式。改 MarshalJSON 而不是把
-	// Content 的类型换成 any：那样每个读 Content 的地方都要先做类型断言，
-	// 而全项目只有识别小票这一条路会用到图片。
+	// 有图片时，**发给模型**的 content 要从一个字符串摊成「文本块 + 图片块」
+	// 的数组，这是 OpenAI 兼容接口对多模态的规定格式。那件事在 toWire 里做，
+	// 不做成 Message 的 MarshalJSON——方法是挂在类型上的，凡是序列化这个
+	// 类型的地方都会走它，而 History 还要原样交给 iOS 存档和回传。
+	// 早先就是这么写的，结果手机上发一张图必报「出参解不开」：Swift 那边
+	// content 声明的是 String，收到数组整个出参就解不动了。
 	Images []string `json:"-"`
 }
 
@@ -147,33 +149,62 @@ type imageRef struct {
 	URL string `json:"url"`
 }
 
-// MarshalJSON 在带图片时把 content 摊成数组。
+// wireMessages 是发给模型的那串消息。
 //
-// 没图片的时候一个字节都不变——绝大多数请求都不带图片，不能让多模态
-// 这条路把普通对话的线上格式也改了（有的服务商对数组形式的 content
-// 支持得并不好）。
-func (m Message) MarshalJSON() ([]byte, error) {
-	type plain Message // 借个别名，免得 MarshalJSON 递归调用自己
-	if len(m.Images) == 0 {
-		return json.Marshal(plain(m))
-	}
+// **MarshalJSON 挂在这个切片类型上，不是挂在 Message 上。** 「发给模型的
+// 样子」和「存档回传的样子」是两件事：带图片的消息，发出去时 content 要摊成
+// 「文本块 + 图片块」的数组（OpenAI 兼容接口对多模态的规定格式），而同一条
+// 消息留在 History 里还要原样交给 iOS——Swift 那边 content 声明的是 String，
+// 收到数组整个出参就解不动了。
+//
+// 早先图省事写成了 Message.MarshalJSON，方法挂在类型上，凡是序列化这个类型
+// 的地方都会走它，于是手机上发一张图必报「出参解不开」。
+type wireMessages []Message
 
-	parts := make([]contentPart, 0, len(m.Images)+1)
-	if m.Content != "" {
-		parts = append(parts, contentPart{Type: "text", Text: m.Content})
-	}
-	for _, img := range m.Images {
-		parts = append(parts, contentPart{
-			Type: "image_url", ImageURL: &imageRef{URL: img}})
-	}
+// modelMessage 是**发给模型**的那几个字段，照 OpenAI 的 wire 格式列全。
+//
+// 显式列出来而不是直接复用 Message：往 Message 上加字段是迟早的事，而这儿
+// 一旦跟着漏出去，多余字段有的服务商忍了，有的直接 400——那种错读起来完全
+// 指不到这儿。发给模型的形状就该在这儿写死。
+type modelMessage struct {
+	Role             string     `json:"role"`
+	Content          string     `json:"content,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	Name             string     `json:"name,omitempty"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+}
 
-	alias := struct {
-		Role       string        `json:"role"`
-		Content    []contentPart `json:"content"`
-		ToolCallID string        `json:"tool_call_id,omitempty"`
-		Name       string        `json:"name,omitempty"`
-	}{Role: m.Role, Content: parts, ToolCallID: m.ToolCallID, Name: m.Name}
-	return json.Marshal(alias)
+func (ms wireMessages) MarshalJSON() ([]byte, error) {
+	out := make([]any, 0, len(ms))
+	for _, m := range ms {
+		// 没图片的一个字节都不变：绝大多数请求都不带图片，不能让多模态
+		// 这条路把普通对话的线上格式也改了（有的服务商对数组形式的
+		// content 支持得并不好）。
+		if len(m.Images) == 0 {
+			out = append(out, modelMessage{
+				Role: m.Role, Content: m.Content, ToolCalls: m.ToolCalls,
+				ToolCallID: m.ToolCallID, Name: m.Name,
+				ReasoningContent: m.ReasoningContent,
+			})
+			continue
+		}
+		parts := make([]contentPart, 0, len(m.Images)+1)
+		if m.Content != "" {
+			parts = append(parts, contentPart{Type: "text", Text: m.Content})
+		}
+		for _, img := range m.Images {
+			parts = append(parts, contentPart{
+				Type: "image_url", ImageURL: &imageRef{URL: img}})
+		}
+		out = append(out, struct {
+			Role       string        `json:"role"`
+			Content    []contentPart `json:"content"`
+			ToolCallID string        `json:"tool_call_id,omitempty"`
+			Name       string        `json:"name,omitempty"`
+		}{Role: m.Role, Content: parts, ToolCallID: m.ToolCallID, Name: m.Name})
+	}
+	return json.Marshal(out)
 }
 
 // ToolCall 是模型发起的一次工具调用。
@@ -205,12 +236,12 @@ type Usage struct {
 }
 
 type chatRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Tools       []ToolDef `json:"tools,omitempty"`
-	ToolChoice  string    `json:"tool_choice,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
+	Model       string       `json:"model"`
+	Messages    wireMessages `json:"messages"`
+	Tools       []ToolDef    `json:"tools,omitempty"`
+	ToolChoice  string       `json:"tool_choice,omitempty"`
+	Temperature float64      `json:"temperature,omitempty"`
+	Stream      bool         `json:"stream,omitempty"`
 }
 
 type chatResponse struct {

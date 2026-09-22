@@ -303,3 +303,45 @@ func TestStartCancelsPrevious(t *testing.T) {
 	}
 	endCancelable()
 }
+
+// 带图片问一句，整份出参必须还能被「content 是 String」的那种结构解开。
+//
+// 这是手机上发图必报「没办成：出参解不开」的那个 bug。多模态格式化原先
+// 写成了 agent.Message 的 MarshalJSON，而方法是挂在类型上的——AskOutput
+// 里的 History 用的是同一个类型，于是回传给 Swift 的那条用户消息 content
+// 变成了数组。Swift 那边声明的是 String，整个出参就解不动了，界面只说
+// 一句「格式不正确」，看不出是图片引起的。
+//
+// 图片在调模型**之前**就进了 History（agent.AskWith 第一件事就是 append），
+// 所以这条路跟模型认不认得图片无关：发了图就必错。
+func TestAskWithImageReturnsDecodableOutput(t *testing.T) {
+	withFakeModel(t, say("看到了。"))
+
+	// 走原始出参，照着 Swift 那边的形状解：content 是 String，不是数组。
+	raw := Ask(mustJSON(t, AskInput{
+		Files:    map[string]string{"work.org": "#+TITLE: 工作\n"},
+		Question: "这张小票多少钱",
+		Images:   []string{"data:image/png;base64,iVBORw0KGgo="},
+		Model:    testModel(),
+		Now:      "2026-09-16T09:00:00+08:00",
+	}))
+	var swiftSide struct {
+		History []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"history"`
+	}
+	if err := json.Unmarshal([]byte(raw), &swiftSide); err != nil {
+		t.Fatalf("Swift 那边就是这么解的，解不开就是界面上那句「出参解不开」：%v", err)
+	}
+	if len(swiftSide.History) == 0 {
+		t.Fatal("History 空了")
+	}
+	if got := swiftSide.History[0].Content; got != "这张小票多少钱" {
+		t.Fatalf("用户那条消息没原样回来：%q", got)
+	}
+	// 图片不该跟着存档回去——它只服务于发出去那一次，塞回来白白撑大存档。
+	if strings.Contains(raw, "iVBORw0KGgo") {
+		t.Fatal("图片跟着出参回来了")
+	}
+}
