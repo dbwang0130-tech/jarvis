@@ -23,63 +23,89 @@ type Preset struct {
 	KeyEnv  string
 	// NoTools 表示该模型不支持 function calling。
 	NoTools bool
+	// Vision 表示这个默认模型认得图片。手机端能发图、能拍照记账，
+	// 发给纯文本模型不是报错就是装作没看见——后者尤其难查，所以这件事
+	// 要在切模型的时候就说清楚，别等用户拍完小票才发现白拍。
+	Vision bool
 }
 
 // Presets 覆盖常见的 OpenAI 兼容服务商。
+//
+// **这张表会过期。** 模型名是服务商说了算的，改名、下线都不打招呼——
+// kimi 的 moonshot-v1 系列 2026-08-31 直接停服，deepseek-chat /
+// deepseek-reasoner 也已降级成正在淘汰的别名。表里填着停服的模型，
+// 用户切过去只会得到一句看不懂的 400。所以默认模型一律挑**当前在产**
+// 的那个，宁可几个月更新一次，也别留个打不通的名字在这儿。
+//
+// 默认一律选**看得见图片**的那一档：手机端能发图、能拍照记账，而
+// 纯文本模型收到图片不是报错就是装作没看见，两种都难排查。
 var Presets = map[string]Preset{
 	"deepseek": {
 		BaseURL: "https://api.deepseek.com/v1",
-		Model:   "deepseek-chat",
+		Model:   "deepseek-flash", // V4.1 Flash，原生视觉；deepseek-chat 是淘汰中的别名
 		KeyEnv:  "DEEPSEEK_API_KEY",
-	},
-	"deepseek-reasoner": {
-		BaseURL: "https://api.deepseek.com/v1",
-		Model:   "deepseek-reasoner",
-		KeyEnv:  "DEEPSEEK_API_KEY",
+		Vision:  true,
 	},
 	"qwen": {
 		BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-		Model:   "qwen-max",
+		Model:   "qwen3-vl-plus",
 		KeyEnv:  "DASHSCOPE_API_KEY",
+		Vision:  true,
 	},
 	"kimi": {
 		BaseURL: "https://api.moonshot.cn/v1",
-		Model:   "moonshot-v1-32k",
+		Model:   "kimi-k3", // moonshot-v1 系列已于 2026-08-31 停服
 		KeyEnv:  "MOONSHOT_API_KEY",
+		Vision:  true,
 	},
 	"minimax": {
 		BaseURL: "https://api.minimax.chat/v1",
-		Model:   "MiniMax-Text-01",
+		Model:   "MiniMax-M3",
 		KeyEnv:  "MINIMAX_API_KEY",
+		Vision:  true,
 	},
 	"zhipu": {
 		BaseURL: "https://open.bigmodel.cn/api/paas/v4",
-		Model:   "glm-4-plus",
+		Model:   "glm-5v-turbo",
 		KeyEnv:  "ZHIPU_API_KEY",
+		Vision:  true,
 	},
 	"doubao": {
 		BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
-		Model:   "doubao-pro-32k",
+		Model:   "doubao-seed-2-1-turbo-260628",
 		KeyEnv:  "ARK_API_KEY",
+		Vision:  true,
 	},
 	"spark": {
 		BaseURL: "https://spark-api-open.xf-yun.com/v1",
-		Model:   "generalv3.5",
+		Model:   "4.0Ultra", // 图片理解在星火是另一个接口，这条路上走不了
 		KeyEnv:  "SPARK_API_KEY",
-	},
-	"baichuan": {
-		BaseURL: "https://api.baichuan-ai.com/v1",
-		Model:   "Baichuan4",
-		KeyEnv:  "BAICHUAN_API_KEY",
 	},
 	"ollama": {
 		BaseURL: "http://localhost:11434/v1",
-		Model:   "qwen2.5",
+		Model:   "qwen2.5", // 本地装的是什么就填什么，能不能看图取决于你拉的权重
 		KeyEnv:  "",
 	},
 }
 
 // PresetNames 返回全部预设名，便于提示用户。
+// SupportsVision 报告这套配置认不认得图片，以及这个判断靠不靠得住。
+//
+// 只有用着预设默认模型的时候才敢说死——用户自己填了个模型名，我们无从
+// 知道它是哪一档，这时候 known 为假，调用方该提醒而不是拦。**宁可漏报
+// 也不能误拦**：表是会过期的（服务商改名、出新模型都不打招呼），拿一张
+// 旧表去拦住一个其实看得见图的模型，比让人试一次再发现更糟。
+func SupportsVision(provider, model string) (vision, known bool) {
+	p, ok := Presets[provider]
+	if !ok {
+		return false, false
+	}
+	if model == "" || model == p.Model {
+		return p.Vision, true
+	}
+	return false, false
+}
+
 func PresetNames() []string {
 	names := make([]string, 0, len(Presets))
 	for k := range Presets {
