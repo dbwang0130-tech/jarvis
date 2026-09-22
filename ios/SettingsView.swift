@@ -70,7 +70,7 @@ struct SettingsView: View {
                             } else {
                                 Image(systemName: "bolt.horizontal.circle")
                             }
-                            Text(checking ? "连着看看…" : "测试连接")
+                            Text(checking ? "连接中…" : "测试连接")
                             Spacer()
                             if let c = check, !checking {
                                 Label(c.message,
@@ -88,8 +88,7 @@ struct SettingsView: View {
                 } header: {
                     Text("模型")
                 } footer: {
-                    Text("密钥存在本机钥匙串里，不会跟着 iCloud 走。\n"
-                         + "填完点一下「测试连接」，别等到第一次提问才发现填错了。")
+                    Text("密钥存在本机钥匙串，不进 iCloud。")
                 }
 
                 // 配好几套，随手切：干活用贵的，闲聊用便宜的，出门用本地的。
@@ -131,7 +130,7 @@ struct SettingsView: View {
                 }
 
                 Section("关于你") {
-                    TextField("一句话介绍自己，Jarvis 据此判断什么算要紧",
+                    TextField("一句话介绍自己，Jarvis 据此判断轻重缓急",
                               text: $profile, axis: .vertical)
                         .lineLimit(2...6)
                 }
@@ -192,11 +191,8 @@ struct SettingsView: View {
                         }
                     }
                 } footer: {
-                    Text("「到点提醒」只管排了具体钟点的事。"
-                         + "**今天有几件、哪些今天截止、有几件逾期**，靠早上那一句——"
-                         + "截止和逾期本来就没有钟点，却最容易忘。\n\n"
-                         + "提醒是在打开 app 时一次性排好的——iOS 不让 app 在后台一直醒着。"
-                         + "所以在电脑上新加的事，手机上得打开一次才会排上它的提醒。")
+                    Text("到点提醒只管排了钟点的事；截止和逾期靠早上那一句。\n"
+                         + "提醒在打开 app 时排定，电脑上新加的事要打开一次才算上。")
                 }
 
                 // 端上模型的状态。不摆出来的话，用不了的时候界面只是
@@ -218,9 +214,7 @@ struct SettingsView: View {
                         }
                     }
                 } footer: {
-                    Text("用它把「明天三点跟老张开会」这种话拆成字段填进表单："
-                         + "在这台设备上算，不联网、不花钱、一个字不上传。"
-                         + "用不了也不影响别的——那只是省几下打字。")
+                    Text("把「明天三点跟老张开会」拆成表单字段，在本机算，不联网。")
                 }
 
                 Section {
@@ -436,7 +430,7 @@ struct MailCheckTimes: View {
         List {
             Section {
                 if times.isEmpty {
-                    Text("还没设。到点会提醒你，点一下就自动收。")
+                    Text("还没设")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -456,9 +450,7 @@ struct MailCheckTimes: View {
                     Label("加一个时间", systemImage: "plus")
                 }
             } footer: {
-                Text("手机上到点只能**提醒**——iOS 不让 app 在后台按点醒来连网。"
-                     + "点一下那条通知，app 会打开邮件页并立刻收一次。\n\n"
-                     + "电脑上装了后台提醒的话（`/remind`），那边是真的到点自己收。")
+                Text("到点只提醒，点通知才会收信。")
             }
         }
         .navigationTitle("提醒收信")
