@@ -615,6 +615,54 @@ struct LogItem: Codable, Identifiable {
 
 // MARK: - 对话
 
+/// 界面上的一条对话。
+///
+/// **跟传给引擎的 `Message` 是两回事，这是有意分开的。**
+///
+/// 一份结构同时伺候两边，迟早要往里塞对方不认的字段——图片编号就是这么
+/// 一路塞到 Go 的 agent.Message 上，再靠桥接层「找到最近一条 user 消息
+/// 缝回去」。那不是设计，是缝合。
+///
+/// 现在各管各的：
+///   - 这份归界面，带附件、稳定 id，**引擎改不了它**；
+///   - `Message` 归引擎，纯 OpenAI wire 格式，可以被压缩裁剪。
+///
+/// 于是图片编号根本不用出门。压缩也只动引擎那份，用户翻上去还是完整的
+/// 对话——早先 `messages = out.history` 把两者混作一谈，压缩一触发，
+/// 人说过的话就在屏幕上变成了一句摘要。
+struct ChatMessage: Identifiable, Codable, Hashable {
+    var id = UUID()
+    /// user / assistant / __local（我们自己插的提示，只显示不外发）
+    var role: String
+    var text: String
+    /// 配图在本机的编号，图本身在 ImageStore 里。
+    var imageRefs: [String] = []
+
+    var isUser: Bool { role == "user" }
+
+    init(id: UUID = UUID(), role: String, text: String, imageRefs: [String] = []) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.imageRefs = imageRefs
+    }
+
+    // 老存档里没有 id 和 imageRefs，缺了给默认值，别让整份记录解不开。
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        role = try c.decodeIfPresent(String.self, forKey: .role) ?? "assistant"
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        imageRefs = try c.decodeIfPresent([String].self, forKey: .imageRefs) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, role, text
+        case imageRefs = "image_refs"
+    }
+}
+
+/// 传给引擎的一条消息，字段跟 OpenAI 对齐。界面不直接用它——见 ChatMessage。
 struct Message: Codable, Hashable {
     var role: String
     var content: String

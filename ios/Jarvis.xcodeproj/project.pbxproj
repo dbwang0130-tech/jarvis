@@ -15,6 +15,7 @@
 		2016B7DD9F177EE83EB5F3F3 /* Dictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE8CAD46C975F9D7A7CE0398 /* Dictation.swift */; };
 		E90E041CB6DA0641EE38EABA /* HealthKitImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E1A3C9E1C97252EEC4D08D /* HealthKitImporter.swift */; };
 		72C6A0D8861565F0A690BB70 /* HealthTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */; };
+		CD7D6EE8C1FC2FACE868C2CC /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED768A3B3DD5258B7A2387DA /* ImageStore.swift */; };
 		23E73D661E879A0EBBD9DDA2 /* Intents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A45511E2548529E93AF2CB /* Intents.swift */; };
 		0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F1B6CBE154F3A41E575653 /* ItemView.swift */; };
 		FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED29F84A2C8136AC729D9F6 /* Keychain.swift */; };
@@ -87,6 +88,7 @@
 		FE8CAD46C975F9D7A7CE0398 /* Dictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dictation.swift; sourceTree = "<group>"; };
 		99E1A3C9E1C97252EEC4D08D /* HealthKitImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitImporter.swift; sourceTree = "<group>"; };
 		DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthTab.swift; sourceTree = "<group>"; };
+		ED768A3B3DD5258B7A2387DA /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		E5A45511E2548529E93AF2CB /* Intents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents.swift; sourceTree = "<group>"; };
 		E8F1B6CBE154F3A41E575653 /* ItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemView.swift; sourceTree = "<group>"; };
 		EED29F84A2C8136AC729D9F6 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
@@ -147,6 +149,7 @@
 				FE8CAD46C975F9D7A7CE0398 /* Dictation.swift */,
 				99E1A3C9E1C97252EEC4D08D /* HealthKitImporter.swift */,
 				DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */,
+				ED768A3B3DD5258B7A2387DA /* ImageStore.swift */,
 				E5A45511E2548529E93AF2CB /* Intents.swift */,
 				E8F1B6CBE154F3A41E575653 /* ItemView.swift */,
 				EED29F84A2C8136AC729D9F6 /* Keychain.swift */,
@@ -330,6 +333,7 @@
 				2016B7DD9F177EE83EB5F3F3 /* Dictation.swift in Sources */,
 				E90E041CB6DA0641EE38EABA /* HealthKitImporter.swift in Sources */,
 				72C6A0D8861565F0A690BB70 /* HealthTab.swift in Sources */,
+				CD7D6EE8C1FC2FACE868C2CC /* ImageStore.swift in Sources */,
 				23E73D661E879A0EBBD9DDA2 /* Intents.swift in Sources */,
 				0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */,
 				FB22D447125E10D2D2FC62B8 /* Keychain.swift in Sources */,

@@ -57,7 +57,11 @@ final class Store: ObservableObject, AskEvents {
     }
 
     /// 对话记录。界面显示用，同时原样带给 Go 做多轮上下文。
-    @Published var messages: [Message] = []
+    /// 界面上的对话。**唯一真相**：带附件，引擎改不了它，压缩也动不了它。
+    @Published var messages: [ChatMessage] = []
+    /// 引擎那份上下文：纯 wire 格式，含工具调用，可能被压缩裁剪过。
+    /// 只在发请求时用，不给人看。
+    private var engineHistory: [Message] = []
     @Published var steps: [Step] = []
     @Published var thinking = false
 
@@ -69,7 +73,9 @@ final class Store: ObservableObject, AskEvents {
 
     init() {
         // 打开就接着上次那段对话。
-        messages = SessionStore.load()
+        let saved = SessionStore.load()
+        messages = saved.chat
+        engineHistory = saved.engine
     }
 
     // 手上这份文件内容。对话要用它做入参，也用来判断哪些真的变了。
@@ -179,11 +185,19 @@ final class Store: ObservableObject, AskEvents {
         guard !thinking else { return }
         // 从后往前找最后一次提问，它之后的全扔掉（回答、还有我们自己
         // 插的那些提示）。
-        guard let idx = messages.lastIndex(where: { $0.role == "user" }) else { return }
-        let question = messages[idx].content
+        guard let idx = messages.lastIndex(where: { $0.isUser }) else { return }
+        let question = messages[idx].text
+        let refs = messages[idx].imageRefs
         messages = Array(messages.prefix(idx))
+        // 引擎那份也要掐到同一处，否则答坏的那轮还留在上下文里，
+        // 模型多半顺着它再说一遍。同样只能在 user 边界上下刀。
+        if let e = engineHistory.lastIndex(where: { $0.role == "user" }) {
+            engineHistory = Array(engineHistory.prefix(e))
+        }
         persist()
-        await send(question)
+        // 图还在本机，重答时按编号读回来重发。
+        let images = refs.compactMap { ImageStore.load($0)?.jpegData(compressionQuality: 0.8) }
+        await send(question, images: images)
     }
 
     func send(_ question: String, images: [Data] = []) async {
@@ -196,14 +210,13 @@ final class Store: ObservableObject, AskEvents {
             return
         }
 
-        // 这条只为让界面立刻有反应。传给 Go 的 history 必须是**这轮之前**的——
-        // agent.Ask 自己会把提问追加进去，把它一起传过去就成了两条。
-        let history = messages.filter { $0.role != "__local" }
-        // 存档里只留一句「[图片]」，不留图本身：会话存档会反复读写，
-        // 塞几张几百 KB 的图进去，它就不再是个能随手读的小文件了。
-        let shown = images.isEmpty ? text
-                                   : (text.isEmpty ? "[图片]" : "[图片] " + text)
-        messages.append(Message(role: "user", content: shown))
+        // 图存本机，消息里只留编号：会话存档会反复读写，塞几张几百 KB
+        // 的图进去，它就不再是个能随手读的小文件了。
+        let refs = images.compactMap { ImageStore.save($0) }
+        // 只发图不说话时留一句「[图片]」兜底——万一图读不回来
+        //（存档还在、文件被清了），气泡不能是个空壳。
+        let shown = text.isEmpty && !images.isEmpty ? "[图片]" : text
+        messages.append(ChatMessage(role: "user", text: shown, imageRefs: refs))
         steps = []
         thinking = true
         defer { thinking = false }
@@ -211,8 +224,10 @@ final class Store: ObservableObject, AskEvents {
         var model = settings.model
         model.apiKey = settings.apiKey
 
+        // 传引擎那份，不是界面那份：引擎要的是 wire 格式加工具调用，
+        // 而且这里必须是**本轮之前**的——agent 自己会把这次提问追加进去。
         var input = AskInput(files: files, ledger: ledger, question: text,
-                             history: history, model: model, profile: settings.profile,
+                             history: engineHistory, model: model, profile: settings.profile,
                              memory: memory, health: health,
                              accounts: settings.mailAccounts())
         input.images = images.map { "data:image/jpeg;base64," + $0.base64EncodedString() }
@@ -223,15 +238,21 @@ final class Store: ObservableObject, AskEvents {
 
         if let err = out.error, !err.isEmpty {
             lastError = err
-            messages.append(Message(role: "__local", content: "没办成：\(err)"))
+            messages.append(ChatMessage(role: "__local", text: "没办成：\(err)"))
             persist()
             await refreshIfMissed()
             return
         }
 
-        messages = out.history
+        // 引擎那份整个换掉（可能压缩过）；界面那份只追加一条回答——
+        // 中间的工具调用在 steps 里单独显示，不进对话。
+        engineHistory = out.history
+        if !out.reply.isEmpty {
+            messages.append(ChatMessage(role: "assistant", text: out.reply))
+        }
         steps = out.steps ?? []
         persist()
+        ImageStore.sweep(keep: Set(messages.flatMap { $0.imageRefs }))
 
         // 秘书改了东西就写回 iCloud，然后重新解析一遍。
         if (out.files?.isEmpty == false) || (out.ledger?.isEmpty == false)
@@ -288,13 +309,15 @@ final class Store: ObservableObject, AskEvents {
 
     func clearChat() {
         messages = []
+        engineHistory = []
         steps = []
         persist()
+        ImageStore.sweep(keep: [])
     }
 
     /// 存档可能有几百 KB，别占着主线程。
     private func persist() {
-        let now = messages
+        let now = Session(chat: messages, engine: engineHistory)
         Task.detached(priority: .utility) { SessionStore.save(now) }
     }
 

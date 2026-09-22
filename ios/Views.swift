@@ -1319,13 +1319,9 @@ struct ChatView: View {
         }
     }
 
-    // 工具调用和系统提示那些中间消息不用给人看。
-    // __local 是我们自己插的提示（比如出错说明），显示但不喂回给模型。
-    var shownMessages: [Message] {
-        store.messages.filter {
-            ["user", "assistant", "__local"].contains($0.role) && !$0.content.isEmpty
-        }
-    }
+    // store.messages 本来就只有一问一答（工具调用在 steps 里单独显示），
+    // 不必再滤一遍。空文本的那条留着——只发图不说话时它顶着位置。
+    var shownMessages: [ChatMessage] { store.messages }
 }
 
 /// 空着的时候给几句现成的，省得第一次打开不知道能说什么。
@@ -1365,12 +1361,18 @@ struct Starters: View {
 
 struct Bubble: View {
     @EnvironmentObject var store: Store
-    let message: Message
+    let message: ChatMessage
     /// 是不是最后一条。只有最后那条秘书的回答能重答——中间某条重答了，
     /// 后面的对话就接不上了。
     var isLast = false
 
-    var isUser: Bool { message.role == "user" }
+    var isUser: Bool { message.isUser }
+
+    /// 配图是不是真读得回来。存档还在、图被清掉了的情况下，
+    /// 「[图片]」那句话就是唯一剩下的线索，不能连它也藏了。
+    private var hasVisibleImage: Bool {
+        message.imageRefs.contains { ImageStore.load($0) != nil }
+    }
 
     /// 四个角不一样圆：靠说话人那一侧的下角收紧。
     ///
@@ -1396,9 +1398,27 @@ struct Bubble: View {
             }
             Group {
                 if isUser {
-                    Text(message.content)
+                    VStack(alignment: .trailing, spacing: 6) {
+                        // 发过的图摆在话的上面，跟拍照那一刻的顺序一致。
+                        if !message.imageRefs.isEmpty {
+                            ForEach(message.imageRefs, id: \.self) { ref in
+                                if let img = ImageStore.load(ref) {
+                                    Image(uiImage: img)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(maxWidth: 200, maxHeight: 200)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                            }
+                        }
+                        // 只发了图没说话时 content 是「[图片]」，图既然画出来了
+                        // 就不必再写一遍；图读不回来的话这句话就是唯一的线索。
+                        if !(message.text == "[图片]" && hasVisibleImage) {
+                            Text(message.text)
+                        }
+                    }
                 } else {
-                    MarkdownText(text: message.content)
+                    MarkdownText(text: message.text)
                 }
             }
                 .padding(10)
@@ -1407,20 +1427,20 @@ struct Bubble: View {
                 .textSelection(.enabled)
                 // 左右对齐和颜色是给眼睛分的，VoiceOver 只听得到一串
                 // 文字，一问一答连在一起读完全分不出谁在说话。
-                .accessibilityLabel(isUser ? "你说：\(message.content)"
-                                           : "Jarvis 说：\(message.content)")
+                .accessibilityLabel(isUser ? "你说：\(message.text)"
+                                           : "Jarvis 说：\(message.text)")
                 // 长按：抄走，或者换个说法再问一遍。重发对用户自己那句
                 // 尤其有用——秘书会错意时，改一个词比重打一整句快得多。
                 .contextMenu {
                     Button {
-                        UIPasteboard.general.string = message.content
+                        UIPasteboard.general.string = message.text
                         Haptics.tap()
                     } label: {
                         Label("复制", systemImage: "doc.on.doc")
                     }
                     if isUser {
                         Button {
-                            Task { await store.send(message.content) }
+                            Task { await store.send(message.text) }
                         } label: {
                             Label("再问一遍", systemImage: "arrow.clockwise")
                         }
