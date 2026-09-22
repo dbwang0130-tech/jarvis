@@ -684,8 +684,34 @@ final class Store: ObservableObject, AskEvents {
 }
 
 /// Settings 是本机的设置。密钥单独存钥匙串，不进 UserDefaults。
+/// 存下来的一套模型接入参数。
+///
+/// **密钥不在这个结构里**，跟主配置一样单独进钥匙串——Settings 整个是
+/// 编码进 UserDefaults 的，密钥落进去就是明文躺在沙箱里。用 id 而不是
+/// 名字去索引钥匙串，改个名字不至于把密钥弄丢。
+struct ModelProfile: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var name = ""
+    var provider = ""
+    var model = ""
+    var baseURL = ""
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, provider, model
+        case baseURL = "base_url"
+    }
+
+    var apiKey: String {
+        get { Keychain.read(key: "jarvis.apiKey.\(id.uuidString)") ?? "" }
+        nonmutating set { Keychain.write(key: "jarvis.apiKey.\(id.uuidString)", value: newValue) }
+    }
+}
+
 struct Settings: Codable {
     var model = ModelConfig()
+    /// 存着的几套模型，可以随时切。当前在用的那套仍然摊在 model 里——
+    /// 传给 Go 的就是它，切换只是把某一套拷上来，桥那边一无所知。
+    var profiles: [ModelProfile] = []
     var profile = ""
     /// 邮箱账号。密码不在这儿，单独进钥匙串。
     var mail: [MailAccount] = []
@@ -713,8 +739,39 @@ struct Settings: Codable {
     private static let storeKey = "jarvis.settings"
 
     enum CodingKeys: String, CodingKey {
-        case model, profile, mail, remind, remindLead, brief, briefHour
+        case model, profiles, profile, mail, remind, remindLead, brief, briefHour
         case mailCheckTimes = "mail_check_times"
+    }
+
+    /// 切到某一套：服务商、模型、地址、密钥整套换过去，而不是只换模型名。
+    /// 只换名字的话，从豆包切回 deepseek 会留着豆包的地址和密钥，必连不上。
+    mutating func use(_ p: ModelProfile) {
+        model.provider = p.provider
+        model.model = p.model
+        model.baseURL = p.baseURL
+        apiKey = p.apiKey
+    }
+
+    /// 把当前这套存成一个名字。同名是「更新」，不该留下两条一模一样的。
+    mutating func saveProfile(named name: String) {
+        if let i = profiles.firstIndex(where: { $0.name == name }) {
+            var p = profiles[i]
+            p.provider = model.provider
+            p.model = model.model
+            p.baseURL = model.baseURL
+            p.apiKey = apiKey
+            profiles[i] = p
+            return
+        }
+        let p = ModelProfile(name: name, provider: model.provider,
+                             model: model.model, baseURL: model.baseURL)
+        p.apiKey = apiKey
+        profiles.append(p)
+    }
+
+    /// 某一套是不是正在用的那套。比的是决定「连到哪、用哪个模型」的三项。
+    func isActive(_ p: ModelProfile) -> Bool {
+        p.provider == model.provider && p.model == model.model && p.baseURL == model.baseURL
     }
 
     /// 传给 Go 的那份：现从钥匙串取密码填上，只带配全了的账号。
@@ -735,6 +792,7 @@ struct Settings: Codable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         model = try c.decodeIfPresent(ModelConfig.self, forKey: .model) ?? ModelConfig()
+        profiles = try c.decodeIfPresent([ModelProfile].self, forKey: .profiles) ?? []
         profile = try c.decodeIfPresent(String.self, forKey: .profile) ?? ""
         mail = try c.decodeIfPresent([MailAccount].self, forKey: .mail) ?? []
         remind = try c.decodeIfPresent(Bool.self, forKey: .remind) ?? true

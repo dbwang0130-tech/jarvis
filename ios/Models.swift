@@ -692,6 +692,30 @@ struct Step: Codable, Identifiable, Hashable {
     }
 }
 
+/// 一个服务商的预设，由 Go 那边的 Presets 表过桥来。
+struct ProviderInfo: Codable, Identifiable, Hashable {
+    var name = ""
+    var model = ""
+    var baseURL = ""
+    /// 预设的那个默认模型认不认得图片。手机是能发图、能拍照记账的那一端，
+    /// 选了纯文本模型，图发出去石沉大海，最难查。
+    var vision = false
+    /// 本地跑的（ollama），不用填密钥。
+    var local = false
+
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey {
+        case name, model, vision, local
+        case baseURL = "base_url"
+    }
+}
+
+struct ProviderList: Codable {
+    var providers: [ProviderInfo] = []
+    var error = ""
+}
+
 struct ModelConfig: Codable {
     var provider: String = "deepseek"
     var model: String = ""

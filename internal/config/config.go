@@ -47,6 +47,26 @@ type Agent struct {
 	// Proxy 控制怎么连模型接口：留空跟随环境变量，"none" 强制直连，
 	// 其他值当作代理地址（如 http://127.0.0.1:7890）。
 	Proxy string `json:"proxy,omitempty"`
+	// Profiles 是存着的几套模型，`/model` 在它们之间切。
+	//
+	// **当前在用的那套仍然摊在上面 Provider/Model/BaseURL/APIKey 几个字段
+	// 里**，切换就是把某个 profile 的内容拷上来。这样 agent.Build 一行都
+	// 不用改，老配置（没有 profiles 那一段）也照常能跑——多模型是加在
+	// 配置层的一份备选清单，不是把「当前用哪个」这件事重新发明一遍。
+	Profiles []ModelProfile `json:"profiles,omitempty"`
+}
+
+// ModelProfile 是存下来的一套模型接入参数。
+//
+// 名字是用户自己起的（「豆包看图」「本地小模型」），因为同一个服务商
+// 底下可能存好几套——同是 doubao，一套走 turbo 干活、一套走 lite 省钱。
+// 用服务商名当主键的话这两套就只能留一套。
+type ModelProfile struct {
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	Model    string `json:"model,omitempty"`
+	BaseURL  string `json:"base_url,omitempty"`
+	APIKey   string `json:"api_key,omitempty"`
 }
 
 // WorkHours 是一天中可安排事务的时段。

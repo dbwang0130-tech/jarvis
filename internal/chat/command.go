@@ -23,7 +23,7 @@ var commands = []command{
 	{"/setup", "", "从头走一遍配置（模型、日程、邮箱、账本…）"},
 	{"/login", "<key>", "设置模型密钥"},
 	{"/provider", "<名字>", "切换服务商（deepseek/qwen/kimi/minimax…）"},
-	{"/model", "<模型名>", "切换模型"},
+	{"/model", "[名字|save <名字>|rm <名字>]", "存着的几套模型：看清单、切换、存一套、删一套"},
 	{"/auto", "<off|clean|all>", "有风险动作的自动档"},
 	{"/mail", "", "添加邮箱账号"},
 	{"/accounts", "", "看已有的邮箱账号"},
@@ -100,19 +100,20 @@ func (s *Session) runCommand(input string) bool {
 			fail("用法：/provider <%s>", strings.Join(agent.PresetNames(), "、"))
 			return false
 		}
-		s.cfg.Agent.Provider = arg
-		s.cfg.Agent.Model = ""
-		s.cfg.Agent.APIKey = ""
-		s.saveCfg()
-		s.reloadAgent("已切换服务商 " + arg)
-	case "/model":
-		if arg == "" {
-			fail("用法：/model <模型名>")
+		if _, ok := agent.Presets[arg]; !ok {
+			fail("没有叫 %s 的服务商，可选：%s", arg, strings.Join(agent.PresetNames(), "、"))
 			return false
 		}
-		s.cfg.Agent.Model = arg
+		s.cfg.Agent.Provider = arg
+		s.cfg.Agent.Model = ""
+		s.cfg.Agent.BaseURL = ""
+		s.cfg.Agent.APIKey = ""
 		s.saveCfg()
-		s.reloadAgent("已切换模型 " + arg)
+		// 说清楚默认落到哪个模型、看不看得见图片。只说「已切换服务商」
+		// 的话，下一步该不该再 /model 一次全靠猜。
+		s.reloadAgent("已切到 " + modelDesc(s.currentProfile()) + "。/login <密钥> 填密钥")
+	case "/model":
+		s.switchModel(arg)
 	case "/mailcheck":
 		s.setMailCheck(arg)
 	case "/theme":

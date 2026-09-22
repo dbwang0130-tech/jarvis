@@ -19,9 +19,11 @@ struct SettingsView: View {
     @State private var mailCheckTimes: [String] = []
     @State private var check: ModelCheck?
 
-    /// 跟桌面端那份预设表一致。
-    private let providers = ["deepseek", "qwen", "kimi", "minimax", "zhipu",
-                             "doubao", "spark", "baichuan", "ollama"]
+    /// 服务商清单从 Go 那边拿（`Bridge.providers()`），不在这儿抄一份。
+    /// 抄的那份不会跟着桌面端更新——上一版就留着一个早已删掉的服务商。
+    @State private var providers: [ProviderInfo] = []
+    /// 新存一套时用的名字。
+    @State private var newName = ""
 
     var body: some View {
         NavigationStack {
@@ -34,7 +36,20 @@ struct SettingsView: View {
 
                 Section {
                     Picker("服务商", selection: $provider) {
-                        ForEach(providers, id: \.self) { Text($0).tag($0) }
+                        ForEach(providers) { p in
+                            Text(p.vision ? "\(p.name) · 看图" : p.name).tag(p.name)
+                        }
+                    }
+                    .onChange(of: provider) { _, name in
+                        // 换服务商就把上一家的模型名和地址清掉——留着的话
+                        // 会拿豆包的模型名去问 deepseek，报一个看不懂的 400。
+                        guard let p = providers.first(where: { $0.name == name }) else { return }
+                        model = ""
+                        baseURL = ""
+                        check = nil
+                        if !p.vision {
+                            check = ModelCheck(ok: false, message: "这个模型看不了图片")
+                        }
                     }
                     TextField("模型名（留空用预设）", text: $model)
                         .autocorrectionDisabled()
@@ -75,6 +90,44 @@ struct SettingsView: View {
                 } footer: {
                     Text("密钥存在本机钥匙串里，不会跟着 iCloud 走。\n"
                          + "填完点一下「测试连接」，别等到第一次提问才发现填错了。")
+                }
+
+                // 配好几套，随手切：干活用贵的，闲聊用便宜的，出门用本地的。
+                Section {
+                    ForEach(store.settings.profiles) { p in
+                        Button {
+                            useProfile(p)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(p.name)
+                                        .foregroundStyle(.primary)
+                                    Text(profileDesc(p))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if store.settings.isActive(p) {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Brand.accent)
+                                }
+                            }
+                        }
+                    }
+                    .onDelete(perform: deleteProfiles)
+
+                    HStack {
+                        TextField("名字", text: $newName)
+                            .autocorrectionDisabled()
+                        Button("存") { saveProfile() }
+                            .disabled(newName.trimmed.isEmpty || apiKey.trimmed.isEmpty)
+                    }
+                } header: {
+                    Text("存着的几套")
+                } footer: {
+                    Text(store.settings.profiles.isEmpty
+                         ? "存下当前这套，之后可随时切回。"
+                         : "点一下切换，左滑删除。")
                 }
 
                 Section("关于你") {
@@ -259,6 +312,54 @@ struct SettingsView: View {
         .onAppear(perform: load)
     }
 
+    /// 一套模型显示成一行小字：用哪个服务商的哪个模型。
+    private func profileDesc(_ p: ModelProfile) -> String {
+        let info = providers.first { $0.name == p.provider }
+        let name = p.model.isEmpty ? (info?.model ?? "") + "（预设）" : p.model
+        var desc = p.provider + " · " + name
+        // 只在用着预设默认模型时才敢说死——自己填了模型名就无从判断了。
+        if p.model.isEmpty, let info, info.vision { desc += " · 认得图片" }
+        return desc
+    }
+
+    /// 切到某一套：整套换过去，界面上那几个框也跟着变。
+    private func useProfile(_ p: ModelProfile) {
+        var s = store.settings
+        s.use(p)
+        s.save()
+        store.settings = s
+        provider = p.provider
+        model = p.model
+        baseURL = p.baseURL
+        apiKey = p.apiKey
+        check = nil
+        Haptics.success()
+    }
+
+    /// 把界面上这套存成一个名字。存的是**界面上填着的**，不是存过的那份——
+    /// 改完没点「存」就去存一套，存下来的是旧的，没人能看出来。
+    private func saveProfile() {
+        var s = store.settings
+        s.model.provider = provider
+        s.model.model = model.trimmed
+        s.model.baseURL = baseURL.trimmed
+        s.apiKey = apiKey.trimmed
+        s.saveProfile(named: newName.trimmed)
+        s.save()
+        store.settings = s
+        newName = ""
+        Haptics.success()
+    }
+
+    /// 删掉几套。删的是清单，当前连接不动——正用着的那套被删掉之后
+    /// 秘书突然不工作，谁也想不到是刚才左滑那一下。
+    private func deleteProfiles(at offsets: IndexSet) {
+        var s = store.settings
+        s.profiles.remove(atOffsets: offsets)
+        s.save()
+        store.settings = s
+    }
+
     /// 拿界面上当前填的值去试，不是存过的那份——填到一半就能验。
     private func runCheck() {
         var m = store.settings.model
@@ -294,6 +395,7 @@ struct SettingsView: View {
 
     private func load() {
         let s = store.settings
+        if providers.isEmpty { providers = Bridge.providers() }
         provider = s.model.provider.isEmpty ? "deepseek" : s.model.provider
         model = s.model.model
         baseURL = s.model.baseURL

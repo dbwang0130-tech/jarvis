@@ -321,6 +321,28 @@ enum Bridge {
         #endif
     }
 
+    /// 服务商清单，界面上填模型那一栏用它。
+    ///
+    /// **这份名单只有一处，在 Go 那边。** 早先 Swift 里硬编码了一个数组，
+    /// 注释写着「跟桌面端那份预设表一致」——而它并不一致：桌面那边删掉
+    /// baichuan 之后手机上那条还在，选中了就是一个连不上的地址。
+    static func providers() -> [ProviderInfo] {
+        let out = callProviders()
+        guard let data = out.data(using: .utf8),
+              let list = try? JSONDecoder().decode(ProviderList.self, from: data) else {
+            return []
+        }
+        return list.providers
+    }
+
+    private static func callProviders() -> String {
+        #if canImport(Mobile)
+        return MobileProviders()
+        #else
+        return #"{"providers":[],"error":"Mobile framework 没连上"}"#
+        #endif
+    }
+
     private static func callTestModel(_ json: String) -> String {
         #if canImport(Mobile)
         return MobileTestModel(json)
