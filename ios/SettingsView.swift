@@ -33,6 +33,8 @@ struct SettingsView: View {
         ["model", "models"].contains(ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] ?? "")
     @State private var debugToMail =
         ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "mail"
+    @State private var debugToPrivacy =
+        ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "privacy"
 #endif
 
     var body: some View {
@@ -80,6 +82,14 @@ struct SettingsView: View {
                 // 得留个随时看得见的地方。
                 Section {
                     LabeledContent("版本", value: Brand.version)
+                    // 内置一份，离线也看得到。**这不能替代 App Store Connect 里
+                    // 那个必填的隐私政策网址**，但那句「我们没有服务器」正是这个
+                    // app 的立场，该在手边随时翻得到，而不是只挂在商店页面上。
+                    NavigationLink {
+                        PrivacyView()
+                    } label: {
+                        SettingRow(icon: "hand.raised", tint: .gray, title: "隐私政策")
+                    }
                 } footer: {
                     Text(Brand.subtitle)
                 }
@@ -91,6 +101,7 @@ struct SettingsView: View {
                 ModelSettings(providers: providers)
             }
             .navigationDestination(isPresented: $debugToMail) { MailAccountsView() }
+            .navigationDestination(isPresented: $debugToPrivacy) { PrivacyView() }
 #endif
             .toolbar {
                 // **只有「完成」，没有「存」。** 这一页每一项都是改完就生效的，

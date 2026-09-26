@@ -25,6 +25,10 @@ IOS = pathlib.Path(__file__).resolve().parent
 FRAMEWORK = "Mobile.xcframework"
 ASSETS = "Assets.xcassets"
 PRIVACY = "PrivacyInfo.xcprivacy"
+# 隐私政策正文。**在仓库根，不在 ios/**——它既要发成网页填进 App Store
+# Connect（那是必填项，躲不掉），又要在 app 里看得到。两处各存一份迟早会漂，
+# 所以只留一份，从上一层引进来打包。
+PRIVACY_MD = "../PRIVACY.md"
 APP_PLIST = "Info.plist"
 LAUNCH = "LaunchScreen.storyboard"
 ENTITLEMENTS = "Jarvis.entitlements"
@@ -138,6 +142,17 @@ def main() -> None:
                       f'{{isa = PBXBuildFile; fileRef = {priv_ref} /* {PRIVACY} */; }};')
         resources.append(f'\t\t\t\t{priv_build} /* {PRIVACY} in Resources */,')
         children.append(f'\t\t\t\t{priv_ref} /* {PRIVACY} */,')
+
+    # 隐私政策正文。进 bundle 之后文件名只剩 PRIVACY.md，Swift 那边按这个名字读。
+    pm_ref, pm_build = uid("fr:privacymd"), uid("bf:privacymd")
+    if (IOS / PRIVACY_MD).is_file():
+        refs.append(f'\t\t{pm_ref} /* PRIVACY.md */ = {{isa = PBXFileReference; '
+                    f'lastKnownFileType = net.daringfireball.markdown; path = {PRIVACY_MD}; '
+                    f'sourceTree = "<group>"; }};')
+        builds.append(f'\t\t{pm_build} /* PRIVACY.md in Resources */ = '
+                      f'{{isa = PBXBuildFile; fileRef = {pm_ref} /* PRIVACY.md */; }};')
+        resources.append(f'\t\t\t\t{pm_build} /* PRIVACY.md in Resources */,')
+        children.append(f'\t\t\t\t{pm_ref} /* PRIVACY.md */,')
 
     # 启动屏。也是资源，编译成 storyboardc 进 bundle。
     ls_ref, ls_build = uid("fr:launch"), uid("bf:launch")

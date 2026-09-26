@@ -27,6 +27,7 @@
 		A6C53E6D9E1777039AC2B07E /* Notifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63F95F665447CB3BF30134B1 /* Notifier.swift */; };
 		231668D64451882E099898AF /* Paths.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3356B5F12F973EC7DD2DF0A /* Paths.swift */; };
 		9A3C5F85C4F5DAE8AFDF2C46 /* PhotoInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0D56073BC7B082F36823BD /* PhotoInput.swift */; };
+		F1FF00E902F128AB71861D67 /* PrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EE84F690C8A8EC1892C21AE /* PrivacyView.swift */; };
 		F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7CAA3A267067C3AC9942A5 /* Session.swift */; };
 		EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */; };
 		E6B91211C95E59F87266753B /* SharedImages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DDC9246807E690D1683459F /* SharedImages.swift */; };
@@ -39,6 +40,7 @@
 		C3A0DA3264C7DCDA1BEB99C3 /* WidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855B81ABF2C6B53CD2B61F83 /* WidgetViews.swift */; };
 		1228440DDBCFF603473E79E6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 164C0316A3825EF4C698B340 /* Assets.xcassets */; };
 		F49879C4F16F82BEE5490E90 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = DC57EAABB38F68D74718337B /* PrivacyInfo.xcprivacy */; };
+		4C844E1F9E63728B3AE86340 /* PRIVACY.md in Resources */ = {isa = PBXBuildFile; fileRef = F67F39CD7338E672EE7EC63F /* PRIVACY.md */; };
 		E1DECFB0FEAD7A7704BA0B8B /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A069981AD14109903A0DF231 /* LaunchScreen.storyboard */; };
 		527DBBB620101CD45838B4C5 /* Mobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F72C3D408040F7EF956AD77D /* Mobile.xcframework */; };
 		5141E406C9BDE2AAC9E6F7A1 /* Mobile.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = F72C3D408040F7EF956AD77D /* Mobile.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -96,6 +98,7 @@
 		63F95F665447CB3BF30134B1 /* Notifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifier.swift; sourceTree = "<group>"; };
 		C3356B5F12F973EC7DD2DF0A /* Paths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Paths.swift; sourceTree = "<group>"; };
 		BA0D56073BC7B082F36823BD /* PhotoInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoInput.swift; sourceTree = "<group>"; };
+		3EE84F690C8A8EC1892C21AE /* PrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyView.swift; sourceTree = "<group>"; };
 		FF7CAA3A267067C3AC9942A5 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7DDC9246807E690D1683459F /* SharedImages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedImages.swift; sourceTree = "<group>"; };
@@ -109,6 +112,7 @@
 		164C0316A3825EF4C698B340 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		044014C3347BB3203DC8A2FD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		DC57EAABB38F68D74718337B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F67F39CD7338E672EE7EC63F /* PRIVACY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ../PRIVACY.md; sourceTree = "<group>"; };
 		A069981AD14109903A0DF231 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		F72C3D408040F7EF956AD77D /* Mobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Mobile.xcframework; sourceTree = "<group>"; };
 		93D423FD27CF714CC9561E8D /* JarvisWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisWidget.swift; sourceTree = "<group>"; };
@@ -153,6 +157,7 @@
 				63F95F665447CB3BF30134B1 /* Notifier.swift */,
 				C3356B5F12F973EC7DD2DF0A /* Paths.swift */,
 				BA0D56073BC7B082F36823BD /* PhotoInput.swift */,
+				3EE84F690C8A8EC1892C21AE /* PrivacyView.swift */,
 				FF7CAA3A267067C3AC9942A5 /* Session.swift */,
 				6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */,
 				7DDC9246807E690D1683459F /* SharedImages.swift */,
@@ -166,6 +171,7 @@
 				164C0316A3825EF4C698B340 /* Assets.xcassets */,
 				044014C3347BB3203DC8A2FD /* Info.plist */,
 				DC57EAABB38F68D74718337B /* PrivacyInfo.xcprivacy */,
+				F67F39CD7338E672EE7EC63F /* PRIVACY.md */,
 				A069981AD14109903A0DF231 /* LaunchScreen.storyboard */,
 				F72C3D408040F7EF956AD77D /* Mobile.xcframework */,
 				7A11DDCC99FD739FC208A899 /* Widget */,
@@ -294,6 +300,7 @@
 			files = (
 				1228440DDBCFF603473E79E6 /* Assets.xcassets in Resources */,
 				F49879C4F16F82BEE5490E90 /* PrivacyInfo.xcprivacy in Resources */,
+				4C844E1F9E63728B3AE86340 /* PRIVACY.md in Resources */,
 				E1DECFB0FEAD7A7704BA0B8B /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -333,6 +340,7 @@
 				A6C53E6D9E1777039AC2B07E /* Notifier.swift in Sources */,
 				231668D64451882E099898AF /* Paths.swift in Sources */,
 				9A3C5F85C4F5DAE8AFDF2C46 /* PhotoInput.swift in Sources */,
+				F1FF00E902F128AB71861D67 /* PrivacyView.swift in Sources */,
 				F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */,
 				EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */,
 				E6B91211C95E59F87266753B /* SharedImages.swift in Sources */,
@@ -422,6 +430,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "读你在「健康」里记下的体重、睡眠、步数这些，存进你自己的健康记录文件。只读不写，也不上传。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "拍小票。照片存进你自己的 iCloud 目录，按年月归好档。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "按住麦克风说话，转成文字填进输入框。识别在本机做，录音不离开这台设备。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "把你说的话转成文字。用的是本机的识别模型，一个字都不会上传。";
@@ -461,6 +470,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Jarvis;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "读你在「健康」里记下的体重、睡眠、步数这些，存进你自己的健康记录文件。只读不写，也不上传。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "拍小票。照片存进你自己的 iCloud 目录，按年月归好档。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "按住麦克风说话，转成文字填进输入框。识别在本机做，录音不离开这台设备。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "把你说的话转成文字。用的是本机的识别模型，一个字都不会上传。";

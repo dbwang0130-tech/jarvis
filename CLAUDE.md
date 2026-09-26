@@ -239,6 +239,18 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 `PrepareImport` / `AppendTo`——它们只为那条路存在，留着就是死代码。
 上架的其余事项见 `APPSTORE.md`，隐私政策正文见 `PRIVACY.md`。
 
+**隐私政策只有一份文件**：仓库根的 `PRIVACY.md`。它既要发成网页填进 App Store
+Connect（那是必填项，app 内置的替代不了），又要在「设置 → 隐私政策」里看得到，
+所以 `ios/genproject.py` 把它从上一层引进来打进 bundle，`PrivacyView` 读的就是
+那一份。两处各抄一份迟早会漂，而这偏偏是一份声称「我们不收集数据」的文件，
+说法不一致比没有更糟。两条写的时候要记得：
+
+- **段落一律不手工折行。** `MarkdownText` 是为聊天气泡写的，逐行走，源码里
+  折一行界面上就真断一行。markdown 的段落本来也该是一整行。
+- 剥 HTML 注释的正则**必须带 `(?s)`**。`.` 默认不匹配换行，而那些给开发者看的
+  注释全是跨行的——少了它一条都剥不掉，整段开发笔记原样印在隐私政策最上面。
+  编译、类型检查、契约全不会响，只有真跑起来看才看得见（栽过）。
+
 **人设不在代码里**：`internal/agent/persona.go` 有 `DefaultPersona` 兜底，真正用的那份在
 iCloud 的 `persona.md`（`config.PersonaPath()`）。`Agent.SetPersona(text, save)` 把文本和
 落盘方式一起装上，`save` 为 nil 就不注入那个工具——注入了却存不下来更糟，模型会回一句
