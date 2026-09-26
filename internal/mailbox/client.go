@@ -180,7 +180,31 @@ func (cl *Client) FetchNew(sinceUID uint32, limit int, unreadOnly bool) ([]*Mess
 		set.AddRange(imap.UID(sinceUID+1), 0) // Stop 为 0 即 *，没有上界
 		criteria.UID = []imap.UIDSet{set}
 	}
-	return cl.search(criteria, unreadOnly, limit)
+	msgs, info, err := cl.search(criteria, unreadOnly, limit)
+	if err != nil || sinceUID == 0 {
+		return msgs, info, err
+	}
+
+	// **`n:*` 永远至少匹配最后一封**，就算 n 比所有 UID 都大。这是 RFC 3501
+	// 明写的（「a UID range of 559:* always includes the UID of the last message
+	// in the mailbox, even if 559 is higher than any assigned UID value」），不是
+	// 哪个服务器的毛病。
+	//
+	// 于是没有新信的那次同步会把最新那封重新拉回来，而调用方看到的是「有 1 封
+	// 新的」。现在这条路上它没造成可见的坏事——mail.Session 按 UID 去重，同一
+	// 封不会进两次清单；但它每次同步都白取一封的正文，而且 Matched 这个数是错的，
+	// 下一个相信「空就是没新的」的调用方会直接被它坑。拿内存 IMAP 跑测试时
+	// 撞上的（TestFetchNewIsIncrementalByUID）。
+	kept := msgs[:0]
+	for _, m := range msgs {
+		if uint32(m.UID) > sinceUID {
+			kept = append(kept, m)
+		}
+	}
+	dropped := len(msgs) - len(kept)
+	info.Matched -= dropped
+	info.Fetched -= dropped
+	return kept, info, nil
 }
 
 func (cl *Client) search(criteria *imap.SearchCriteria, unreadOnly bool, limit int) ([]*Message, SyncInfo, error) {

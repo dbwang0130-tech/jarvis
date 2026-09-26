@@ -56,7 +56,13 @@ key，**翻不出来的退化成纯文本**——点了没反应的蓝字比不�
 
 ## 常用命令
 
-测试覆盖（`go test ./... -cover`）：核心链路都有测——`agent` 的工具调用循环用注入 `http.RoundTripper` 的假模型跑脚本，不碰网络；`orgtools` 直接建临时 org 文件、调工具、把文件读回来比对，重点盯快照/撤销和删除的边界。`mail`/`browser` 要真的 IMAP 和 Chrome，没测。
+测试覆盖（`go test ./... -cover`）：核心链路都有测——`agent` 的工具调用循环用注入 `http.RoundTripper` 的假模型跑脚本，不碰网络；`orgtools` 直接建临时 org 文件、调工具、把文件读回来比对，重点盯快照/撤销和删除的边界。
+
+`mailbox` 那层**在进程里起一个假 IMAP** 测（`imap_test.go`）：`go-imap/v2` 自带
+`imapserver` + `imapmemserver`，而它已经是直接依赖，起在本机不联网、不加依赖、不碰
+任何真邮件。生产代码一行没改——`Connect` 走 TLS 拨号，而 `Client` 的字段是包内可见的，
+测试在同一个包里自己拨号自己组装，比在生产路径上留一个注入点干净。这套测试一上来
+就抓到一个真 bug，见下面 `FetchNew` 那条。`browser` 要真 Chrome，仍然没测。
 
 ```sh
 make build        # go build -ldflags="-s -w" -o jarvis .
@@ -244,6 +250,12 @@ ledger/health 里生成 `"number"`、在 mail/orgtools/plan 里生成 `"integer"
 - `internal/org`：org-mode 解析与**行级写回**。`Document` 持有 `Lines`，改完 `Reparse()` 再 `Save()`；改动前先 `Workspace.Snapshot()` 留底，这是 `Undo` 的基础。不要重新生成整个文件，保留用户原有格式。
 - `internal/agenda`：把 org 条目投影到日期上（计划/截止/事件/逾期）、找空档。
 - `internal/mailbox`：IMAP/SMTP 底层（拉取、解析、垃圾箱探测、发信）。
+- `internal/mailbox` 的 `FetchNew` 里有一处**协议怪癖的补丁**：IMAP 的 `n:*` 范围
+  永远至少匹配最后一封，就算 `n` 比所有 UID 都大（RFC 3501 明写的）。所以「从
+  sinceUID+1 到 *」在没有新信时会把最新那封重新拉回来，而调用方看到的是「有 1 封
+  新的」。现在按 UID 再滤一遍，`Matched`/`Fetched` 也跟着减。这条是拿假 IMAP 跑
+  测试时撞上的——真邮箱上它不会报错，只是每次同步白取一封正文，而下一个相信
+  「空就是没新的」的调用方会直接被坑。
 - `internal/state`：每个账号的同步进度。**按 UID 而不是时间划增量**——IMAP 的 SINCE 只比日期，按时间会重复拉当天邮件；`UIDValidity` 变了要重新全量。
 - `internal/config`：单份 JSON 配置 `~/.config/jarvis/config.json`（权限 600）。改配置只有 `/` 命令一条路（`/setup` `/login` `/provider` `/model` `/files` `/ledger` `/theme` `/mailcheck` `/accounts` `/mailrm`）——原先还有个 `configskill` 让模型自己读改，两条路改同一份配置，`deadline_warn_days=0` 这类「传了零值」的意图在 `config.fill()` 那儿被当成「没这项」补回默认。技能删掉之后这个冲突自然没了；真要让模型改配置，得先让 `fill` 按「字段在 JSON 里出现过没有」判断。
 
