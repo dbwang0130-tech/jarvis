@@ -54,13 +54,18 @@ SIMCTL_CHILD_JARVIS_UI_VAULT="$C/Documents/Jarvis"     xcrun simctl launch --ter
 xcrun simctl io "$SIM" screenshot /tmp/ui.png
 ```
 
+`JARVIS_UI_SCREEN=settings|model` 让那一屏直接出来（设置要点右上角才开得了，子页还要再点一下）。
 `JARVIS_UI_VAULT` 是 `Vault.init` 里一个 **`#if DEBUG` 的口子**：给一个目录就直接用，
 跳过文件选择器。选择器没法从命令行点（simctl 点不了屏幕），而要看的恰恰是选完之后
 那几屏。Release 构建里这几行不存在。对话本身不用改代码就能预置——`SessionStore` 存的是
 `Library/Application Support/session.json`，从宿主机写进去即可（模拟器里路径就是真路径）。
 
-**这条路抓到过一个别的层面都抓不到的 bug**，见 `Sparkline` 里 `yDomain` 那段注释：
-代码、注释、意图全对，只有画出来的东西不对。
+**这条路抓到过两个别的层面都抓不到的问题**：`Sparkline` 里 `yDomain` 那段（代码、注释、
+意图全对，只有画出来的东西不对），以及设置页那条「去领密钥」的链接没出来——因为
+**手动跑 `xcodebuild` 不会重编 Go 的 framework**。`ios/install-device.sh` 里专门写过这条
+（「别自己判新旧，问 make」），而绕开脚本直接 `xcodebuild` 正好踩进去：Swift 编过、装上、
+跑起来，只是桥那头还是旧的，新加的字段拿到的是空值。改了 `mobile/` 之后要么走
+`make ios-install`，要么先 `make ios/Mobile.xcframework`。
 
 iOS 端带日程、记账、健康、记忆四项（都是 RiskNone、改的都是本地文件，所以
 不会冒出确认框），配了邮箱再加上邮件——发信那类收不回来的动作靠

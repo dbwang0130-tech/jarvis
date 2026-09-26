@@ -27,6 +27,13 @@ type Preset struct {
 	// 发给纯文本模型不是报错就是装作没看见——后者尤其难查，所以这件事
 	// 要在切模型的时候就说清楚，别等用户拍完小票才发现白拍。
 	Vision bool
+	// Console 是去哪儿领密钥。
+	//
+	// **整个配置流程只有一个真门槛：密钥。** 而界面上原先只有一个空的密码框，
+	// 没有任何地方说它从哪儿来——第一次用的人卡在这儿，得自己去搜。这个地址
+	// 属于服务商表，跟 BaseURL 是同一类东西，所以放这儿而不是在 Swift 里另抄
+	// 一份（抄的那份不会跟着更新，服务商列表变了它就是错的）。
+	Console string
 }
 
 // Presets 覆盖常见的 OpenAI 兼容服务商。
@@ -45,41 +52,48 @@ var Presets = map[string]Preset{
 		Model:   "deepseek-flash", // V4.1 Flash，原生视觉；deepseek-chat 是淘汰中的别名
 		KeyEnv:  "DEEPSEEK_API_KEY",
 		Vision:  true,
+		Console: "https://platform.deepseek.com/api_keys",
 	},
 	"qwen": {
 		BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 		Model:   "qwen3-vl-plus",
 		KeyEnv:  "DASHSCOPE_API_KEY",
 		Vision:  true,
+		Console: "https://bailian.console.aliyun.com/?apiKey=1",
 	},
 	"kimi": {
 		BaseURL: "https://api.moonshot.cn/v1",
 		Model:   "kimi-k3", // moonshot-v1 系列已于 2026-08-31 停服
 		KeyEnv:  "MOONSHOT_API_KEY",
 		Vision:  true,
+		Console: "https://platform.moonshot.cn/console/api-keys",
 	},
 	"minimax": {
 		BaseURL: "https://api.minimax.chat/v1",
 		Model:   "MiniMax-M3",
 		KeyEnv:  "MINIMAX_API_KEY",
 		Vision:  true,
+		Console: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
 	},
 	"zhipu": {
 		BaseURL: "https://open.bigmodel.cn/api/paas/v4",
 		Model:   "glm-5v-turbo",
 		KeyEnv:  "ZHIPU_API_KEY",
 		Vision:  true,
+		Console: "https://bigmodel.cn/usercenter/apikeys",
 	},
 	"doubao": {
 		BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
 		Model:   "doubao-seed-2-1-turbo-260628",
 		KeyEnv:  "ARK_API_KEY",
 		Vision:  true,
+		Console: "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
 	},
 	"spark": {
 		BaseURL: "https://spark-api-open.xf-yun.com/v1",
 		Model:   "4.0Ultra", // 图片理解在星火是另一个接口，这条路上走不了
 		KeyEnv:  "SPARK_API_KEY",
+		Console: "https://console.xfyun.cn/services/cbm",
 	},
 	"ollama": {
 		BaseURL: "http://localhost:11434/v1",

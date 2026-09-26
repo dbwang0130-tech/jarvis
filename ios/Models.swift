@@ -750,11 +750,15 @@ struct ProviderInfo: Codable, Identifiable, Hashable {
     var vision = false
     /// 本地跑的（ollama），不用填密钥。
     var local = false
+    /// 去哪儿领密钥。**整个配置流程只有这一个真门槛**，界面上得把它指出来，
+    /// 不能只摆一个空的密码框让人自己去搜。地址跟着 Go 那份服务商表走
+    /// （agent.Preset.Console），这边不另抄。
+    var console = ""
 
     var id: String { name }
 
     enum CodingKeys: String, CodingKey {
-        case name, model, vision, local
+        case name, model, vision, local, console
         case baseURL = "base_url"
     }
 }

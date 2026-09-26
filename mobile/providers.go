@@ -22,6 +22,9 @@ func Providers() string {
 		BaseURL string `json:"base_url"`
 		Vision  bool   `json:"vision"`
 		Local   bool   `json:"local"`
+		// Console 是去哪儿领密钥。界面上要给出这个链接——整个配置流程只有
+		// 这一个真门槛，而原先那儿只是一个空的密码框。
+		Console string `json:"console"`
 	}
 	out := struct {
 		Providers []entry `json:"providers"`
@@ -40,6 +43,7 @@ func Providers() string {
 			Model:   p.Model,
 			BaseURL: p.BaseURL,
 			Vision:  p.Vision,
+			Console: p.Console,
 			// 本地跑的那个不用填密钥，界面上可以把密钥框收起来。
 			Local: p.KeyEnv == "",
 		})

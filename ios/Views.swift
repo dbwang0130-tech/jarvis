@@ -188,6 +188,16 @@ struct ChatView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
+#if DEBUG
+        // 跟 JARVIS_UI_VAULT 同一个口子：让某一屏直接出来，好在模拟器里看。
+        // 设置页平时要点右上角才开得了，而 simctl 点不了屏幕。
+        let _ = {
+            let want = ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] ?? ""
+            if want == "settings" || want == "model", !openSettings {
+                DispatchQueue.main.async { openSettings = true }
+            }
+        }()
+#endif
         // 输入区用 safeAreaInset 浮在内容之上，不是拿 VStack 摞在下面。
         // 摞着的话玻璃背后什么都没有，只能是一块白板——跟别的页面里
         // 内容从底部穿过去的样子对不上，看着很突兀。
