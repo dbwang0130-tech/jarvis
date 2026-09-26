@@ -96,9 +96,9 @@ func ListModels(inputJSON string) string {
 		})
 	}
 	if len(out.Models) == 0 {
-		out.Message = "这个服务商没报模型列表，自己填一个模型名吧"
+		out.Message = "该服务商未提供模型列表接口，请手动填写模型名"
 	} else {
-		out.Message = fmt.Sprintf("拿到 %d 个模型", len(out.Models))
+		out.Message = fmt.Sprintf("获取到 %d 个模型", len(out.Models))
 	}
 	return marshal(out)
 }

@@ -238,7 +238,7 @@ struct ModelSettings: View {
             Section {
                 Picker("服务商", selection: $provider) {
                     ForEach(providers) { p in
-                        Text(p.vision ? "\(p.name) · 看图" : p.name).tag(p.name)
+                        Text(p.vision ? "\(p.name) · 视觉" : p.name).tag(p.name)
                     }
                 }
                 .onChange(of: provider) { _, name in
@@ -247,7 +247,7 @@ struct ModelSettings: View {
                     guard let p = providers.first(where: { $0.name == name }) else { return }
                     model = ""
                     baseURL = ""
-                    check = p.vision ? nil : ModelCheck(ok: false, message: "这个模型看不了图片")
+                    check = p.vision ? nil : ModelCheck(ok: false, message: "该模型不支持图像输入")
                     save()
                 }
                 if info?.local != true {
@@ -266,7 +266,7 @@ struct ModelSettings: View {
                     Text("本地跑的，不用密钥。先确保 Ollama 已经在这台机器上跑着。")
                 } else if let url = info?.console, let link = URL(string: url) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("还没有密钥？去 \(provider) 的控制台领一个，复制回来粘在上面。")
+                        Text("还没有密钥？在 \(provider) 的控制台创建一个，复制后粘贴到上方。")
                         Link("打开 \(provider) 控制台", destination: link)
                             .font(.footnote.weight(.medium))
                     }
@@ -418,7 +418,7 @@ struct ModelSettings: View {
         let name = p.model.isEmpty ? (i?.model ?? "") + "（预设）" : p.model
         var desc = p.provider + " · " + name
         // 只在用着预设默认模型时才敢说死——自己填了模型名就无从判断了。
-        if p.model.isEmpty, let i, i.vision { desc += " · 认得图片" }
+        if p.model.isEmpty, let i, i.vision { desc += " · 视觉" }
         return desc
     }
 
@@ -484,7 +484,7 @@ struct ModelSettings: View {
 struct ModelPicker: View {
     /// 拉列表用的配置。**是个闭包，不是一份快照**：界面上那几个框还在改，
     /// 而这一页是从上一层的 body 里构造出来的——按值传的话，传进来的是
-    /// 构造那一刻的样子，人刚粘进去的密钥还没算数，于是一进来就「没问到」。
+    /// 构造那一刻的样子，人刚粘进去的密钥还没算数，于是一进来就「获取失败」。
     let config: () -> ModelConfig
     /// 这家服务商的预设模型名，用来说清「用预设」到底是哪个。
     let preset: String
@@ -500,18 +500,18 @@ struct ModelPicker: View {
     var body: some View {
         List {
             Section {
-                row(title: presetTitle, detail: "不确定就用这个", on: picked.isEmpty) {
+                row(title: presetTitle, detail: "不指定模型名时使用", on: picked.isEmpty) {
                     choose("")
                 }
             } header: {
-                Text("推荐")
+                Text("默认")
             }
 
             if loading {
                 Section {
                     HStack(spacing: 10) {
                         ProgressView().controlSize(.small)
-                        Text("正在问 \(providerName) 有哪些模型…")
+                        Text("正在获取 \(providerName) 的模型列表…")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -523,24 +523,24 @@ struct ModelPicker: View {
                         }
                     }
                 } header: {
-                    Text("\(providerName) 现在有这些")
+                    Text("\(providerName) 可用模型")
                 } footer: {
-                    Text("这份名单是刚问服务商要的，不是内置的。带「看图」的才认得照片——拍小票记账要选这种。")
+                    Text("列表由服务商接口实时返回，不是内置的。标注「视觉」的支持图像输入，拍照记账需要选这类模型。")
                 }
             }
 
             // 拿不到就退回手填，别把配置卡死在这一步。
             if !failed.isEmpty {
                 Section {
-                    TextField("自己填模型名", text: $typed, prompt: Text(preset))
+                    TextField("手动填写模型名", text: $typed, prompt: Text(preset))
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .onSubmit { choose(typed.trimmed) }
-                    Button("再问一次") { fetch() }
+                    Button("重试") { fetch() }
                 } header: {
-                    Text("没问到")
+                    Text("获取失败")
                 } footer: {
-                    Text("\(failed)\n这家可能不支持列模型。留着上面的「推荐」就能用，或者从它的文档里抄一个名字填这儿。")
+                    Text("\(failed)\n该服务商可能未提供模型列表接口。保留「默认」即可正常使用，或在其文档中查到模型名后填入。")
                 }
             }
         }
@@ -570,24 +570,24 @@ struct ModelPicker: View {
         }
     }
 
-    /// 「推荐」那一行的标题。
+    /// 「默认」那一行的标题。
     ///
-    /// 名单拉到之后用服务商给的**人读名**——否则上面写着 deepseek-flash、
+    /// 列表拿到之后用服务商给的**显示名**——否则上面写着 deepseek-flash、
     /// 下面写着 DeepSeek-V4.1-Flash，是同一个模型却看着像两个。
     private var presetTitle: String {
         if let m = list.first(where: { $0.id == preset }) { return m.name }
         return preset.isEmpty ? "服务商的默认模型" : preset
     }
 
-    /// 一个模型的那行小字：是不是就是推荐那个、认不认图片、窗口多大、真名叫什么。
+    /// 一个模型的那行小字：是不是默认那个、支不支持图像输入、上下文多大、模型 ID。
     ///
     /// 只说服务商真报了的东西——没报窗口就不显示，别为了版面整齐编一个出来。
     private func detail(_ m: ModelEntry) -> String {
         var parts: [String] = []
-        // 不点明的话，「推荐」那一行跟这一行看着是两个模型，而它们是同一个。
-        if m.id == preset { parts.append("就是上面推荐的那个") }
-        if m.vision { parts.append("看图") }
-        if let w = window(m.context) { parts.append("窗口 " + w) }
+        // 不点明的话，「默认」那一行跟这一行看着是两个模型，而它们是同一个。
+        if m.id == preset { parts.append("默认") }
+        if m.vision { parts.append("视觉") }
+        if let w = window(m.context) { parts.append("上下文 " + w) }
         if m.name != m.id { parts.append(m.id) }
         return parts.joined(separator: " · ")
     }
@@ -623,7 +623,7 @@ struct ModelPicker: View {
             }.value
             list = r.models
             // 空列表跟出错一样处理：都是「这儿挑不出来」，都该露出手填那条路。
-            failed = r.models.isEmpty ? (r.message.isEmpty ? "没问到模型列表。" : r.message) : ""
+            failed = r.models.isEmpty ? (r.message.isEmpty ? "未能获取模型列表。" : r.message) : ""
             loading = false
         }
     }

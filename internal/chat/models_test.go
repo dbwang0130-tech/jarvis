@@ -91,15 +91,15 @@ func TestUnknownNameFallsBackToPlainModel(t *testing.T) {
 // 我们无从判断，这时候什么都不说——拿一张会过期的表去误标，比不标更糟。
 func TestVisionOnlyClaimedForPresetDefault(t *testing.T) {
 	preset := modelDesc(config.ModelProfile{Provider: "doubao"})
-	if !strings.Contains(preset, "认得图片") {
-		t.Fatalf("预设默认模型该标出认得图片：%s", preset)
+	if !strings.Contains(preset, "视觉") {
+		t.Fatalf("预设默认模型该标出视觉能力：%s", preset)
 	}
 	custom := modelDesc(config.ModelProfile{Provider: "doubao", Model: "某个没见过的"})
-	if strings.Contains(custom, "认得图片") || strings.Contains(custom, "看不见图片") {
+	if strings.Contains(custom, "视觉") || strings.Contains(custom, "不支持图像输入") {
 		t.Fatalf("自定义模型不该妄下判断：%s", custom)
 	}
 	noVision := modelDesc(config.ModelProfile{Provider: "spark"})
-	if !strings.Contains(noVision, "看不见图片") {
+	if !strings.Contains(noVision, "不支持图像输入") {
 		t.Fatalf("纯文本的预设该说明白：%s", noVision)
 	}
 }

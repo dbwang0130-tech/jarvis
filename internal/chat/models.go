@@ -45,9 +45,9 @@ func modelDesc(p config.ModelProfile) string {
 	}
 	desc := p.Provider + " · " + model
 	if vision, known := agent.SupportsVision(p.Provider, p.Model); known && vision {
-		desc += " · 认得图片"
+		desc += " · 视觉"
 	} else if known {
-		desc += " · " + warn + "看不见图片" + reset + dim
+		desc += " · " + warn + "不支持图像输入" + reset + dim
 	}
 	return desc
 }
@@ -91,7 +91,7 @@ func (s *Session) listModels() {
 			mark, bold, pad(p.Name, w), reset, dim, modelDesc(p)+key, reset))
 	}
 	outln("")
-	outln(dim + "  /model <名字> 切过去 · /model list 看服务商有哪些模型 · /model save <名字> 存下当前这套 · /model rm <名字> 删掉" + reset)
+	outln(dim + "  /model <名字> 切过去 · /model list 服务商可用模型 · /model save <名字> 存下当前这套 · /model rm <名字> 删掉" + reset)
 	outln("")
 }
 
@@ -122,16 +122,16 @@ func (s *Session) listVendorModels() {
 		return
 	}
 
-	note("正在问 %s 有哪些模型…", s.cfg.Agent.Provider)
+	note("正在获取 %s 的模型列表…", s.cfg.Agent.Provider)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	list, err := client.Models(ctx)
 	if err != nil {
-		fail("%v。这家可能不支持列模型，直接 /model <模型名> 也能切。", err)
+		fail("%v。该服务商可能未提供模型列表接口；仍可用 /model <模型名> 直接指定。", err)
 		return
 	}
 	if len(list) == 0 {
-		note("%s 没报模型列表。直接 /model <模型名> 也能切。", s.cfg.Agent.Provider)
+		note("%s 未提供模型列表接口。仍可用 /model <模型名> 直接指定。", s.cfg.Agent.Provider)
 		return
 	}
 
@@ -142,7 +142,7 @@ func (s *Session) listVendorModels() {
 		}
 	}
 	outln("")
-	outln(dim + "  " + s.cfg.Agent.Provider + " 现在有这些：" + reset)
+	outln(dim + "  " + s.cfg.Agent.Provider + " 可用模型：" + reset)
 	for _, m := range list {
 		mark := "  "
 		if m.ID == s.cfg.Agent.Model {
@@ -150,10 +150,10 @@ func (s *Session) listVendorModels() {
 		}
 		var tags []string
 		if m.Vision() {
-			tags = append(tags, "认得图片")
+			tags = append(tags, "视觉")
 		}
 		if win := windowSize(m.Context); win != "" {
-			tags = append(tags, "窗口 "+win)
+			tags = append(tags, "上下文 "+win)
 		}
 		if m.Name != "" && m.Name != m.ID {
 			tags = append(tags, m.Name)
@@ -162,7 +162,7 @@ func (s *Session) listVendorModels() {
 			mark, bold, pad(m.ID, w), reset, dim, strings.Join(tags, " · "), reset))
 	}
 	outln("")
-	outln(dim + "  /model <上面的名字> 切过去" + reset)
+	outln(dim + "  /model <模型名> 切换" + reset)
 	outln("")
 }
 

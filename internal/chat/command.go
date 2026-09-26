@@ -23,7 +23,7 @@ var commands = []command{
 	{"/setup", "", "从头走一遍配置（模型、日程、邮箱、账本…）"},
 	{"/login", "<key>", "设置模型密钥"},
 	{"/provider", "<名字>", "切换服务商（deepseek/qwen/kimi/minimax…）"},
-	{"/model", "[名字|list|save <名字>|rm <名字>]", "模型：看清单、切换、问服务商有哪些、存一套、删一套"},
+	{"/model", "[名字|list|save <名字>|rm <名字>]", "模型：看清单、切换、服务商可用模型、存一套、删一套"},
 	{"/auto", "<off|clean|all>", "有风险动作的自动档"},
 	{"/mail", "", "添加邮箱账号"},
 	{"/accounts", "", "看已有的邮箱账号"},
