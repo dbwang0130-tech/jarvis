@@ -27,6 +27,8 @@ import (
 	"github.com/dabao/jarvis/internal/memory"
 	"github.com/dabao/jarvis/internal/org"
 	"github.com/dabao/jarvis/internal/orgtools"
+	"github.com/dabao/jarvis/internal/persona"
+	extskills "github.com/dabao/jarvis/internal/skills"
 	"github.com/dabao/jarvis/internal/skillset"
 )
 
@@ -40,6 +42,10 @@ type Case struct {
 	Ledger string
 	// Ask 是用户说的那句话。
 	Ask string
+	// Persona 是这一轮的人设，留空就用内置的。
+	Persona string
+	// Skills 是 skills/ 下的扩展技能，键是目录名、值是 SKILL.md 全文。
+	Skills map[string]string
 	// Want 断言这一轮的表现；返回非空字符串表示不合格，内容是哪儿不对。
 	Want func(r Result) string
 }
@@ -54,6 +60,9 @@ type Result struct {
 	Files map[string]string
 	// Book 是跑完之后的账本全文。
 	Book string
+	// Persona 是跑完之后人设文件的内容——「它说改了」和「文件真变了」
+	// 是两件事，这一项就是为了分开这两件事。
+	Persona string
 	// Err 非空表示这一轮没跑完。
 	Err error
 }
@@ -118,6 +127,18 @@ func Run(ctx context.Context, cfg config.Config, c Case, now time.Time) Result {
 	cfg.HealthFile = filepath.Join(dir, "health.ndjson")
 	cfg.MemoryFile = filepath.Join(dir, "memory.md")
 	cfg.SkillsDir = filepath.Join(dir, "skills")
+	cfg.PersonaFile = filepath.Join(dir, "persona.md")
+
+	// 扩展技能：一个子目录一份 SKILL.md，跟真实布局一样。
+	for name, body := range c.Skills {
+		sub := filepath.Join(cfg.SkillsDir, name)
+		if err := os.MkdirAll(sub, 0o700); err != nil {
+			return Result{Err: err}
+		}
+		if err := os.WriteFile(filepath.Join(sub, "SKILL.md"), []byte(body), 0o600); err != nil {
+			return Result{Err: err}
+		}
+	}
 	// 评测不该弹确认框，也不该真去连邮箱和 Chrome。
 	cfg.Accounts = nil
 
@@ -141,6 +162,18 @@ func Run(ctx context.Context, cfg config.Config, c Case, now time.Time) Result {
 	}
 	ag.Now = func() time.Time { return now }
 	ag.Stream = false
+
+	// 人设和扩展技能都要接上——它们是这一轮会话新做的两样东西，而装配错了的
+	// 表现是「功能悄悄不在了」，编译和别的测试都不会响。
+	personaPath := cfg.PersonaPath()
+	if err := persona.Save(personaPath, c.Persona); err != nil {
+		return Result{Err: err}
+	}
+	ag.SetPersona(persona.Load(personaPath), func(text string) error {
+		return persona.Save(personaPath, text)
+	})
+	extra, _ := extskills.Load(cfg.SkillsPath())
+	ag.SetExtraSkills(extra)
 	// 全自动：评测里没有人来点头，挂在确认框上等于超时。
 	ag.Auto = agent.AutoAll
 
@@ -162,6 +195,7 @@ func Run(ctx context.Context, cfg config.Config, c Case, now time.Time) Result {
 	if raw, err := os.ReadFile(ledgerPath); err == nil {
 		r.Book = string(raw)
 	}
+	r.Persona = persona.Load(personaPath)
 	return r
 }
 

@@ -17,7 +17,9 @@ import (
 func TestEveryToolHasALabel(t *testing.T) {
 	skills := testSkills()
 	// 内置的那两个不在任何 skill 里，单独点名。
-	names := []string{"plan", "step_done"}
+	// 内置那两个是按条件注入的（人设可写才有 persona、有扩展技能才有 skill），
+	// 不在技能清单里，单独点名。
+	names := []string{"persona", "skill"}
 	for _, sk := range skills {
 		for _, tl := range sk.Tools() {
 			names = append(names, tl.Spec().Name)

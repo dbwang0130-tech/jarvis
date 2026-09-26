@@ -83,8 +83,6 @@ type Agent struct {
 	// Extra 是用户放在 skills/ 目录下的扩展技能，只有名字和用途常驻提示，
 	// 正文靠 skill 工具按需读。见 extra.go。
 	Extra []ExtraSkill
-	// Plan 是模型列出的执行计划，供界面展示进度。
-	Plan []Step
 }
 
 // NewAgent 构造秘书。
@@ -103,10 +101,20 @@ func (a *Agent) SetSkills(skills []Skill) {
 	a.tools = a.flattenTools()
 }
 
-// flattenTools 把所有技能的工具按名字拍平；核心工具 plan/step_done 排在最前。
+// flattenTools 把所有技能的工具按名字拍平，重名的后来者跳过。
+//
+// 原先它开头先塞两个内置工具 plan / step_done。那两个已经删了——`Agent.Plan`
+// 除了 plan.go 自己没有任何读点，界面、桥、iOS 一个都不读，也就是说它们喂的那个
+// 进度展示压根不存在。代价却是每轮 239 token 的声明、提示里一条规则，以及模型
+// 照做时一个三步任务要多四次完整往返（每次都带着整份提示和全部历史）。
+// 更糟的是 plan 返回给模型的那句「已展示给用户」是假话，而系统提示里写着
+// 「绝不说自己做了没做的事」。
+//
+// 干活的进度界面一直有：`EventToolCall` 那串事件（桌面端状态行、iOS 的
+// ThinkingRow「正在查日程（第 2 步）」），不需要模型再花一次调用去声明。
 func (a *Agent) flattenTools() []Tool {
-	out := []Tool{planTool{a: a}, stepDoneTool{a: a}}
-	seen := map[string]bool{"plan": true, "step_done": true}
+	var out []Tool
+	seen := map[string]bool{}
 	// 人设可写才给这个工具。存不下来还摆着它，模型会回一句「已经改好了」
 	// 而下一轮人设原样——见 SetPersona。
 	if a.SavePersona != nil {
@@ -135,7 +143,6 @@ func (a *Agent) flattenTools() []Tool {
 func (a *Agent) Reset() {
 	a.History = nil
 	a.Usage = Usage{}
-	a.Plan = nil
 }
 
 // SetAuto 切换自动档位，并告诉模型一声。
@@ -207,7 +214,6 @@ func (a *Agent) systemPrompt() string {
 - 能靠一次查询弄清的就去查，别拿问题把活推回给用户。只有在确实不知道指哪一件、
   而且猜错了代价大（删东西、发信）时才反问。
 - 用户说「刷新」「重新拉」「看看有没有新邮件」时，必须真去服务器同步，不许拿旧清单敷衍。
-- 三步以上的多步任务，先调 plan 列出步骤，每完成一步调 step_done；中途情况变化就重新 plan。
 
 说话：
 - 干完用一两句话说你做了什么，说人话，不要罗列引用和工具名。

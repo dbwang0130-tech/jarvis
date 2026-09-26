@@ -11,8 +11,7 @@ package agent
 // 手机端由 mobile 查好了跟着 Step 一起过桥，Swift 拿现成的字符串显示。
 var toolLabels = map[string]string{
 	// 内置
-	"plan": "制定计划", "step_done": "标记完成", "persona": "调整人设",
-	"skill": "展开技能",
+	"persona": "调整人设", "skill": "展开技能",
 	// 日程
 	"list_agenda": "查看日程", "list_todos": "查看待办", "find_free_slots": "寻找空档",
 	"get_item": "查看条目", "update_item": "修改条目", "create_item": "新建条目",

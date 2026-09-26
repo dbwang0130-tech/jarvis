@@ -85,6 +85,8 @@ make eval             # 拿真模型跑固定场景，断言它实际调了哪�
 报出来只是「内容不同」，最难猜。
 
 ② `make eval`（`internal/eval`）：拿真模型跑固定场景，断言它**实际调了哪些工具**。
+十一条场景，覆盖到人设真写进文件、扩展技能真被翻开并照着办（那份技能里的归账规矩
+故意写成跟常识相反的，没读正文就会归错）、一句话三件事三件都落盘。
 别的测试都给模型写好台词（假 `RoundTripper` 放脚本），于是提示词改一个字都不会有任何
 测试响——而这个 app 的行为几乎全长在提示里。断言写成**性质**（「问安排必须先查、不许
 直接新建」「记账要从已有账户里挑」「不做了要标取消、不许删」），不是逐字对照。所有文件
@@ -117,7 +119,15 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 - `Risk` 三级（`RiskNone` / `RiskReversible` / `RiskIrreversible`）配合 `AutoLevel` 三档（逐项确认 / 自动整理 / 全自动）决定某个动作是直接跑，还是发 `EventPending` 挂起等界面回 `Pending.Reply`。
 - 可选接口 `ReadOnlyTool`：一批工具调用全部只读时，`executeParallel` 并发执行；只要有一个不是，整批串行。所有 skill 的工具适配器都有 `readonly` 字段，新工具别忘了设。
 - 进度通过 `emit(Event)` 回调外抛（`EventDelta` / `EventToolCall` / `EventToolResult` / `EventPending` / `EventAuto` / `EventCompact`…），界面层只消费事件，不碰循环内部。
-- `plan.go` 注入两个内置工具 `plan` / `step_done`，排在工具表最前，用于多步任务的进度展示。
+- 内置工具现在只有两个，而且都是**按条件注入**的：人设可写才有 `persona`（见下），
+  有扩展技能才有 `skill`。早先还有 `plan` / `step_done`，删了——`Agent.Plan` 除了
+  `plan.go` 自己没有任何读点，界面、桥、iOS 一个都不读，它们喂的那个进度展示压根不
+  存在。代价却是每轮 239 token 的声明、提示里一条规则，以及模型照做时一个三步任务要
+  多四次完整往返（每次都带着整份提示和全部历史）；更糟的是 `plan` 返回给模型的
+  「已展示给用户」是假话，而提示里写着「绝不说自己做了没做的事」。干活进度界面一直
+  有：`EventToolCall` 那串事件（桌面端状态行、iOS 的 ThinkingRow「正在查日程（第 2 步）」）。
+  **发现它的是 `make eval`**：一条断言「三件事要先列计划」的场景红了，查下去才发现
+  规则要求用的东西没人用——`deadcode` 抓不到这种（它只管函数，不管结构体字段）。
 - `compact.go` 在估算 token 超过 `ContextLimit`（默认 32000）时把早期对话压成一份「交接说明」。
   **预算算的是一次请求的全部**：系统提示 + 工具声明 + 对话历史。早先只数 History，
   固定开销一分不算，于是工具表一路长到五十几个、每轮白发两万字节也没人发现——

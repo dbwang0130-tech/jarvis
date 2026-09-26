@@ -169,6 +169,93 @@ var cases = []Case{
 		},
 	},
 	{
+		// **人设改完要真落到文件里。** 这一整套（工具、指针语义、两端落盘）是这轮
+		// 会话做的，而「它说改好了、文件没变」恰恰是它最该防的失败——系统提示里
+		// 「绝不说自己做了没做的事」那一条点的就是这个。
+		Name:    "改人设要真写进文件",
+		Persona: "你是 Jarvis。称呼用户为「先生」。说话简洁。",
+		Ask:     "以后别叫我先生了，叫我老板",
+		Want: func(r Result) string {
+			if !r.Used("persona") {
+				return "没调 persona 工具"
+			}
+			if strings.Contains(r.Persona, "先生") {
+				return "人设文件里「先生」还在：\n" + r.Persona
+			}
+			if !strings.Contains(r.Persona, "老板") {
+				return "人设文件里没有「老板」——它可能只是口头答应了：\n" + r.Persona
+			}
+			return ""
+		},
+	},
+	{
+		// **扩展技能要真被翻开、真被照着办。**
+		//
+		// 常驻提示里只有名字和一句用途，正文要模型自己调 skill 拉进来——这是为了
+		// 省预算（放十份进去不能每轮都发）。代价是多一个来回，而**模型可能根本
+		// 不去翻**，那整套机制就是死的。这条就是钉这件事。
+		//
+		// 技能正文里那个要求（归到 Expenses:Cloud）是故意跟常识不一样的：模型要是
+		// 没读正文，就会按常识归到 Expenses:Other 之类，一眼分得出来。
+		Name:   "扩展技能会被翻开并照着办",
+		Ledger: book,
+		Skills: map[string]string{
+			"云服务记账": "---\n" +
+				"name: 云服务记账\n" +
+				"description: 记云服务、服务器、API 的花费时用。这类开销有专门的归账规矩。\n" +
+				"---\n\n" +
+				"云服务的开销**一律归到 Expenses:Cloud 下面**，按厂商分子账户\n" +
+				"（火山引擎 → Expenses:Cloud:Volcano，百度 → Expenses:Cloud:Baidu）。\n" +
+				"别归到 Expenses:Other，那会让「今年云上花了多少」这个问题没法回答。\n",
+		},
+		Ask: "火山引擎扣了 68 块，微信付的",
+		Want: func(r Result) string {
+			if !r.Used("skill") {
+				return "没去翻那份扩展技能——常驻提示里只有它的名字和用途，" +
+					"不翻就等于整套机制是死的"
+			}
+			if !strings.Contains(r.Book, "Expenses:Cloud:Volcano") {
+				return "没照技能里说的归账（该进 Expenses:Cloud:Volcano）：\n" + r.Book
+			}
+			return ""
+		},
+	},
+	{
+		// **一句话里三件事，三件都要真落到文件里。**
+		//
+		// 这条原先断言「必须先调 plan 列计划」，而真模型不调——查下去发现 plan /
+		// step_done 那两个内置工具喂的进度展示**压根不存在**（agent.Plan 除了
+		// plan.go 自己没有任何读点），于是把它们删了。规则写着要用、界面不用它，
+		// 这种「假规则」正是评测该抓的东西。
+		//
+		// 现在断言的是结果：改了几条、时间对不对。中间它怎么走（要不要重查 ref）
+		// 是它的事——refs 会随改动变，重查几次都是对的。
+		Name: "一句话三件事，三件都要落到文件里",
+		Org:  map[string]string{"work.org": workOrg},
+		Ask:  "把这三件待办都排到明天，交季度报告排上午九点、回邮件排下午两点、体检排下午四点",
+		Want: func(r Result) string {
+			n := 0
+			for _, t := range r.Tools {
+				if t == "update_item" {
+					n++
+				}
+			}
+			if n < 3 {
+				return fmt.Sprintf("只调了 %d 次 update_item，说的是三件", n)
+			}
+			org := r.Files["work.org"]
+			if got := strings.Count(org, "2026-09-27"); got < 3 {
+				return fmt.Sprintf("文件里只有 %d 处明天的日期，三件事没都排上：\n%s", got, org)
+			}
+			for _, want := range []string{"09:00", "14:00", "16:00"} {
+				if !strings.Contains(org, want) {
+					return "文件里没有 " + want + "：\n" + org
+				}
+			}
+			return ""
+		},
+	},
+	{
 		Name: "做不到的事直说，不要应承",
 		Ask:  "帮我打个电话给小王",
 		Want: func(r Result) string {

@@ -372,7 +372,10 @@ func TestSetAutoTellsTheModel(t *testing.T) {
 	}
 }
 
-// 工具表里 plan/step_done 永远排在最前面，技能的工具跟在后面且不重名。
+// 工具表里重名的只留第一个。
+//
+// 原先这条还断言 plan/step_done 排在最前——那两个内置工具已经删了（它们喂的
+// 进度展示压根不存在，见 flattenTools 的说明）。
 func TestToolTableIsStable(t *testing.T) {
 	a, _ := newTestAgent(t, AutoOff, nil,
 		&fakeTool{name: "甲"}, &fakeTool{name: "甲"}, &fakeTool{name: "乙"})
@@ -380,9 +383,6 @@ func TestToolTableIsStable(t *testing.T) {
 	names := make([]string, 0, len(a.tools))
 	for _, tl := range a.tools {
 		names = append(names, tl.Spec().Name)
-	}
-	if len(names) < 2 || names[0] != "plan" || names[1] != "step_done" {
-		t.Fatalf("plan/step_done 该排在最前：%v", names)
 	}
 	var jia int
 	for _, n := range names {
