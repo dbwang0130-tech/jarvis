@@ -1,8 +1,10 @@
 package chat
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/config"
@@ -89,8 +91,94 @@ func (s *Session) listModels() {
 			mark, bold, pad(p.Name, w), reset, dim, modelDesc(p)+key, reset))
 	}
 	outln("")
-	outln(dim + "  /model <名字> 切过去 · /model save <名字> 存下当前这套 · /model rm <名字> 删掉" + reset)
+	outln(dim + "  /model <名字> 切过去 · /model list 看服务商有哪些模型 · /model save <名字> 存下当前这套 · /model rm <名字> 删掉" + reset)
 	outln("")
+}
+
+// listVendorModels 问服务商它现在有哪些模型。
+//
+// 跟上面那个 listModels 是两件事：那个列的是**自己存的几套**，这个列的是
+// **对面有什么**。要它是因为预设表里那个默认模型名会过时，而过时的样子是一个
+// 看不懂的 404；手打一个模型名同样如此。列出来照着抄就不会错。
+//
+// 拿不到不算故障——有的服务商没实现这个接口，照旧可以 `/model <名字>` 手填。
+func (s *Session) listVendorModels() {
+	if s.cfg.Agent.Provider == "" {
+		fail("还没选服务商。/provider <%s>", strings.Join(agent.PresetNames(), "、"))
+		return
+	}
+	client, err := agent.New(agent.Options{
+		Provider:  s.cfg.Agent.Provider,
+		Model:     s.cfg.Agent.Model,
+		BaseURL:   s.cfg.Agent.BaseURL,
+		APIKey:    s.cfg.Agent.APIKey,
+		APIKeyEnv: s.cfg.Agent.APIKeyEnv,
+		APIKeyCmd: s.cfg.Agent.APIKeyCmd,
+		Timeout:   20 * time.Second,
+		Proxy:     s.cfg.Agent.Proxy,
+	})
+	if err != nil {
+		fail("%v", err)
+		return
+	}
+
+	note("正在问 %s 有哪些模型…", s.cfg.Agent.Provider)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	list, err := client.Models(ctx)
+	if err != nil {
+		fail("%v。这家可能不支持列模型，直接 /model <模型名> 也能切。", err)
+		return
+	}
+	if len(list) == 0 {
+		note("%s 没报模型列表。直接 /model <模型名> 也能切。", s.cfg.Agent.Provider)
+		return
+	}
+
+	w := 0
+	for _, m := range list {
+		if n := runewidth.StringWidth(m.ID); n > w {
+			w = n
+		}
+	}
+	outln("")
+	outln(dim + "  " + s.cfg.Agent.Provider + " 现在有这些：" + reset)
+	for _, m := range list {
+		mark := "  "
+		if m.ID == s.cfg.Agent.Model {
+			mark = coral + "❯ " + reset
+		}
+		var tags []string
+		if m.Vision() {
+			tags = append(tags, "认得图片")
+		}
+		if win := windowSize(m.Context); win != "" {
+			tags = append(tags, "窗口 "+win)
+		}
+		if m.Name != "" && m.Name != m.ID {
+			tags = append(tags, m.Name)
+		}
+		outln(fmt.Sprintf("  %s%s%s%s  %s%s%s",
+			mark, bold, pad(m.ID, w), reset, dim, strings.Join(tags, " · "), reset))
+	}
+	outln("")
+	outln(dim + "  /model <上面的名字> 切过去" + reset)
+	outln("")
+}
+
+// windowSize 把上下文窗口写成人念得出来的样子。
+//
+// 按 1024 进位，不按 1000：服务商报的 1048576 正是 1M，除以 1000 得出的
+// 「1048k」既不是它说的数，也不是任何人会说的话。
+func windowSize(n int) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%dM", n>>20)
+	case n >= 1<<10:
+		return fmt.Sprintf("%dk", n>>10)
+	default:
+		return ""
+	}
 }
 
 // saveModel 把当前这套存成一个名字。同名就覆盖——重复存一遍是「更新」，
@@ -154,6 +242,12 @@ func (s *Session) switchModel(arg string) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
 		s.listModels()
+		return
+	}
+
+	// list 不带名字：问服务商它现在有哪些模型。
+	if arg == "list" || arg == "ls" {
+		s.listVendorModels()
 		return
 	}
 

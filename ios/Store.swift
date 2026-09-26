@@ -812,7 +812,17 @@ struct Settings: Codable {
     var briefHour = 8
 
     var apiKey: String {
-        get { Keychain.read(key: "jarvis.apiKey") ?? "" }
+        get {
+#if DEBUG
+            // 跟 JARVIS_UI_VAULT / JARVIS_UI_SCREEN 同一个口子：模拟器的钥匙串
+            // 从外面写不进去（simctl 只管证书），于是「密钥齐了」之后的那些界面
+            // ——测试连接、挑模型——在模拟器里一次都看不到。
+            if let k = ProcessInfo.processInfo.environment["JARVIS_UI_KEY"], !k.isEmpty {
+                return k
+            }
+#endif
+            return Keychain.read(key: "jarvis.apiKey") ?? ""
+        }
         nonmutating set { Keychain.write(key: "jarvis.apiKey", value: newValue) }
     }
 

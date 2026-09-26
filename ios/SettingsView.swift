@@ -28,8 +28,9 @@ struct SettingsView: View {
 #if DEBUG
     /// 跟 JARVIS_UI_VAULT 同一个口子：让某一层直接推出来，好在模拟器里看。
     /// 设置的子页要点一下才进得去，而 simctl 点不了屏幕。
+    /// models 也要推到模型页——那一层再往里推挑模型那一页。
     @State private var debugToModel =
-        ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "model"
+        ["model", "models"].contains(ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] ?? "")
 #endif
 
     var body: some View {
@@ -224,6 +225,11 @@ struct ModelSettings: View {
     @State private var newName = ""
     @State private var checking = false
     @State private var check: ModelCheck?
+#if DEBUG
+    /// 跟上一层同一个口子：让挑模型那一页直接推出来，好在模拟器里看。
+    @State private var debugToPicker =
+        ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "models"
+#endif
 
     private var info: ProviderInfo? { providers.first { $0.name == provider } }
 
@@ -299,10 +305,23 @@ struct ModelSettings: View {
 
             // 进阶：绝大多数人一辈子不用动这两项，所以收在后面、说清「留空就行」。
             Section {
-                TextField("模型名", text: $model, prompt: Text(info?.model ?? "用预设"))
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .onSubmit(save)
+                // **模型名是挑的，不是打的。** 手打一个错字换来的是一个看不懂的
+                // 404，而第一次配的人根本不知道该填什么；下一层进去问服务商现要
+                // 一份，里面还带着「这个认不认图片」——那件事原先是我们硬编码在
+                // 预设表里猜的，厂商自己就说了。
+                NavigationLink {
+                    ModelPicker(config: configForQuery, preset: info?.model ?? "",
+                                picked: $model, onPick: save)
+                } label: {
+                    HStack {
+                        Text("模型名")
+                        Spacer()
+                        Text(model.isEmpty ? "用预设" : model)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
                 TextField("接口地址", text: $baseURL, prompt: Text(info?.baseURL ?? "用预设"))
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -350,6 +369,12 @@ struct ModelSettings: View {
         }
         .navigationTitle("模型")
         .navigationBarTitleDisplayMode(.inline)
+#if DEBUG
+        .navigationDestination(isPresented: $debugToPicker) {
+            ModelPicker(config: configForQuery, preset: info?.model ?? "",
+                        picked: $model, onPick: save)
+        }
+#endif
         .onAppear {
             if passedProviders.isEmpty, fetched.isEmpty { fetched = Bridge.providers() }
             load()
@@ -365,6 +390,16 @@ struct ModelSettings: View {
         model = s.model.model
         baseURL = s.model.baseURL
         apiKey = s.apiKey
+    }
+
+    /// 拉模型列表要用的那份配置：**界面上现填的**，不是上次存下的。
+    /// 人的习惯是填完密钥直接去挑模型，那会儿 store 里还是旧的。
+    private func configForQuery() -> ModelConfig {
+        var m = store.settings.model
+        m.provider = provider
+        m.baseURL = baseURL.trimmed
+        m.apiKey = apiKey.trimmed
+        return m
     }
 
     private func save() {
@@ -431,6 +466,165 @@ struct ModelSettings: View {
             check = r
             checking = false
             r.ok ? Haptics.success() : Haptics.warning()
+        }
+    }
+}
+
+// MARK: - 挑模型
+
+/// 问服务商它今天有哪些模型，让人挑一个。
+///
+/// **这一页存在的理由是「别让人打字」。** 模型名打错一个字，换来的是一个看不懂的
+/// 404；而第一次配的人压根不知道该填什么，预设表里那个默认名还会过时——到那天
+/// 同样是 404。现问一份，挑就是了。
+///
+/// 三条都要顾着：①**拿不到不是错**，有的服务商没实现这个接口，那就退回手填，
+/// 不能把人卡在这儿；②「用预设」永远排第一，它是绝大多数人该选的那个；
+/// ③「认不认图片」用厂商报的，不用我们预设表里猜的——手机这端会拍照记账。
+struct ModelPicker: View {
+    /// 拉列表用的配置。**是个闭包，不是一份快照**：界面上那几个框还在改，
+    /// 而这一页是从上一层的 body 里构造出来的——按值传的话，传进来的是
+    /// 构造那一刻的样子，人刚粘进去的密钥还没算数，于是一进来就「没问到」。
+    let config: () -> ModelConfig
+    /// 这家服务商的预设模型名，用来说清「用预设」到底是哪个。
+    let preset: String
+    @Binding var picked: String
+    let onPick: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var list: [ModelEntry] = []
+    @State private var loading = false
+    @State private var failed = ""
+    @State private var typed = ""
+
+    var body: some View {
+        List {
+            Section {
+                row(title: presetTitle, detail: "不确定就用这个", on: picked.isEmpty) {
+                    choose("")
+                }
+            } header: {
+                Text("推荐")
+            }
+
+            if loading {
+                Section {
+                    HStack(spacing: 10) {
+                        ProgressView().controlSize(.small)
+                        Text("正在问 \(providerName) 有哪些模型…")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if !list.isEmpty {
+                Section {
+                    ForEach(list) { m in
+                        row(title: m.name, detail: detail(m), on: picked == m.id) {
+                            choose(m.id)
+                        }
+                    }
+                } header: {
+                    Text("\(providerName) 现在有这些")
+                } footer: {
+                    Text("这份名单是刚问服务商要的，不是内置的。带「看图」的才认得照片——拍小票记账要选这种。")
+                }
+            }
+
+            // 拿不到就退回手填，别把配置卡死在这一步。
+            if !failed.isEmpty {
+                Section {
+                    TextField("自己填模型名", text: $typed, prompt: Text(preset))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onSubmit { choose(typed.trimmed) }
+                    Button("再问一次") { fetch() }
+                } header: {
+                    Text("没问到")
+                } footer: {
+                    Text("\(failed)\n这家可能不支持列模型。留着上面的「推荐」就能用，或者从它的文档里抄一个名字填这儿。")
+                }
+            }
+        }
+        .navigationTitle("模型名")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            typed = picked
+            if list.isEmpty, failed.isEmpty { fetch() }
+        }
+    }
+
+    /// 一行：左边名字、下面一行小字、选中的打勾。
+    @ViewBuilder
+    private func row(title: String, detail: String, on: Bool,
+                     action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(.primary)
+                    if !detail.isEmpty {
+                        Text(detail).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if on { Image(systemName: "checkmark").foregroundStyle(Brand.accent) }
+            }
+        }
+    }
+
+    /// 「推荐」那一行的标题。
+    ///
+    /// 名单拉到之后用服务商给的**人读名**——否则上面写着 deepseek-flash、
+    /// 下面写着 DeepSeek-V4.1-Flash，是同一个模型却看着像两个。
+    private var presetTitle: String {
+        if let m = list.first(where: { $0.id == preset }) { return m.name }
+        return preset.isEmpty ? "服务商的默认模型" : preset
+    }
+
+    /// 一个模型的那行小字：是不是就是推荐那个、认不认图片、窗口多大、真名叫什么。
+    ///
+    /// 只说服务商真报了的东西——没报窗口就不显示，别为了版面整齐编一个出来。
+    private func detail(_ m: ModelEntry) -> String {
+        var parts: [String] = []
+        // 不点明的话，「推荐」那一行跟这一行看着是两个模型，而它们是同一个。
+        if m.id == preset { parts.append("就是上面推荐的那个") }
+        if m.vision { parts.append("看图") }
+        if let w = window(m.context) { parts.append("窗口 " + w) }
+        if m.name != m.id { parts.append(m.id) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// 上下文窗口写成人念得出来的样子。
+    ///
+    /// 按 1024 进位，不按 1000：服务商报的 1048576 正是 1M，除以 1000 得出的
+    /// 「1048k」既不是它说的数，也不是任何人会说的话。
+    private func window(_ n: Int) -> String? {
+        switch n {
+        case (1 << 20)...: return "\(n >> 20)M"
+        case (1 << 10)...: return "\(n >> 10)k"
+        default: return nil
+        }
+    }
+
+    private func choose(_ id: String) {
+        picked = id
+        onPick()
+        Haptics.success()
+        dismiss()
+    }
+
+    private var providerName: String { config().provider }
+
+    private func fetch() {
+        loading = true
+        failed = ""
+        let cfg = config()
+        Task {
+            let r = await Task.detached(priority: .userInitiated) {
+                Bridge.listModels(cfg)
+            }.value
+            list = r.models
+            // 空列表跟出错一样处理：都是「这儿挑不出来」，都该露出手填那条路。
+            failed = r.models.isEmpty ? (r.message.isEmpty ? "没问到模型列表。" : r.message) : ""
+            loading = false
         }
     }
 }

@@ -108,6 +108,23 @@ DEADLINE: <2026-09-18 Fri>
 		panic(err)
 	}
 	write(dir, "ask_ok.json", string(ok))
+
+	// 模型列表。出错那条路不碰网络（入参就被挡下来了），正常那条直接把出参
+	// 序列化出来——真去问服务商就不是契约检查了，而且这儿要验的本来就只是
+	// 字段名和可选性。**vision/context 是服务商的扩展字段**，Swift 那边
+	// 认的是 models/id/name/vision/context 这几个名字。
+	write(dir, "models_error.json", mobile.ListModels("不是 JSON"))
+	list, err := json.Marshal(mobile.ListModelsOutput{
+		Models: []mobile.ModelEntry{
+			{ID: "deepseek-flash", Name: "DeepSeek-V4.1-Flash", Vision: true, Context: 1048576},
+			{ID: "deepseek-v4-pro", Name: "DeepSeek-V4-Pro"},
+		},
+		Message: "拿到 2 个模型",
+	})
+	if err != nil {
+		panic(err)
+	}
+	write(dir, "models_ok.json", string(list))
 }
 
 func mustJSON(v any) string {

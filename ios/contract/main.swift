@@ -141,6 +141,30 @@ check("Snapshot 的必填键") {
     return "Item \(want.count) 个键 / HealthVital \(vitalKeys.count) 个键"
 }
 
+// 模型列表：**挑模型这件事全靠它**，字段名错一个，挑出来的名字就存不进配置。
+check("ModelList") {
+    let ok = try dec.decode(ModelList.self, from: try load("models_ok.json"))
+    guard ok.models.count == 2 else { throw Err("models 解出 \(ok.models.count) 个") }
+    guard ok.models[0].id == "deepseek-flash",
+          ok.models[0].name == "DeepSeek-V4.1-Flash" else {
+        throw Err("id/name 对不上：\(ok.models[0])")
+    }
+    // vision 是「厂商说它认得图片」，拍小票记账全指着这一项。
+    guard ok.models[0].vision, ok.models[0].context == 1048576 else {
+        throw Err("vision/context 对不上：\(ok.models[0])")
+    }
+    // 没报扩展字段的那个不能被猜出来。
+    guard !ok.models[1].vision, ok.models[1].context == 0 else {
+        throw Err("没报的东西被猜出来了：\(ok.models[1])")
+    }
+    // 出错那条路上 models 必须是 []，不能是 null——Swift 这边它是非可选的。
+    let bad = try dec.decode(ModelList.self, from: try load("models_error.json"))
+    guard bad.models.isEmpty, !bad.error.isEmpty, !bad.message.isEmpty else {
+        throw Err("出错那条路不对：\(bad)")
+    }
+    return "正常 \(ok.models.count) 个 / 出错时 models=[]"
+}
+
 // AskInput 方向相反，是 Swift 编码给 Go 的，字段名同样得对上。
 check("AskInput 编码") {
     let inp = AskInput(files: ["a.org": "* TODO x"], ledger: "", question: "今天干嘛",

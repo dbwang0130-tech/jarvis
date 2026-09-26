@@ -232,6 +232,9 @@ func TestNoNullArrays(t *testing.T) {
 		"ImportHealth 空":  ImportHealth(`{}`),
 		"Mail 出错":         Mail("不是 JSON"),
 		"Mail 空":          Mail(`{"index_dir":"` + t.TempDir() + `"}`),
+		// 这两条都不碰网络：入参就被挡下来了。
+		"ListModels 出错": ListModels("不是 JSON"),
+		"ListModels 空":  ListModels(`{}`),
 	}
 	for name, out := range cases {
 		t.Run(name, func(t *testing.T) {

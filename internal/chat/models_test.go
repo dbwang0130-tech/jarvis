@@ -103,3 +103,34 @@ func TestVisionOnlyClaimedForPresetDefault(t *testing.T) {
 		t.Fatalf("纯文本的预设该说明白：%s", noVision)
 	}
 }
+
+// 上下文窗口按 1024 进位。服务商报的 1048576 正是 1M，除以 1000 得出的
+// 「1048k」既不是它说的数，也不是任何人会说的话。
+func TestWindowSize(t *testing.T) {
+	for n, want := range map[int]string{
+		1048576: "1M",
+		131072:  "128k",
+		8192:    "8k",
+		0:       "", // 没报就什么都不显示，别编一个出来
+		512:     "",
+	} {
+		if got := windowSize(n); got != want {
+			t.Errorf("windowSize(%d) = %q，要 %q", n, got, want)
+		}
+	}
+}
+
+// 命令表是补全和 /help 的单一数据源——`/model list` 加在实现里却没进表，
+// 补全和帮助就都不知道有这回事（`/inbox` 当年是反着来的：表里挂着一个
+// 根本不存在的命令）。
+func TestModelUsageMentionsList(t *testing.T) {
+	for _, c := range commands {
+		if c.name == "/model" {
+			if !strings.Contains(c.args, "list") {
+				t.Errorf("/model 的用法里没有 list：%q", c.args)
+			}
+			return
+		}
+	}
+	t.Fatal("命令表里没有 /model")
+}

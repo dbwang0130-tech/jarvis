@@ -421,30 +421,121 @@ func (c *Client) Chat(ctx context.Context, msgs []Message, tools []ToolDef) (Mes
 	return msg, out.Usage, nil
 }
 
+// ModelInfo 是服务商自己报上来的一个模型。
+//
+// 只有 ID 是 OpenAI 协议规定的，后面几个是各家的扩展（deepseek 给得最全）。
+// 所以除了 ID 一律当「可能没有」处理——拿不到就少显示一行，不能因此整张列表作废。
+type ModelInfo struct {
+	// ID 是调用时要填的那个名字。
+	ID string `json:"id"`
+	// Name 是给人看的名字（「DeepSeek-V4.1-Flash」）。没有就显示 ID。
+	Name string `json:"name"`
+	// Modalities 是它吃得下什么。含 "image" 就是认得图片——**这件事原先是
+	// 硬编码在 Presets 里的**（见 Preset.Vision 那段），而厂商自己就说了。
+	Modalities []string `json:"input_modalities"`
+	// Context 是上下文窗口，0 表示没报。
+	Context int `json:"context_window"`
+}
+
+// Vision 报告这个模型认不认得图片。厂商没报 modalities 时返回 false——
+// 宁可不显示那个标记，也别猜一个出来：猜错的后果是用户拍完小票才发现白拍。
+func (m ModelInfo) Vision() bool {
+	for _, x := range m.Modalities {
+		if x == "image" {
+			return true
+		}
+	}
+	return false
+}
+
+// Models 问服务商它都有哪些模型。
+//
+// **为的是别让人手打模型名。** 打错一个字换来的是一个看不懂的 400，而第一次配
+// 的人根本不知道该填什么——预设里那个名字也会过时（CLAUDE.md 里写着「宁可几个月
+// 更新一次」）。从厂商那儿现拉一份，挑就是了。
+//
+// 拿不到不是错：有的服务商压根没实现 /models，有的要另一套鉴权。调用方一律降级回
+// 「自己填」那条路，别把配置流程卡死在这儿。
+func (c *Client) Models(ctx context.Context) ([]ModelInfo, error) {
+	body, err := c.getModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Data []ModelInfo `json:"data"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("模型列表解不开：%w", err)
+	}
+	// 把明显不是聊天模型的滤掉。列表里混着嵌入、重排、语音那些，挑的人
+	// 看见一堆用不上的名字，反而比自己打字更难。
+	kept := out.Data[:0]
+	for _, m := range out.Data {
+		if m.ID == "" || notChat(m.ID) {
+			continue
+		}
+		kept = append(kept, m)
+	}
+	return kept, nil
+}
+
+// notChat 按名字认出那些不是拿来聊天的模型。
+//
+// 按名字认是粗糙的，但协议没给别的线索（object 一律是 "model"）。认错的代价
+// 只是少一个选项，而列表里留着 embedding 的代价是人挑不出来。
+func notChat(id string) bool {
+	low := strings.ToLower(id)
+	for _, bad := range []string{
+		"embed", "rerank", "whisper", "tts", "speech", "audio",
+		"moderation", "image", "vision-ocr", "ocr",
+	} {
+		if strings.Contains(low, bad) {
+			return true
+		}
+	}
+	return false
+}
+
 // Verify 用一次轻量请求确认接口地址与密钥可用。
 func (c *Client) Verify(ctx context.Context) error {
+	_, err := c.getModels(ctx)
+	return err
+}
+
+// getModels 发那一次 GET /models，并把各种失败翻译成人话。
+//
+// Verify 和 Models 走的是同一个请求——原先 Verify 把返回的内容整个丢掉，
+// 只看状态码。两处各发一次的话，设置页里「测试连接」和「拉模型列表」就是
+// 两趟网络，而它们问的是同一个问题。
+func (c *Client) getModels(ctx context.Context) ([]byte, error) {
 	url := strings.TrimSuffix(c.BaseURL, "/") + "/models"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if c.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("无法连接 %s：%w", c.BaseURL, err)
+		return nil, fmt.Errorf("无法连接 %s：%w", c.BaseURL, err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	// 上限放宽到 64KB：只看状态码时 4KB 够了，要解列表就不够——
+	// 服务商多的能报几十个模型，每个还带一段元数据。
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return fmt.Errorf("密钥被拒绝（HTTP %d）：%s", resp.StatusCode, truncate(strings.TrimSpace(string(body)), 200))
+		return nil, fmt.Errorf("密钥被拒绝（HTTP %d）：%s", resp.StatusCode,
+			truncate(strings.TrimSpace(string(body)), 200))
 	case resp.StatusCode >= 500:
-		return fmt.Errorf("服务端异常（HTTP %d）", resp.StatusCode)
+		return nil, fmt.Errorf("服务端异常（HTTP %d）", resp.StatusCode)
+	case resp.StatusCode >= 400:
+		return nil, fmt.Errorf("拿不到模型列表（HTTP %d）：%s", resp.StatusCode,
+			truncate(strings.TrimSpace(string(body)), 200))
 	}
-	return nil
+	return body, nil
 }
 
 func firstNonEmpty(vals ...string) string {

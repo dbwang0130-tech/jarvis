@@ -768,6 +768,29 @@ struct ProviderList: Codable {
     var error = ""
 }
 
+/// 服务商自己报上来的一个模型。
+///
+/// 跟 `ProviderInfo` 的分工：那个是**我们**内置的一份预设表（写在 Go 的
+/// `agent.Presets` 里，会过时）；这个是**现问的**，问完才知道这家今天有什么。
+struct ModelEntry: Codable, Identifiable, Hashable {
+    /// 要填进配置的那个名字。
+    var id = ""
+    /// 给人看的名字，服务商没另给就跟 id 一样。
+    var name = ""
+    /// 它认得图片。这一项是**厂商自己说的**，比预设表里那个 vision 靠得住。
+    var vision = false
+    /// 上下文窗口，0 表示没报，界面就别显示。
+    var context = 0
+}
+
+/// 拉模型列表的结果。**拿不到不是错**——有的服务商没实现这个接口，
+/// 界面照旧留着手填那条路。
+struct ModelList: Codable {
+    var models: [ModelEntry] = []
+    var error = ""
+    var message = ""
+}
+
 struct ModelConfig: Codable {
     var provider: String = "deepseek"
     var model: String = ""

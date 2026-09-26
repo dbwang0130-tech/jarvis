@@ -4,6 +4,19 @@ import UniformTypeIdentifiers
 // 界面分四块：日程、待办、财务、对话。
 // 手机屏幕小，每块只放最要紧的东西，详情靠点进去看。
 
+/// 模拟器里查界面时别弹系统权限框。
+///
+/// **那个框是点不掉的**：simctl 没法点屏幕，也没有给通知权限的 privacy 子命令，
+/// 于是它盖在要看的那一页上，截出来的图永远是它。跟 JARVIS_UI_VAULT /
+/// JARVIS_UI_SCREEN 同一个口子，只在 Debug 里存在，真机上照常要权限。
+private var skipPermissionPrompt: Bool {
+#if DEBUG
+    return ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] != nil
+#else
+    return false
+#endif
+}
+
 struct RootView: View {
     @StateObject private var store = Store()
     @Environment(\.scenePhase) private var phase
@@ -34,7 +47,7 @@ struct RootView: View {
             //
             // **不能等它**：requestAuthorization 会一直挂到用户点了为止，
             // 写成 await 的话，弹窗没点之前一个字都不会加载，界面就那么空着。
-            if store.settings.remind {
+            if store.settings.remind, !skipPermissionPrompt {
                 Task { _ = await Notifier.requestPermission() }
             }
             await store.reload()
@@ -193,7 +206,7 @@ struct ChatView: View {
         // 设置页平时要点右上角才开得了，而 simctl 点不了屏幕。
         let _ = {
             let want = ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] ?? ""
-            if want == "settings" || want == "model", !openSettings {
+            if want == "settings" || want == "model" || want == "models", !openSettings {
                 DispatchQueue.main.async { openSettings = true }
             }
         }()

@@ -343,6 +343,33 @@ enum Bridge {
         #endif
     }
 
+    /// 问服务商它今天都有哪些模型。会发一次网络请求，**别在主线程上调**。
+    ///
+    /// 为的是让模型名从「自己打字」变成「挑一个」：打错一个字换来的是一个看不懂
+    /// 的 404，而第一次配的人根本不知道该填什么。预设表里那个默认名也会过时。
+    ///
+    /// 拿不到不是错，界面照旧留着手填那条路（`ModelList.error` 非空即是）。
+    static func listModels(_ model: ModelConfig) -> ModelList {
+        guard let data = try? JSONEncoder().encode(["model": model]),
+              let json = String(data: data, encoding: .utf8) else {
+            return ModelList(error: "入参编码失败", message: "入参编码失败")
+        }
+        let out = callListModels(json)
+        do {
+            return try JSONDecoder().decode(ModelList.self, from: Data(out.utf8))
+        } catch {
+            return ModelList(error: "\(error)", message: "出参解不开")
+        }
+    }
+
+    private static func callListModels(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileListModels(json)
+        #else
+        return #"{"models":[],"error":"Mobile framework 没连上","message":"Mobile framework 没连上"}"#
+        #endif
+    }
+
     private static func callTestModel(_ json: String) -> String {
         #if canImport(Mobile)
         return MobileTestModel(json)
