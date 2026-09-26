@@ -119,30 +119,6 @@ enum Bridge {
         }
     }
 
-    /// 把「健康」App 里读到的数并进本地那份 FHIR 记录。
-    ///
-    /// 去重在 Go 那边靠每条带着的 HealthKit UUID 做，所以重复导不会变多份。
-    static func importHealth(health: String,
-                             samples: [HealthKitImporter.Sample]) -> HealthImport {
-        let enc = JSONEncoder()
-        enc.dateEncodingStrategy = .iso8601
-        struct Input: Encodable {
-            let health: String
-            let samples: [HealthKitImporter.Sample]
-            let tz: String
-        }
-        guard let data = try? enc.encode(
-                Input(health: health, samples: samples, tz: TimeZone.current.identifier)),
-              let json = String(data: data, encoding: .utf8) else {
-            return HealthImport(error: "入参编码失败")
-        }
-        do {
-            return try JSONDecoder().decode(HealthImport.self,
-                                            from: Data(callImportHealth(json).utf8))
-        } catch {
-            return HealthImport(error: "出参解不开：\(error.localizedDescription)")
-        }
-    }
 
     /// 邮件。list 只读本地不连网，sync 才去拉。
     static func mail(_ input: MailInput) -> MailResult {
@@ -297,13 +273,6 @@ enum Bridge {
     // gomobile 生成的符号是「包名首字母大写 + 函数名」：mobile.Snapshot → MobileSnapshot。
     // 没连上 framework 时（比如在 macOS 上做语法检查）走下面的桩，好歹能编过。
 
-    private static func callImportHealth(_ json: String) -> String {
-        #if canImport(Mobile)
-        return MobileImportHealth(json)
-        #else
-        return #"{"added":0,"skipped":0,"bad":0,"message":"","error":"Mobile framework 没连上"}"#
-        #endif
-    }
 
     private static func callSnapshot(_ json: String) -> String {
         #if canImport(Mobile)

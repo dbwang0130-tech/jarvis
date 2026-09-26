@@ -765,7 +765,6 @@ struct DataSettings: View {
     @EnvironmentObject var store: Store
     @State private var picking = false
     /// 导入之后那一句「导进来多少条」。
-    @State private var healthNote = ""
 
     var body: some View {
         List {
@@ -776,26 +775,6 @@ struct DataSettings: View {
                 Text("日程、账本、健康记录都放在这儿。跟电脑上是同一份，两头都能改。")
             }
 
-            // 从「健康」导入。它本来就是**偶尔才干一次**的事（第一次用把几年的
-            // 旧数据搬进来），往后每天都是跟 Jarvis 说一句记的，放这儿正合它的频率。
-            if HealthKitImporter.isAvailable {
-                Section {
-                    Button {
-                        Task { healthNote = await store.importFromHealthKit(); Haptics.success() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if store.importingHealth { ProgressView().controlSize(.small) }
-                            Text(store.importingHealth ? "正在读…" : "从「健康」导入")
-                        }
-                    }
-                    .disabled(store.importingHealth)
-                    if !healthNote.isEmpty {
-                        Text(healthNote).font(.caption).foregroundStyle(.secondary)
-                    }
-                } footer: {
-                    Text("把「健康」里已有的体重、步数、睡眠搬进来，只导一次就够。")
-                }
-            }
 
             // 诊断。原先这两块各占一个顶层 section，跟「提醒」「邮箱」一样重——
             // 而它们回答的是「这台设备上装成什么样了」，不是每天要调的东西。

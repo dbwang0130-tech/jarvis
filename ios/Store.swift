@@ -377,49 +377,7 @@ final class Store: ObservableObject, AskEvents {
 
     // MARK: - 从「健康」App 导入
 
-    /// 正在导。
-    @Published var importingHealth = false
 
-    /// 把系统「健康」里最近的数据并进来。
-    ///
-    /// 重复导是安全的：每条带着 HealthKit 的 UUID，Go 那边认得出已经有的。
-    /// 所以不记「上次导到哪儿」——那种游标一旦跟真实情况错位（换机、
-    /// 恢复备份、事后补录旧数据），就会漏掉一整段而没人发现。
-    @discardableResult
-    func importFromHealthKit() async -> String {
-        guard HealthKitImporter.isAvailable else {
-            return "这台设备上没有「健康」"
-        }
-        guard !importingHealth else { return "" }
-        importingHealth = true
-        defer { importingHealth = false }
-
-        guard await HealthKitImporter.requestPermission() else {
-            return "没能取得「健康」的授权"
-        }
-        let samples = await HealthKitImporter.read()
-        if samples.isEmpty {
-            // iOS 有意不告诉 app 读权限被拒了，所以这里分不清是拒了还是
-            // 本来就没数据。两种都说到，别让人以为 app 坏了。
-            return "没读到数据。要么这段时间「健康」里就没有记录，"
-                + "要么没给读的权限——在「设置 → 隐私与安全性 → 健康 → Jarvis」里看一下。"
-        }
-
-        let current = health
-        let r = await Task.detached(priority: .userInitiated) {
-            Bridge.importHealth(health: current, samples: samples)
-        }.value
-
-        if let err = r.error, !err.isEmpty {
-            lastError = err
-            return err
-        }
-        guard let merged = r.health, !merged.isEmpty else {
-            return r.message   // 一条都没新增，不用碰文件
-        }
-        guard await writeBack(health: merged) else { return lastError ?? "" }
-        return r.message
-    }
 
     /// 数一下本地存着几封没读的。只读盘不连网，跟点开一封邮件是同一条路。
     /// 读完一封信就把它标成已读。

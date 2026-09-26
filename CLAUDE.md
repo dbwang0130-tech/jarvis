@@ -222,12 +222,22 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 | `internal/orgtools` | 日程：`Workspace` 包住 org 文件集合，带快照/撤销/改动记录 |
 | `internal/mail` | 邮件：`Session` 持有连接、编号索引、triage 结论、草稿 |
 | `internal/ledger` | 记账：ledger-cli 纯文本解析与追加 |
-| `internal/health` | 健康：体征与饮食记录。NDJSON 一行一条 FHIR 资源，只追加——手机和电脑两头都在写，整文件重写会互相吃改动 |
+| `internal/health` | 健康：体征与饮食记录。NDJSON 一行一条 FHIR 资源，只追加——手机和电脑两头都在写，整文件重写会互相吃改动。**没有 HealthKit 导入，别加**，理由见下 |
 | `internal/browser` | Chrome DevTools 自动化，连不上已有 Chrome 就自己起一个独立 profile |
 | `internal/memory` | 跨会话长期记忆（`memory.md`），`/dream` 整理 |
 | `internal/persona` | 人设文件（`persona.md`）的读写，两端共用一份规则 |
 | `internal/skills` | 用户放在 `skills/` 下的扩展技能（SKILL.md），只解析不执行 |
 | `internal/skillset` | **谁该在场**：两端共用的那一份技能装配表 |
+
+**健康那块不许碰 HealthKit。** 曾经有过「从系统『健康』导入体重、步数、睡眠」
+这个功能，整个删掉了：App Store 审核指南 5.1.3 明文规定，通过 HealthKit API 收集的
+健康信息**不得存储在 iCloud**，而 `health.ndjson` 就在用户的 iCloud 云盘目录里。
+两者不可兼得，而「手机和电脑同一份文件」是这个 app 的立身之本，先走的只能是 HealthKit。
+规则只管「通过 HealthKit API 收集的」，用户自己说给 Jarvis 记的体征不受限，所以功能
+本身没丢，丢的只是那条导入捷径。**这个功能看起来无害又顺手，最容易被后来人捡回去**，
+捡回去就上不了架。连带删掉的还有 `mobile.ImportHealth`、`health.ImportSamples` /
+`PrepareImport` / `AppendTo`——它们只为那条路存在，留着就是死代码。
+上架的其余事项见 `APPSTORE.md`，隐私政策正文见 `PRIVACY.md`。
 
 **人设不在代码里**：`internal/agent/persona.go` 有 `DefaultPersona` 兜底，真正用的那份在
 iCloud 的 `persona.md`（`config.PersonaPath()`）。`Agent.SetPersona(text, save)` 把文本和

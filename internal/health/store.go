@@ -133,25 +133,6 @@ func Lines(rs []Resource) (string, error) {
 	return b.String(), nil
 }
 
-// AppendTo 把几条接到一份已有的全文后面，返回新的全文。
-//
-// 手机上 Go 碰不了 iCloud 里的文件（沙箱授权、占位符、写协调那些讲究都在
-// Swift 那边），所以那条路要的是「并出新全文」而不是落盘。
-// 「一行一条、接之前先确保有换行」这条格式规矩收在这儿，桥那层不用知道。
-func AppendTo(existing string, rs []Resource) (string, error) {
-	lines, err := Lines(rs)
-	if err != nil {
-		return "", err
-	}
-	if lines == "" {
-		return existing, nil
-	}
-	if existing != "" && !strings.HasSuffix(existing, "\n") {
-		existing += "\n"
-	}
-	return existing + lines, nil
-}
-
 // Append 追加一条。
 func (s *Store) Append(r Resource) error { return s.AppendAll([]Resource{r}) }
 

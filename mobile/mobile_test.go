@@ -223,15 +223,13 @@ func mustJSON(t *testing.T, v any) string {
 // 不然用户看到的是解码错误而不是真正的原因。
 func TestNoNullArrays(t *testing.T) {
 	cases := map[string]string{
-		"正常":              Snapshot(mustJSON(t, SnapshotInput{Files: map[string]string{"a.org": "* TODO 没有标签\n"}, Days: 3})),
-		"空输入":             Snapshot(`{}`),
-		"入参不合法":           Snapshot("不是 JSON"),
-		"时间不合法":           Snapshot(`{"now":"不是时间"}`),
-		"Ask 出错":          Ask("不是 JSON"),
-		"ImportHealth 出错": ImportHealth("不是 JSON"),
-		"ImportHealth 空":  ImportHealth(`{}`),
-		"Mail 出错":         Mail("不是 JSON"),
-		"Mail 空":          Mail(`{"index_dir":"` + t.TempDir() + `"}`),
+		"正常":      Snapshot(mustJSON(t, SnapshotInput{Files: map[string]string{"a.org": "* TODO 没有标签\n"}, Days: 3})),
+		"空输入":     Snapshot(`{}`),
+		"入参不合法":   Snapshot("不是 JSON"),
+		"时间不合法":   Snapshot(`{"now":"不是时间"}`),
+		"Ask 出错":  Ask("不是 JSON"),
+		"Mail 出错": Mail("不是 JSON"),
+		"Mail 空":  Mail(`{"index_dir":"` + t.TempDir() + `"}`),
 		// 这两条都不碰网络：入参就被挡下来了。
 		"ListModels 出错": ListModels("不是 JSON"),
 		"ListModels 空":  ListModels(`{}`),

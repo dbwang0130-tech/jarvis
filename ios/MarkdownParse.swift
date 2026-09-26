@@ -2,7 +2,7 @@
 // 画那一半在 Markdown.swift。
 //
 // **分成两个文件是为了让解析能单独测。** 它本来就不该知道 SwiftUI 的事，而合在一起
-// 的时候要测它就得把 ChartCard 连带 Store、HealthKit 一路拖进来编，于是 iOS 那边
+// 的时候要测它就得把 ChartCard 连带 Store、SwiftUI 一路拖进来编，于是 iOS 那边
 // 一条测试都没有。现在 `make ios-ui` 拿纯 swiftc 编这一个文件加一份断言就能跑，
 // 跟 `make ios-contract` 同一个路子。
 //
