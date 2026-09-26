@@ -28,6 +28,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/dabao/jarvis/internal/agent"
 )
 
 // maxBody 是单份技能正文的上限。
@@ -37,24 +39,18 @@ import (
 // 并在末尾说一句，也不能让它悄悄吃掉整个窗口。
 const maxBody = 32 << 10
 
-// Skill 是一份从文件读来的扩展技能。
-type Skill struct {
-	// Name 是模型调 skill 工具时用的名字，默认取目录名。
-	Name string
-	// Description 一句话说清「什么时候该用它」，常驻系统提示。
-	Description string
-	// Body 是正文，按需才交给模型。
-	Body string
-	// Path 是 SKILL.md 的位置，报错时说得出是哪一份。
-	Path string
-}
+// 这个包**不定义自己的技能类型**，直接交出 `agent.ExtraSkill`。
+//
+// 早先有一个字段完全重合的 `skills.Skill`（外加一个只写不读的 `Path`），于是
+// 桌面端和手机端各写了一遍逐字段搬运的循环——往扩展技能加一个字段要改四处，
+// 漏掉一处是静默的（那个字段就是空的）。
 
 // Load 扫 dir 下每个子目录里的 SKILL.md。
 //
 // **读不出来不算错。** 目录不存在、某一份格式不对、iCloud 占位符还没下载，
 // 都只是少一项扩展能力，不该让整个会话起不来——启动路径不许把人挡在门外。
 // 出问题的那几份连同原因一起返回，界面可以提一句，但照常往下走。
-func Load(dir string) (list []Skill, warns []string) {
+func Load(dir string) (list []agent.ExtraSkill, warns []string) {
 	if dir == "" {
 		return nil, nil
 	}
@@ -79,7 +75,6 @@ func Load(dir string) (list []Skill, warns []string) {
 			continue
 		}
 		s, warn, ok := Parse(e.Name(), string(raw))
-		s.Path = path
 		if warn != "" {
 			warns = append(warns, path+"："+warn)
 		}
@@ -101,7 +96,7 @@ func Load(dir string) (list []Skill, warns []string) {
 //
 // ok 为假表示这份不能用（正文空、frontmatter 没闭合）；warn 非空是有话要说，
 // 跟 ok 无关——缺 description 照样能用，但值得提一句。
-func Parse(dirName, content string) (s Skill, warn string, ok bool) {
+func Parse(dirName, content string) (s agent.ExtraSkill, warn string, ok bool) {
 	s = parse(content)
 	if s.Name == "" {
 		s.Name = dirName
@@ -123,16 +118,16 @@ func Parse(dirName, content string) (s Skill, warn string, ok bool) {
 // 自己拆三行键值，不引 YAML 库：这个项目的直接依赖只有 5 个，为了读两个
 // 字段搭一整个 YAML 解析器不划算，而 frontmatter 里真正用到的就这两行。
 // 没有 frontmatter 的文件也收——整份当正文，名字取目录名。
-func parse(text string) Skill {
+func parse(text string) agent.ExtraSkill {
 	// 有些编辑器会在文件开头写一个 BOM，留着的话第一行就不等于 "---"，
 	// 整份 frontmatter 会被当成正文念给模型。这儿按字节去掉，源码里不放
 	// 那个字符本身——放了 Go 编译器自己就先报「invalid BOM」。
 	text = strings.TrimPrefix(text, string([]byte{0xEF, 0xBB, 0xBF}))
 	lines := strings.Split(text, "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return Skill{Body: clamp(text)}
+		return agent.ExtraSkill{Body: clamp(text)}
 	}
-	var s Skill
+	var s agent.ExtraSkill
 	for i := 1; i < len(lines); i++ {
 		if strings.TrimSpace(lines[i]) == "---" {
 			s.Body = clamp(strings.Join(lines[i+1:], "\n"))

@@ -176,6 +176,8 @@ struct ChatView: View {
     @State private var notified: Item?
     /// 从话里点链接点开的那封邮件。
     @State private var openMail: MailItem?
+    /// 点了句子里的体征链接（独占一行的那种是直接画成卡片的）。
+    @State private var openVital: HealthVital?
     /// 点了链接但那条已经找不到了，说一句——比默默没反应好。
     @State private var linkMiss: String?
     /// 听写。摆在这一层是为了让发送那一下够得着它。
@@ -235,7 +237,6 @@ struct ChatView: View {
                 store.wantsItem = nil
                 notified = item
             }
-            // 点了早上那条简报：打开日程。
             // 点了早上那条简报：**问它一句**，不是打开一个列表。
             //
             // 原来这儿开日程页。而那条通知问的是「今天要干什么」——秘书会
@@ -248,6 +249,7 @@ struct ChatView: View {
             }
             .sheet(item: $notified) { ItemDetail(item: $0) }
             .sheet(item: $openMail) { MailDetail(mail: $0) }
+            .sheet(item: $openVital) { VitalDetail(vital: $0) }
             // **话里的链接自己接，不交给系统。** 秘书提到某条日程或某封邮件
             // 时会写成 [标题](jarvis://item/work.org:12)，点一下就在这儿展开
             // 原来那几张卡片。不拦的话系统会去找 jarvis:// 的处理程序，
@@ -476,7 +478,6 @@ struct ChatView: View {
                             SendButton(action: submit)
                         } else {
                             MicButton(draft: $draft, dictation: dictation)
-                                .padding(.bottom, 5)
                         }
                     }
                     .padding(.horizontal, 6)
@@ -532,23 +533,29 @@ struct ChatView: View {
     /// 邮件的 key 在 Go 那边转义过（账号名可能是中文），`url.path` 拿到的
     /// 已经是解码后的原样，不用自己再解一遍。
     private func open(_ url: URL) {
-        let id = String(url.path.dropFirst())   // 去掉开头那个 /
-        guard !id.isEmpty else { return }
-        switch url.host {
-        case "item":
+        // 解析归 JarvisLink 一处（见 Markdown.swift）：**这儿认得的种类必须跟
+        // 块切分认得的是同一张表**，否则某一种链接就成了点了没反应的蓝字。
+        guard let link = JarvisLink(url) else { return }
+        Haptics.tap()
+        switch link.kind {
+        case .item:
             // 找不到多半是这条已经改过（行号变了）或者做完删掉了。
             // 说一句，别让人以为点坏了。
-            if let it = findItem(id) {
-                Haptics.tap()
+            if let it = findItem(link.id) {
                 notified = it
             } else {
                 linkMiss = "这条日程已经变了或者不在了。再问一句「今天什么安排」就能拿到最新的。"
             }
-        case "mail":
-            Haptics.tap()
-            Task { await openMailByKey(id) }
-        default:
-            break
+        case .mail:
+            Task { await openMailByKey(link.id) }
+        case .chart:
+            // 独占一行的图表会直接画成卡片（点卡片进详情）；夹在句子里的那种
+            // 就靠这条路——同一个链接两种摆法，都得能用。
+            if let v = store.snapshot.health?.vitals.first(where: { $0.kind == link.id }) {
+                openVital = v
+            } else {
+                linkMiss = "还没有「\(link.id)」的记录。"
+            }
         }
     }
 
@@ -1111,11 +1118,13 @@ struct SettingsLink: ToolbarContent {
 struct SendButton: View {
     let action: () -> Void
 
-    /// **占位必须跟 MicButton 一模一样（34 + 5pt 底距）。**
+    /// **占位跟 MicButton 必须一模一样**，所以基数取 `Brand.inputSlot`、字号档
+    /// 也取同一个（`.headline`），底距两边都是 5pt 且都自带。
     ///
-    /// 这两颗是轮着占同一格的。占位不一样的话，打第一个字那一下输入框会
-    /// 跟着长高或矮一截——手指还在键盘上，整条输入区先抖一下。
-    @ScaledMetric(relativeTo: .headline) private var box: CGFloat = 34
+    /// 这两颗轮着占同一格。占位不一样的话，打第一个字那一下输入框会跟着长高或
+    /// 矮一截——手指还在键盘上，整条输入区先抖一下。原先这儿跟着字号缩放、那边
+    /// 写死 34，而这段注释当时就已经在说「必须一模一样」了。
+    @ScaledMetric(relativeTo: .headline) private var box: CGFloat = Brand.inputSlot
 
     var body: some View {
         Button(action: action) {

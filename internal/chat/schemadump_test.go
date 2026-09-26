@@ -7,14 +7,6 @@ import (
 	"testing"
 
 	"github.com/dabao/jarvis/internal/agent"
-	"github.com/dabao/jarvis/internal/browser"
-	"github.com/dabao/jarvis/internal/config"
-	"github.com/dabao/jarvis/internal/health"
-	"github.com/dabao/jarvis/internal/ledger"
-	"github.com/dabao/jarvis/internal/mail"
-	"github.com/dabao/jarvis/internal/memory"
-	"github.com/dabao/jarvis/internal/org"
-	"github.com/dabao/jarvis/internal/orgtools"
 )
 
 const goldenTools = "testdata/tools.json"
@@ -32,16 +24,7 @@ const goldenTools = "testdata/tools.json"
 //
 // 更新：go test ./internal/chat/ -run TestToolSchemas -update
 func TestToolSchemas(t *testing.T) {
-	cfg := config.Default()
-	coll := &org.Collection{}
-	skills := []agent.Skill{
-		orgtools.NewSkill(orgtools.NewWorkspace(coll, cfg)),
-		mail.NewSkill(mail.NewSession(cfg)),
-		ledger.NewSkill(""),
-		health.New(""),
-		browser.New(cfg),
-		memory.New(""),
-	}
+	skills := testSkills()
 
 	type entry struct {
 		Skill    string

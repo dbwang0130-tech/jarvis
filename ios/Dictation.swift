@@ -194,19 +194,25 @@ struct MicButton: View {
     /// 能来几十次，而 start() 是异步的——那段时间里 listening 一直是 false，
     /// 于是每一次 onChanged 都会再起一个 start()。
     @State private var pressing = false
+    /// 跟 SendButton 用同一个基数和同一个字号档（Brand.inputSlot）——
+    /// 它俩轮着占输入框右边那一格，不等大就会在切换那一下抖一下。
+    @ScaledMetric(relativeTo: .headline) private var box: CGFloat = Brand.inputSlot
 
     var body: some View {
         if Dictation.available {
             Image(systemName: dictation.listening ? "waveform" : "mic.fill")
                 .font(.system(.headline, weight: .semibold))
                 .foregroundStyle(dictation.listening ? Color.white : Color.secondary)
-                .frame(width: 34, height: 34)
+                .frame(width: box, height: box)
                 .background {
                     if dictation.listening {
                         Circle().fill(Brand.primary)
                     }
                 }
                 .contentShape(Circle())
+                // 底距也归这儿，不由调用点补：另一颗自带，两边不一致就等于
+                // 占位不一致。
+                .padding(.bottom, 5)
                 .symbolEffect(.variableColor.iterative, isActive: dictation.listening)
                 .gesture(
                     DragGesture(minimumDistance: 0)

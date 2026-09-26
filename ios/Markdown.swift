@@ -7,6 +7,54 @@ import SwiftUI
 // 跟桌面端 internal/chat/markdown.go 是同一套取舍：够用就行，不追求完整的
 // CommonMark——秘书实际会吐的就那么几种。
 
+// MARK: - 链接
+
+/// 话里那个 `jarvis://` 链接。
+///
+/// **一个 scheme 只该有一张解析表。** 早先块切分只认 `chart`、点击处理只认
+/// `item`/`mail`（`default: break`），于是 `jarvis://chart/体重` 夹在句子里就成了
+/// 一个点了没反应的蓝字——而「点了没反应的蓝字比不可点更糟」正是这套链接的
+/// 设计前提。加一种链接要记得改两处，漏了那一处没有任何东西会响。
+///
+/// 现在**行的形状只决定「画成卡片还是行内一个词」**，能不能点由这一张表回答。
+struct JarvisLink {
+    enum Kind: String {
+        /// 一条日程，id 是 ref（`work.org:12`）。
+        case item
+        /// 一封邮件，id 是本地索引里的 key（`账号:UID`）。
+        case mail
+        /// 一项体征，id 是体征名（`体重`）。
+        case chart
+    }
+
+    let kind: Kind
+    let id: String
+
+    /// 从 `jarvis://item/work.org:12` 这样的 URL 解析。
+    ///
+    /// id 走 `url.path`（已经解码过），所以 Go 那边对中文账号名做的
+    /// percent 转义在这儿自动还原，不用自己再解一遍。
+    init?(_ url: URL) {
+        guard url.scheme == "jarvis", let host = url.host,
+              let kind = Kind(rawValue: host) else { return nil }
+        let id = String(url.path.dropFirst())   // 去掉开头那个 /
+        guard !id.isEmpty else { return nil }
+        self.kind = kind
+        self.id = id
+    }
+
+    /// 从 markdown 链接里 `jarvis://` 之后那一截解析，如 `chart/体重`。
+    init?(path: String) {
+        guard let slash = path.firstIndex(of: "/"),
+              let kind = Kind(rawValue: String(path[path.startIndex..<slash])) else { return nil }
+        let id = String(path[path.index(after: slash)...])
+        // 这几个字符出现了就说明这不是我们认的那种形状。
+        guard !id.isEmpty, !id.contains("/"), !id.contains("(") else { return nil }
+        self.kind = kind
+        self.id = id
+    }
+}
+
 // MARK: - 块
 
 enum Block: Identifiable {
@@ -80,13 +128,14 @@ enum Markdown {
             }
 
             // 独占一行的图表链接：[体重趋势](jarvis://chart/体重)。
+            // 别的种类（条目、邮件）不占整行——它们是句子里的一个词。
             //
             // **必须整行只有它**。夹在句子中间的话那句话就得拆成三块，
             // 而图是横着占满一行的东西，塞在半句话里排不出来。
             // 桌面端没有图，那边照常渲染成一个下划线的「体重趋势」，
             // 读起来也通——所以提示两端可以共用一份。
-            if let c = chartLink(trimmed) {
-                out.append(.chart(kind: c.kind, label: c.label)); i += 1; continue
+            if let c = soleLink(trimmed), c.link.kind == .chart {
+                out.append(.chart(kind: c.link.id, label: c.label)); i += 1; continue
             }
 
             // 表格：本行和下一行都得是管道行，且下一行是 |---|---| 那种分隔行。
@@ -198,20 +247,21 @@ enum Markdown {
     /// 行内语法交给系统：粗体、斜体、`代码`、链接。
     /// `.inlineOnlyPreservingWhitespace` 是关键——默认那档会把块级结构也吃掉，
     /// 我们已经自己切过块了，再让它插手会把空格和换行揉没。
-    /// 认「整行只有一个图表链接」。
+    /// 认「整行只有一个 jarvis:// 链接」，交出链接和它的标签。
     ///
-    /// 故意不用正则：这一行的形状很死（`[`…`](jarvis://chart/`…`)`），
-    /// 按下标切比正则好读，也不用担心标题里带方括号那类边界。
-    static func chartLink(_ line: String) -> (kind: String, label: String)? {
-        let mark = "](jarvis://chart/"
+    /// 故意不用正则：这一行的形状很死（`[`…`](jarvis://`…`)`），按下标切比正则
+    /// 好读，也不用担心标题里带方括号那类边界。
+    ///
+    /// **它只管「这一行是不是单独一个链接」，不管那是哪一种。** 是哪一种由
+    /// JarvisLink 说了算——见那边的说明。
+    static func soleLink(_ line: String) -> (link: JarvisLink, label: String)? {
+        let mark = "](jarvis://"
         guard line.hasPrefix("["), line.hasSuffix(")"),
               let m = line.range(of: mark) else { return nil }
         let label = String(line[line.index(after: line.startIndex)..<m.lowerBound])
-        let kind = String(line[m.upperBound..<line.index(before: line.endIndex)])
-        guard !label.isEmpty, !kind.isEmpty else { return nil }
-        // 体征名里不会有这些；出现了说明这行不是我们认的那种形状。
-        guard !kind.contains("/"), !kind.contains("(") else { return nil }
-        return (kind, label)
+        let rest = String(line[m.upperBound..<line.index(before: line.endIndex)])
+        guard !label.isEmpty, let link = JarvisLink(path: rest) else { return nil }
+        return (link, label)
     }
 
     static func inline(_ s: String) -> AttributedString {

@@ -410,47 +410,38 @@ func (c Config) Save(path string) error {
 // MouseOn 报告要不要收鼠标上报，没配过就是开着。
 func (c Config) MouseOn() bool { return c.Mouse == nil || *c.Mouse }
 
+// icloudOr 是那几份共用文件的落点规则：配置里指了就用指的，否则跟着 iCloud 走，
+// iCloud 也没有才退回配置目录。
+//
+// 记忆、人设、扩展技能三处原先各写一遍这个三段式。加第四份共用文件时照着抄，
+// 抄漏一个分支就会在当前工作目录下造出东西来——跟 normalize() 那条教训同一类。
+func (c Config) icloudOr(override, name string) string {
+	if override != "" {
+		return override
+	}
+	if icloud := ICloudDir(); icloud != "" {
+		return filepath.Join(icloud, name)
+	}
+	return filepath.Join(Dir(), name)
+}
+
 // MemoryPath 返回长期记忆文件的路径。
 //
 // 没配就跟着日程走——日程在 iCloud 里，记忆也该在，否则手机上那位秘书
 // 记不得电脑上这位刚记住的事。日程也没配才退回配置目录。
-func (c Config) MemoryPath() string {
-	if c.MemoryFile != "" {
-		return c.MemoryFile
-	}
-	if icloud := ICloudDir(); icloud != "" {
-		return filepath.Join(icloud, "memory.md")
-	}
-	return filepath.Join(Dir(), "memory.md")
-}
+func (c Config) MemoryPath() string { return c.icloudOr(c.MemoryFile, "memory.md") }
 
 // PersonaPath 返回人设文件的路径。
 //
 // 跟记忆同一个道理，也放 iCloud：人设是「秘书是谁」，手机上那位和电脑上
 // 这位必须是同一个人——两边各存一份的话，用户在手机上说「以后别叫我先生」，
 // 回到电脑上它照旧叫，而这种不一致看起来像模型记性差，不像配置问题。
-func (c Config) PersonaPath() string {
-	if c.PersonaFile != "" {
-		return c.PersonaFile
-	}
-	if icloud := ICloudDir(); icloud != "" {
-		return filepath.Join(icloud, "persona.md")
-	}
-	return filepath.Join(Dir(), "persona.md")
-}
+func (c Config) PersonaPath() string { return c.icloudOr(c.PersonaFile, "persona.md") }
 
 // SkillsPath 返回扩展技能目录。
 //
 // 跟人设、记忆同一个地方：用户在手机上放进去的技能，电脑上这位也该会。
-func (c Config) SkillsPath() string {
-	if c.SkillsDir != "" {
-		return c.SkillsDir
-	}
-	if icloud := ICloudDir(); icloud != "" {
-		return filepath.Join(icloud, "skills")
-	}
-	return filepath.Join(Dir(), "skills")
-}
+func (c Config) SkillsPath() string { return c.icloudOr(c.SkillsDir, "skills") }
 
 // MigrateMemory 把老位置（配置目录）的记忆挪到现在该在的地方。
 //
@@ -572,6 +563,25 @@ func RunCmd(line string) (string, error) {
 // 直接 WriteFile 的话，写到一半断电或者被系统杀掉，留下的是半截内容——
 // 对 JSON 来说就是下次读不出来。改名在同一个文件系统上是原子的，
 // 要么是旧的完整内容，要么是新的完整内容。
+// WriteText 整份覆盖一个文本文件：建目录、去掉首尾空白、补一个结尾换行、原子写。
+//
+// **iCloud 里那几份共用文件都走这儿**（记忆、人设）。原先各写一遍，连「原子写：
+// 整份覆盖，写到一半被杀掉就等于清空」那句注释都是同一句——于是权限位和「要不要
+// 补换行」这类判据在两份文件上各记一份，往后只会改到一边。
+//
+// text 是空串就写一个空文件，不是删掉：调用方那边「空」有自己的含义
+// （人设为空表示回到内置那套），删文件会让那个意思丢掉。
+func WriteText(path, text string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	text = strings.TrimSpace(text)
+	if text != "" {
+		text += "\n"
+	}
+	return WriteAtomic(path, []byte(text), 0o600)
+}
+
 func WriteAtomic(path string, data []byte, perm os.FileMode) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, perm); err != nil {

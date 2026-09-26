@@ -320,7 +320,7 @@ func (s *Session) LoadMore(unreadOnly bool) FetchResult {
 func (s *Session) appendLocked(msgs []*mailbox.Message) []*Item {
 	var added []*Item
 	for _, m := range msgs {
-		key := m.Key()
+		key := m.Dedup()
 		if s.seen[key] {
 			continue
 		}

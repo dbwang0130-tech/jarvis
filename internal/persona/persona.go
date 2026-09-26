@@ -8,7 +8,6 @@ package persona
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/dabao/jarvis/internal/config"
@@ -33,21 +32,15 @@ func Load(path string) string {
 
 // Save 整段覆盖人设文件。text 为空串表示恢复内置人设。
 //
-// 恢复内置写的是一个空文件，不是把 DefaultPersona 的文字抄进去——抄进去
-// 那份就不再跟着代码走了，以后改内置人设，所有「恢复过默认」的人都还用着
-// 旧的那版，而他们并不知道自己手里有一份副本。
+// 恢复内置写的是一个空文件，不是把 DefaultPersona 的文字抄进去——抄进去那份
+// 就不再跟着代码走了，以后改内置人设，所有「恢复过默认」的人都还用着旧的那版，
+// 而他们并不知道自己手里有一份副本。
 //
-// 原子写：人设是整份覆盖，写到一半被杀掉就等于把人设清空了。
+// 落盘的规矩（建目录、补结尾换行、原子写）归 config.WriteText——记忆那边是
+// 同一份文件形状，两处各写一遍的话权限位和换行判据迟早只改到一边。
 func Save(path, text string) error {
 	if path == "" {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	text = strings.TrimSpace(text)
-	if text != "" {
-		text += "\n"
-	}
-	return config.WriteAtomic(path, []byte(text), 0o600)
+	return config.WriteText(path, text)
 }

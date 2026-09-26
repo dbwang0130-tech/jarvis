@@ -331,11 +331,27 @@ func (a *Agent) AskWith(ctx context.Context, input string, images []string,
 	a.History = append(a.History, Message{Role: "user", Content: input, Images: images})
 	tools := a.wireTools()
 
+	// **系统提示和【当下】都在循环外算一次。**
+	//
+	// 不是为了省那点拼字符串的时间，是**语义要求它们在一轮里不变**：【当下】
+	// 那段快照，各技能的规则里明写着「是这一轮开始时的」，「别拿它跟工具刚返回
+	// 的数对不上就报账目异常」这条也建立在它不变上。放在循环里每步重建的话，
+	// 第二步看到的余额已经包含了第一步刚记的那笔——它自称的那句话就成了假话。
+	//
+	// 顺带省掉的活不小：每建一次要跑全部 Describe，账本余额是不带缓存的全账本
+	// 重算，健康那边 13 项体征各过一遍历史。手机上 MaxSteps 默认十几，一次
+	// 「记一笔顺手查一下」原先要重算十来遍。
+	//
+	// 系统提示同理：这一轮里它一个字都不会变（只随 SetSkills / SetPersona /
+	// SetExtraSkills / Auto 变，那些都发生在轮次之间）。
+	head := Message{Role: "system", Content: a.systemPrompt()}
+	now := a.stateNote()
+
 	for step := 0; step < a.MaxSteps; step++ {
 		// 稳定的 system 在前、历史居中、每轮都变的【当下】垫在最后——
 		// 这个顺序是为了服务端的前缀缓存，见 stateNote。
-		msgs := append([]Message{{Role: "system", Content: a.systemPrompt()}}, a.History...)
-		msgs = append(msgs, a.stateNote())
+		msgs := append([]Message{head}, a.History...)
+		msgs = append(msgs, now)
 
 		var onDelta func(Delta)
 		if a.Stream {

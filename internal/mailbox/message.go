@@ -53,7 +53,13 @@ func (m Message) Domain() string {
 }
 
 // Key 是跨账号唯一的稳定标识。
-func (m Message) Key() string { return fmt.Sprintf("%s/%d", m.Account, m.UID) }
+// Dedup 是**内存里去重用的**键，格式无所谓，只要一封信一个值。
+//
+// 它以前叫 Key()，而 mailstore.Key() 才是这封信的持久身份（「账号:UID」，
+// 索引文件和界面都认那个），两个都叫 Key 而格式不一样（这儿是「账号/UID」）。
+// 写邮件链接改写那段时就拿错过一次——每条都翻不出来，而且一声不响，点下去
+// 只是没反应。改个名字，从此拿不错。
+func (m Message) Dedup() string { return fmt.Sprintf("%s/%d", m.Account, m.UID) }
 
 // BulkHint 概括群发信号，作为提示词里的一行事实。
 func (m Message) BulkHint() string {

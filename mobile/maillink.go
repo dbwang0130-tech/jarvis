@@ -27,7 +27,9 @@ var mailLink = regexp.MustCompile(`\[([^\]]+)\]\(jarvis://mail/(\d+)\)`)
 // 造得出来，而这段恰恰有个静默失败模式（key 格式拼错只是点下去没反应，
 // 什么都不报）。
 func resolveMailLinks(reply string, key func(no int) (string, bool)) string {
-	if key == nil || !mailLink.MatchString(reply) {
+	// 不做 MatchString 预检：没匹配的话 ReplaceAllStringFunc 本来就是空操作，
+	// 预检只是把同一段话多扫一遍。
+	if key == nil {
 		return reply
 	}
 	return mailLink.ReplaceAllStringFunc(reply, func(m string) string {
@@ -50,9 +52,8 @@ func resolveMailLinks(reply string, key func(no int) (string, bool)) string {
 
 // sessionMailKey 交出「编号 → key」的查法。
 //
-// **用 mailstore 的格式，不是 mailbox.Message.Key()。** 那两个不一样：
-// mailbox 拼的是「账号/UID」，mailstore 拼的是「账号:UID」，而界面读的是
-// 后者。拿错了每一条都翻不出来，而且一声不响。
+// 用 mailstore.Key —— 界面那份清单就是拿它当身份的。（mailbox 那边另有一个
+// 「账号/UID」的值，但它已经改名叫 Dedup 了，只用于内存去重，不会再拿错。）
 func sessionMailKey(sess *mail.Session) func(int) (string, bool) {
 	if sess == nil {
 		return nil

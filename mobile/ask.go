@@ -269,9 +269,7 @@ func askWith(inputJSON string, host Host) string {
 	var extra []agent.ExtraSkill
 	for _, r := range in.Skills {
 		if sk, _, ok := extskills.Parse(r.Dir, r.Content); ok {
-			extra = append(extra, agent.ExtraSkill{
-				Name: sk.Name, Description: sk.Description, Body: sk.Body,
-			})
+			extra = append(extra, sk)
 		}
 	}
 	ag.SetExtraSkills(extra)

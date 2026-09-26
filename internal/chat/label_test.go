@@ -1,18 +1,10 @@
 package chat
 
 import (
-	"strings"
+	"regexp"
 	"testing"
 
 	"github.com/dabao/jarvis/internal/agent"
-	"github.com/dabao/jarvis/internal/browser"
-	"github.com/dabao/jarvis/internal/config"
-	"github.com/dabao/jarvis/internal/health"
-	"github.com/dabao/jarvis/internal/ledger"
-	"github.com/dabao/jarvis/internal/mail"
-	"github.com/dabao/jarvis/internal/memory"
-	"github.com/dabao/jarvis/internal/org"
-	"github.com/dabao/jarvis/internal/orgtools"
 )
 
 // 每个工具都得有中文标签，否则界面上直接露出英文工具名。
@@ -23,16 +15,7 @@ import (
 // 现在表只有一份（agent/label.go），再加这个测试——注册了工具却忘了
 // 登记标签，这儿就红。
 func TestEveryToolHasALabel(t *testing.T) {
-	cfg := config.Default()
-	coll := &org.Collection{}
-	skills := []agent.Skill{
-		orgtools.NewSkill(orgtools.NewWorkspace(coll, cfg)),
-		mail.NewSkill(mail.NewSession(cfg)),
-		ledger.NewSkill(""),
-		health.New(""),
-		browser.New(cfg),
-		memory.New(""),
-	}
+	skills := testSkills()
 	// 内置的那两个不在任何 skill 里，单独点名。
 	names := []string{"plan", "step_done"}
 	for _, sk := range skills {
@@ -61,19 +44,15 @@ func TestEveryToolHasALabel(t *testing.T) {
 // 九合五时，四个 readonly 工具全并进了 browser_exec_js，而 exec_js 能改
 // DOM、标不了只读，于是整个技能的只读覆盖率归零——编译、测试全绿，
 // 没有任何地方会响。
-// **记忆不在名单里，这是故意的**：它只有 remember 一个工具，是纯写入的，
-// 没有「只读覆盖率」可言。别顺手把 memory 加进来——加了会红，然后就有人去删
-// 这条断言，那才是真的损失。哪天记忆多了个查询工具，再把它加进来。
+// **只有「记忆」是豁免的，写在下面那一行里。** 它只有 remember 一个纯写入工具，
+// 没有「只读覆盖率」可言。豁免写成代码里的一个判断、而不是从清单里悄悄漏掉它：
+// 漏掉的话，下一个人看到的是一份不知为何少一项的手抄清单，而看到这一行的人
+// 知道为什么。哪天记忆有了查询工具，删掉这三行就是。
 func TestEverySkillKeepsAReadOnlyTool(t *testing.T) {
-	cfg := config.Default()
-	coll := &org.Collection{}
-	for _, sk := range []agent.Skill{
-		orgtools.NewSkill(orgtools.NewWorkspace(coll, cfg)),
-		mail.NewSkill(mail.NewSession(cfg)),
-		ledger.NewSkill(""),
-		health.New(""),
-		browser.New(cfg),
-	} {
+	for _, sk := range testSkills() {
+		if sk.Name() == "记忆" {
+			continue
+		}
 		found := false
 		for _, tl := range sk.Tools() {
 			if ro, ok := tl.(interface{ ReadOnly() bool }); ok && ro.ReadOnly() {
@@ -98,25 +77,19 @@ func TestEverySkillKeepsAReadOnlyTool(t *testing.T) {
 // 放在 chat 这儿是因为只有这个包看得见全部真技能；agent 反向 import 不了它们。
 // 跟 TestEveryToolHasALabel 同一个道理：跨技能的约定，只在一处守。
 func TestNoSkillPointsUpwards(t *testing.T) {
-	cfg := config.Default()
-	coll := &org.Collection{}
-	skills := []agent.Skill{
-		orgtools.NewSkill(orgtools.NewWorkspace(coll, cfg)),
-		mail.NewSkill(mail.NewSession(cfg)),
-		ledger.NewSkill(""),
-		health.New(""),
-		browser.New(cfg),
-		memory.New(""),
-	}
-	// 「上面那张清单」这种指的是 Instructions 自己里头列的东西（比如健康那份
-	// 会把认得的体征就地列一遍），那是对的，所以只拦指向快照的几种说法。
-	bad := []string{"上面那张表", "上面那张余额表", "上面给的今天", "上面那份快照"}
-	for _, sk := range skills {
-		ins := sk.Instructions()
-		for _, b := range bad {
-			if strings.Contains(ins, b) {
-				t.Errorf("%s 的规则里有 %q——环境快照在系统提示的最后，不在上面", sk.Name(), b)
-			}
+	// **按规则拦，不按字面拦。** 原先这儿是四条写死的说法（「上面那张表」
+	// 「上面给的今天」…），而新技能写「前面那张余额表」照样过——这条不变量的
+	// 覆盖面等于当初写下那四句话的人的想象力。
+	//
+	// 现在的规则是绝对的：**方向词不许挨着「表 / 快照 / 清单」**。方向词本身没
+	// 被禁（「写在金额后面」「下面这几种都是正常的」指的是紧跟着的同段内容，
+	// 那是对的），禁的是拿方向去指那几份数据——它们在系统提示的最末尾，而且
+	// 以后还可能再挪。指路一律用名字：「【当下】里那张账户表」。
+	bad := regexp.MustCompile(`(上面|下面|前面|后面)[^。\n]{0,6}(表|快照|清单)`)
+	for _, sk := range testSkills() {
+		if m := bad.FindString(sk.Instructions()); m != "" {
+			t.Errorf("%s 的规则里有 %q——环境快照在系统提示的最后，而且还会再挪；"+
+				"指路请用名字（「【当下】里那张…」）", sk.Name(), m)
 		}
 	}
 }

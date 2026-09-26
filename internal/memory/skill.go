@@ -116,10 +116,8 @@ func (s *Skill) append(note string) error {
 }
 
 // Save 用整理后的内容整体覆盖记忆文件。
+//
+// 原子写等规矩归 config.WriteText——人设那边是同一份文件形状，见 internal/persona。
 func (s *Skill) Save(content string) error {
-	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
-		return err
-	}
-	// 原子写：整理记忆是整份覆盖，写到一半被杀掉就等于把记忆清空了。
-	return config.WriteAtomic(s.Path, []byte(strings.TrimSpace(content)+"\n"), 0o600)
+	return config.WriteText(s.Path, content)
 }

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dabao/jarvis/internal/agent"
 )
 
 // write 在 dir 下造一份技能。
@@ -34,7 +36,7 @@ func TestLoad(t *testing.T) {
 
 	list, warns := Load(dir)
 
-	byName := map[string]Skill{}
+	byName := map[string]agent.ExtraSkill{}
 	for _, s := range list {
 		byName[s.Name] = s
 	}

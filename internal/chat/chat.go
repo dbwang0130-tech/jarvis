@@ -57,8 +57,9 @@ type Session struct {
 	healthSkill *health.Skill
 	memSkill    *memory.Skill
 	// extra 是启动时扫到的扩展技能，reloadAgent 也要用，所以留着。
-	extra        []extskills.Skill
-	extraWarn    []string
+	// 扫出来的警告不留字段——下一行就并进 startupWarn 了，留一份永远同步的
+	// 副本只会让看的人先去确认它俩没有第二个写入点。
+	extra        []agent.ExtraSkill
 	browserSkill *browser.Skill
 	skills       []agent.Skill
 	ag           *agent.Agent
@@ -169,8 +170,9 @@ func (s *Session) setup() error {
 	s.memSkill = memory.New(s.cfg.MemoryPath())
 	// 用户放在 skills/ 下的扩展技能。读不出来只是少几项扩展能力，
 	// 照常进界面——进去了才能用 /setup 修。
-	s.extra, s.extraWarn = extskills.Load(s.cfg.SkillsPath())
-	s.startupWarn = append(s.startupWarn, s.extraWarn...)
+	extra, warns := extskills.Load(s.cfg.SkillsPath())
+	s.extra = extra
+	s.startupWarn = append(s.startupWarn, warns...)
 	s.browserSkill = browser.New(s.cfg)
 
 	s.skills = s.buildSkills()
@@ -192,13 +194,7 @@ func (s *Session) buildAgent() (*agent.Agent, error) {
 		return persona.Save(path, text)
 	})
 	// 扩展技能只把名字和用途放进提示，正文等模型调 skill 再读。
-	out := make([]agent.ExtraSkill, 0, len(s.extra))
-	for _, e := range s.extra {
-		out = append(out, agent.ExtraSkill{
-			Name: e.Name, Description: e.Description, Body: e.Body,
-		})
-	}
-	ag.SetExtraSkills(out)
+	ag.SetExtraSkills(s.extra)
 	return ag, nil
 }
 

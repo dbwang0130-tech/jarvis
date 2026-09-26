@@ -56,18 +56,16 @@ final class Store: ObservableObject, AskEvents {
     /// 反倒要自己去翻。
     @Published var wantsItem: String?
 
-    /// 点了早上那条简报，要打开日程。
-    @Published var wantsPlanner = false
-
     /// 点通知进来要办的事。
     ///
     /// 界面看到它就让秘书立刻收一次——通知里说的是「点一下，我这就
     /// 去收」，那就得真去收，而不是把人扔在对话页自己找。办完清空，
     /// 免得下次切回前台又触发一遍。
     @Published var wantsMailCheck = false
-    /// 秘书收过信之后换一个值，界面据此重读本地索引。
-    /// 用 UUID 而不是 Bool：连着收两次也能各自触发一遍。
-    @Published var mailUpdated = UUID()
+
+    /// 点了早上那条简报。界面据此**问秘书一句**（Store.plannerPrompt），
+    /// 不是打开一个列表——日程那一页已经没有了。
+    @Published var wantsPlanner = false
     @Published var lastError: String? {
         // 新的一条盖上来时，旧的那个重试办法就不作数了——照着它再试一次，
         // 试的是上一件事。谁报错谁顺手设 retry（`fail(_:retry:)`）。
@@ -298,8 +296,13 @@ final class Store: ObservableObject, AskEvents {
         persist()
         ImageStore.sweep(keep: Set(messages.flatMap { $0.imageRefs }))
         // 秘书收了信，未读数得跟上——不然人刚听它说完「收到三封」，
-        // 切过去还是空的，还得自己再下拉一次。
-        if out.mailSynced == true { mailUpdated = UUID() }
+        // 标题栏那行还写着旧数。
+        //
+        // **这儿原先是 `mailUpdated = UUID()`，而它是个空操作**：那个
+        // @Published 全仓没有任何观察者（观察它的是早先的邮件页，那一页删掉
+        // 之前就已经不看它了）。于是注释描述的行为 app 并不具备——直接调
+        // 那个真正管未读数的。
+        if out.mailSynced == true { await refreshMailBadge() }
 
         // 秘书改了东西就写回 iCloud，然后重新解析一遍。
         // 人设判的是 `!= nil` 而不是 isEmpty：空串是「恢复内置人设」，

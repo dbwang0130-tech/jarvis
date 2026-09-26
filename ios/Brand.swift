@@ -60,6 +60,16 @@ enum Brand {
                        startPoint: .topTrailing, endPoint: .bottomLeading)
     }
 
+    /// 输入框右边那一格的边长。
+    ///
+    /// **麦克风和发送键轮着占这一格，所以尺寸只能有一个来源。** 两边各写一个
+    /// 数的话，某天只改了一边，打第一个字那一下（麦克风换成发送箭头）整条输入区
+    /// 就会长高或矮一截，手指还在键盘上。真出过一次：一颗跟着 Dynamic Type 缩放、
+    /// 一颗写死 34，注释里写着「必须一模一样」而它们已经不一样了。
+    ///
+    /// 两边都按 `@ScaledMetric(relativeTo: .headline)` 从这个数起算，才是真的一样。
+    static let inputSlot: CGFloat = 34
+
     /// 全 app 的圆角。3D 那张头像是圆润的，界面跟着圆一点才是一家人。
     static let radius: CGFloat = 18
     static let smallRadius: CGFloat = 12

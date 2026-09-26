@@ -76,46 +76,34 @@ final class Vault {
         }
     }
 
-    /// 读账本；没有就返回空串（界面据此不显示财务那块）。
-    func readLedger() throws -> String {
+    /// 读根目录下某一份共用文件；没有就返回空串。
+    ///
+    /// **四个读法原先各抄一遍这七行。** 账本、健康、记忆、人设只差一个文件名，
+    /// 而抄的那几行恰恰是 iCloud 的全部难处所在——沙箱授权（`withAccess`）、
+    /// 占位符（`exists` 内部会先确保下载）、`NSFileCoordinator` 协调读。
+    /// 哪天这里要多一步（比如占位符下载超时后重试一次），四份拷贝里改一份、
+    /// 另外三份照旧，而没有任何地方会响。
+    private func readShared(_ name: String) throws -> String {
         guard let root else { throw VaultError.notConfigured }
         return try withAccess(to: root) {
-            let url = root.appendingPathComponent("ledger.dat")
+            let url = root.appendingPathComponent(name)
             guard exists(url) else { return "" }
             return try readCoordinated(url)
         }
     }
+
+    /// 读账本；没有就返回空串（界面据此不显示财务那块）。
+    func readLedger() throws -> String { try readShared("ledger.dat") }
 
     /// 读健康记录。FHIR NDJSON，一行一条资源，跟电脑上共用一份。
-    func readHealth() throws -> String {
-        guard let root else { throw VaultError.notConfigured }
-        return try withAccess(to: root) {
-            let url = root.appendingPathComponent("health.ndjson")
-            guard exists(url) else { return "" }
-            return try readCoordinated(url)
-        }
-    }
+    func readHealth() throws -> String { try readShared("health.ndjson") }
 
     /// 读长期记忆。跟电脑上是同一份——那边记住的事这边也该记得。
-    func readMemory() throws -> String {
-        guard let root else { throw VaultError.notConfigured }
-        return try withAccess(to: root) {
-            let url = root.appendingPathComponent("memory.md")
-            guard exists(url) else { return "" }
-            return try readCoordinated(url)
-        }
-    }
+    func readMemory() throws -> String { try readShared("memory.md") }
 
     /// 读人设。跟记忆一样两端共用——手机上说「以后别叫我先生」，
     /// 电脑上那位也得照着改。
-    func readPersona() throws -> String {
-        guard let root else { throw VaultError.notConfigured }
-        return try withAccess(to: root) {
-            let url = root.appendingPathComponent("persona.md")
-            guard exists(url) else { return "" }
-            return try readCoordinated(url)
-        }
-    }
+    func readPersona() throws -> String { try readShared("persona.md") }
 
     /// 读 skills/ 下每一份扩展技能的原文。
     ///

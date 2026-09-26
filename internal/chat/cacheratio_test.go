@@ -5,29 +5,12 @@ import (
 	"time"
 
 	"github.com/dabao/jarvis/internal/agent"
-	"github.com/dabao/jarvis/internal/browser"
-	"github.com/dabao/jarvis/internal/config"
-	"github.com/dabao/jarvis/internal/health"
-	"github.com/dabao/jarvis/internal/ledger"
-	"github.com/dabao/jarvis/internal/mail"
-	"github.com/dabao/jarvis/internal/memory"
-	"github.com/dabao/jarvis/internal/org"
-	"github.com/dabao/jarvis/internal/orgtools"
 )
 
 // 拿真技能量一遍：前后两次请求的系统提示，公共前缀占多少。
 // 那一段才是按缓存价计费的。-v 看数字。
 func TestCachePrefixRatioWithRealSkills(t *testing.T) {
-	cfg := config.Default()
-	coll := &org.Collection{}
-	skills := []agent.Skill{
-		orgtools.NewSkill(orgtools.NewWorkspace(coll, cfg)),
-		mail.NewSkill(mail.NewSession(cfg)),
-		ledger.NewSkill(""),
-		health.New(""),
-		browser.New(cfg),
-		memory.New(""),
-	}
+	skills := testSkills()
 	a := agent.NewAgent(nil, skills, 20, agent.AutoClean)
 	t0 := time.Date(2026, 9, 26, 14, 21, 0, 0, time.Local)
 	a.Now = func() time.Time { return t0 }
