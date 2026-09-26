@@ -34,13 +34,26 @@ struct JarvisLink {
     ///
     /// id 走 `url.path`（已经解码过），所以 Go 那边对中文账号名做的
     /// percent 转义在这儿自动还原，不用自己再解一遍。
+    ///
+    /// **少写了 `item/` 也认。** 模型偶尔会写成 `jarvis://work.org:12`——真模型
+    /// 评测里就抓到过一次（同一轮里另外三条写对了，这一条漏了 host）。不认的话
+    /// 那一下是个点了没反应的蓝字，而「点了没反应比不可点更糟」正是这套链接的
+    /// 前提。日程 ref 的形状很认得出来（`文件名.org:行号`），认出来就当条目用。
     init?(_ url: URL) {
-        guard url.scheme == "jarvis", let host = url.host,
-              let kind = Kind(rawValue: host) else { return nil }
-        let id = String(url.path.dropFirst())   // 去掉开头那个 /
-        guard !id.isEmpty else { return nil }
-        self.kind = kind
-        self.id = id
+        guard url.scheme == "jarvis" else { return nil }
+        if let host = url.host, let kind = Kind(rawValue: host) {
+            let id = String(url.path.dropFirst())   // 去掉开头那个 /
+            guard !id.isEmpty else { return nil }
+            self.kind = kind
+            self.id = id
+            return
+        }
+        // 兜 `jarvis://work.org:12` 这种漏了 host 的写法。
+        let rest = url.absoluteString.dropFirst("jarvis://".count)
+        let ref = String(rest)
+        guard ref.contains(".org:") else { return nil }
+        self.kind = .item
+        self.id = ref
     }
 
     /// 从 markdown 链接里 `jarvis://` 之后那一截解析，如 `chart/体重`。

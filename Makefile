@@ -36,8 +36,11 @@ test:
 # 别的测试都给模型写好台词（假 RoundTripper 放脚本），于是提示词改一个字都不会
 # 有任何测试响——而这个 app 的行为几乎全长在提示里。这个目标是唯一能发现
 # 「提示改了、行为退了」的手段。场景和断言见 internal/eval。
+# 两组：internal/eval 验 agent 循环和提示（两端共用的部分），
+# mobile 验手机那条桥只有它才会坏的东西（技能装配、只回传变过的文件、
+# 人设出参的指针语义、扩展技能原文过桥、历史往返）。
 eval:
-	@JARVIS_EVAL=1 go test ./internal/eval/ -v -count=1 -timeout 20m
+	@JARVIS_EVAL=1 go test ./internal/eval/ ./mobile/ -v -count=1 -timeout 25m
 
 # 代码质量：go vet + 死代码。死代码那步要先装 deadcode，没装就跳过并说明怎么装。
 lint:

@@ -535,7 +535,13 @@ struct ChatView: View {
     private func open(_ url: URL) {
         // 解析归 JarvisLink 一处（见 Markdown.swift）：**这儿认得的种类必须跟
         // 块切分认得的是同一张表**，否则某一种链接就成了点了没反应的蓝字。
-        guard let link = JarvisLink(url) else { return }
+        //
+        // 连它都认不出来的话也得说一声。默默 return 的话人点下去毫无反应，
+        // 会以为 app 卡了——而真模型偶尔真会写出认不得的链接。
+        guard let link = JarvisLink(url) else {
+            linkMiss = "这个链接我认不出来（\(url.absoluteString)）。再问一次一般就好了。"
+            return
+        }
         Haptics.tap()
         switch link.kind {
         case .item:

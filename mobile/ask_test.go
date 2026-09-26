@@ -66,9 +66,16 @@ func ask(t *testing.T, in AskInput) AskOutput {
 	if err != nil {
 		t.Fatal(err)
 	}
+	outJSON := Ask(string(raw))
 	var out AskOutput
-	if err := json.Unmarshal([]byte(Ask(string(raw))), &out); err != nil {
+	if err := json.Unmarshal([]byte(outJSON), &out); err != nil {
 		t.Fatalf("出参不是合法 JSON：%v", err)
+	}
+	// **顺手守住「出参里不许有 null」**，每条走这个辅助函数的测试都免费带上。
+	// Swift 那边数组字段是非可选的，解到 null 整个出参作废、界面一片空白——
+	// TestNoNullArrays 专门钉这件事，但让每一条都顺便验一遍更难漏。
+	if strings.Contains(outJSON, ":null") {
+		t.Errorf("出参里有 null：%s", outJSON)
 	}
 	return out
 }
