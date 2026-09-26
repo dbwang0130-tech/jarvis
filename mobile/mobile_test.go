@@ -696,3 +696,48 @@ CLOSED: [2026-09-17 Thu 10:00] DEADLINE: <2026-09-01 Tue>
 		t.Errorf("待办里没有「去年的事」：%+v", out.Todos)
 	}
 }
+
+// 给了 now，待办清单就该完全由它决定，不许再读真实时钟。
+//
+// 这条踩过：buildTodos 里 `cut := time.Now().Add(-doneWindow)` 用的是真时钟，
+// 而入参的 Now 只喂给了日程那半边。于是同一份样例，今天算出来的结果跟
+// 昨天不一样——某天早上契约检查突然变红，样例里那条 CANCELLED 的 CLOSED
+// 日期滑出了七天窗口，而谁都没改过代码。
+func TestSnapshotTodosObeyGivenNow(t *testing.T) {
+	org := "#+TITLE: 工作\n\n* TODO 还没做的\n* DONE 三天前做完的\nCLOSED: [2026-09-13 Sun 10:00]\n"
+	at := func(now string) []string {
+		raw := Snapshot(mustJSON(t, SnapshotInput{
+			Files: map[string]string{"work.org": org},
+			Now:   now,
+			TZ:    "Asia/Shanghai",
+		}))
+		var out struct {
+			Todos []struct {
+				Title string `json:"title"`
+			} `json:"todos"`
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			t.Fatal(err)
+		}
+		if out.Error != "" {
+			t.Fatalf("不该出错：%s", out.Error)
+		}
+		var titles []string
+		for _, it := range out.Todos {
+			titles = append(titles, it.Title)
+		}
+		return titles
+	}
+
+	// 完成后第二天：还在「最近完成」窗口里。
+	near := at("2026-09-14T09:00:00+08:00")
+	if len(near) != 2 {
+		t.Fatalf("刚完成的那条该还在：%v", near)
+	}
+	// 完成后半个月：早该滑出窗口了。
+	far := at("2026-09-28T09:00:00+08:00")
+	if len(far) != 1 || far[0] != "还没做的" {
+		t.Fatalf("完成太久的那条该被滤掉：%v", far)
+	}
+}

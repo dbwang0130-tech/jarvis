@@ -577,7 +577,7 @@ func Snapshot(inputJSON string) string {
 	opts.ShowDone = true
 
 	out := SnapshotOutput{Days: buildDays(coll, now, days, opts)}
-	out.Todos, out.TodosTotal = buildTodos(coll, in.TodoLimit)
+	out.Todos, out.TodosTotal = buildTodos(coll, now, in.TodoLimit)
 	if strings.TrimSpace(in.Ledger) != "" {
 		out.Ledger = buildLedger(ledger.ParseBook(in.Ledger))
 	}
@@ -681,10 +681,14 @@ const defaultTodoLimit = 1000
 // 再往前就该是归档的事了。
 const doneWindow = 7 * 24 * time.Hour
 
-func buildTodos(c *org.Collection, limit int) (items []Item, total int) {
+// now 由调用方给，**不要在这儿读时钟**：Snapshot 的入参就带着「现在」
+// （测试拿它固定时间），这儿再取一次真实时钟，同一份样例今天算出来的
+// 结果跟昨天就不一样了。契约检查因此在某天早上突然变红——样例里那条
+// CANCELLED 的 CLOSED 日期滑出了七天窗口，而谁都没改过代码。
+func buildTodos(c *org.Collection, now time.Time, limit int) (items []Item, total int) {
 	its := agenda.Todos(c, agenda.TodoFilter{IncludeDone: true})
 	// 完成项只留最近这几天的，其余照旧全给。
-	cut := time.Now().Add(-doneWindow)
+	cut := now.Add(-doneWindow)
 	kept := its[:0]
 	for _, it := range its {
 		if it.Node.IsDone() && (it.Node.Closed == nil || it.Node.Closed.Start.Before(cut)) {

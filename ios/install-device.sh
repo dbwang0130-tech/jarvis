@@ -54,12 +54,21 @@ fi
 # 状态有 connected / available (paired) / unavailable 几种。只认 connected
 # 的话，无线配对或者刚插上还没完全就绪的设备会被自己的守卫拦下来——
 # 真不可用的话 xcodebuild 会报得更清楚，不必在这儿提前判死。
+#
+# **无线装就靠这一条**：网络上的设备多半报 available 而不是 connected，
+# 收紧成只认 connected 的话，不插线就永远找不到设备。
 UDID=${DEVICE_ID:-$(xcrun devicectl list devices 2>/dev/null \
       | awk '$0 !~ /simulated/ && $0 !~ /unavailable/ && /(connected|available)/ \
              {for(i=1;i<=NF;i++) if($i ~ /^[0-9A-F-]{25,}$/) {print $i; exit}}')}
-[ -n "$UDID" ] || die "没有插着的 iPhone。
-插上数据线，手机上点「信任此电脑」，解锁屏幕，再跑一次。
+[ -n "$UDID" ] || die "没找到可用的 iPhone。
+
+插着线的话：手机解锁，点「信任此电脑」，再跑一次。
 （第一次连还要在 Xcode 里等它 Preparing device 走完）
+
+**也可以不插线。** 配对过一次之后开一下网络连接，以后同一 WiFi 就能装：
+  Xcode → Window → Devices and Simulators（⇧⌘2）
+  选中这台 iPhone → 勾上「Connect via Network」
+开了之后手机得亮着屏、解着锁、跟电脑在同一个网段，这儿才看得见它。
 
 手机是硬条件，不是图省事：免费账号的开发证书和描述文件都得有一台已注册
 的设备才能生成，Apple 那边直接回绝——
