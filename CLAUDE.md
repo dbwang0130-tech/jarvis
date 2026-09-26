@@ -142,6 +142,7 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 | `internal/memory` | 跨会话长期记忆（`memory.md`），`/dream` 整理 |
 | `internal/persona` | 人设文件（`persona.md`）的读写，两端共用一份规则 |
 | `internal/skills` | 用户放在 `skills/` 下的扩展技能（SKILL.md），只解析不执行 |
+| `internal/skillset` | **谁该在场**：两端共用的那一份技能装配表 |
 
 **人设不在代码里**：`internal/agent/persona.go` 有 `DefaultPersona` 兜底，真正用的那份在
 iCloud 的 `persona.md`（`config.PersonaPath()`）。`Agent.SetPersona(text, save)` 把文本和
@@ -160,7 +161,18 @@ frontmatter 里 `name` + `description`）。**只有名字和用途常驻系统�
 （`AskInput.Skills`），**不在 Swift 那边再写一个 frontmatter 解析器**——两边判据迟早不一样，
 表现出来是同一份技能电脑上认、手机上不认。
 
-**新增一项能力**：在 `internal/xxx/` 实现 `agent.Skill`，然后在 `internal/chat/chat.go` 的 `buildSkills()` 里加一行。同时在 `internal/agent/label.go` 的 `toolLabels` 表里补上工具名到中文标签的映射，否则界面直接显示英文工具名——那张表桌面端和 iOS 共用一份，`internal/chat/label_test.go` 会守着，漏了就红。
+**技能清单只有一份**：`internal/skillset` 的 `Build(Deps)`。原先桌面端（`chat.buildSkills`）和
+手机端（`mobile/ask.go`）各写一份手抄清单——两端带的东西确实不一样（手机上不带浏览器，
+邮件要配了邮箱才有），但这个差异写成了「另一份清单里恰好没写」，谁都看不出差在哪。
+后果不是假想的：这份文档里那句「iOS 端只带日程和记账两项技能」**错了整整两项**，而要
+发现它得把两个包里两份分散的清单并排比一遍。现在 `Deps` 里 **nil 表示不带**，两端的差异
+是调用处明写的一行（`Browser: nil` 并说明为什么）。`internal/skillset/skillset_test.go`
+把三种组合（桌面 / 手机配了邮箱 / 手机没配）钉住，改任何一端都会在 diff 里看得见。
+注意别把 nil 的具体指针直接塞进 `[]agent.Skill`——装进接口之后接口本身不是 nil，
+一调 `Name()` 就 panic，而手机上 panic 一次就是整个 app 挂掉。
+
+**新增一项能力**：在 `internal/xxx/` 实现 `agent.Skill`，然后在 `internal/skillset` 的
+`Deps` 里加一个字段、`Build` 里加一行，两端各自决定传不传。同时在 `internal/agent/label.go` 的 `toolLabels` 表里补上工具名到中文标签的映射，否则界面直接显示英文工具名——那张表桌面端和 iOS 共用一份，`internal/chat/label_test.go` 会守着，漏了就红。
 
 **JSON Schema 那点词汇只有一份**：`internal/agent/schema.go` 的 `Obj` / `ObjAnyOf` /
 `Str` / `Int` / `Num` / `Flag` / `Arr`，各技能包里留的是一行别名（`var obj = agent.Obj`），

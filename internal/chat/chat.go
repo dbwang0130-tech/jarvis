@@ -20,6 +20,7 @@ import (
 	"github.com/dabao/jarvis/internal/persona"
 	"github.com/dabao/jarvis/internal/session"
 	extskills "github.com/dabao/jarvis/internal/skills"
+	"github.com/dabao/jarvis/internal/skillset"
 )
 
 // 极简 ANSI 配色（流式模式不依赖 lipgloss）。
@@ -198,15 +199,20 @@ func (s *Session) buildAgent() (*agent.Agent, error) {
 	return ag, nil
 }
 
+// buildSkills 交出桌面端这一轮的技能清单。
+//
+// 清单本身归 internal/skillset——那儿只有一份，手机端走的是同一个 Build。
+// 这边只负责说清「桌面端手上有什么」：全都有，浏览器也有（CDP 连本机 Chrome，
+// 这是桌面端独有的）。
 func (s *Session) buildSkills() []agent.Skill {
-	return []agent.Skill{
-		orgtools.NewSkill(s.orgWS),
-		mail.NewSkill(s.mailS),
-		s.ledgerSkill,
-		s.healthSkill,
-		s.browserSkill,
-		s.memSkill,
-	}
+	return skillset.Build(skillset.Deps{
+		Org:     s.orgWS,
+		Mail:    s.mailS,
+		Ledger:  s.ledgerSkill,
+		Health:  s.healthSkill,
+		Browser: s.browserSkill,
+		Memory:  s.memSkill,
+	})
 }
 
 func (s *Session) reloadAgent(msg string) {

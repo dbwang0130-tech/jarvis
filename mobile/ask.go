@@ -14,11 +14,11 @@ import (
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/health"
 	"github.com/dabao/jarvis/internal/ledger"
-	"github.com/dabao/jarvis/internal/mail"
 	"github.com/dabao/jarvis/internal/memory"
 	"github.com/dabao/jarvis/internal/org"
 	"github.com/dabao/jarvis/internal/orgtools"
 	extskills "github.com/dabao/jarvis/internal/skills"
+	"github.com/dabao/jarvis/internal/skillset"
 )
 
 // iOS 端只带日程和记账两项技能：它们改的都是本地文件、都可逆，
@@ -236,20 +236,24 @@ func askWith(inputJSON string, host Host) string {
 		ws.Now = func() time.Time { return t }
 	}
 
-	// 记忆跟着一起带上——两端共用 iCloud 里那一份，电脑上记住的事手机上
-	// 也该记得，反过来也是。
-	skills := []agent.Skill{
-		orgtools.NewSkill(ws),
-		ledger.NewSkill(ledgerPath),
-		health.New(healthPath),
-		memory.New(memoryPath),
-	}
-	// 配了邮箱才带上邮件能力。会话跨轮次留着，不然上一轮的编号和草稿全没了。
-	// 发信这类收不回来的动作靠 Host.Confirm 问用户，不用把工具摘掉。
+	// 清单归 internal/skillset，跟桌面端走同一个 Build——两份手抄清单的时代
+	// 结束了（那会儿没人看得出两端差在哪，文档里甚至写错了两项）。
+	//
+	// 手机上的两处差异都写在这儿：
+	//   - 浏览器是 nil：CDP 要连本机的 Chrome，iOS 上没有这个东西。
+	//   - 邮件配了邮箱才有。会话跨轮次留着，不然上一轮的编号和草稿全没了；
+	//     发信这类收不回来的动作靠 Host.Confirm 问用户，不用把工具摘掉。
+	//
+	// 记忆两端共用 iCloud 里那一份——电脑上记住的事手机上也该记得。
 	mailSess := mailSessionFor(in.Accounts)
-	if mailSess != nil {
-		skills = append(skills, mail.NewSkill(mailSess))
-	}
+	skills := skillset.Build(skillset.Deps{
+		Org:     ws,
+		Mail:    mailSess,
+		Ledger:  ledger.NewSkill(ledgerPath),
+		Health:  health.New(healthPath),
+		Browser: nil,
+		Memory:  memory.New(memoryPath),
+	})
 	ag, err := agent.Build(cfg, skills...)
 	if err != nil {
 		return askError("%v", err)
