@@ -11,6 +11,15 @@ import (
 	"github.com/dabao/jarvis/internal/mailbox"
 )
 
+// 下面这几行是**别名，不是第二份实现**——指向 agent 里那一份唯一定义
+// （见 agent/schema.go）。原先每个技能包各写一份函数体，而 num 已经在
+// ledger/health 和 mail/orgtools 之间漂成了 number 和 integer 两种。
+var (
+	obj = agent.Obj
+	str = agent.Str
+	arr = agent.Arr
+)
+
 // Tool 是秘书能对邮箱执行的一个动作，实现 agent.Tool 接口。
 type Tool struct {
 	spec     agent.ToolSpec
@@ -33,20 +42,6 @@ func (t *Tool) Preview(raw string) (string, string, error) {
 func (t *Tool) Run(raw string) (string, bool, error) {
 	out, err := t.run(t.sess, raw)
 	return out, false, err
-}
-
-func obj(props map[string]any, required ...string) map[string]any {
-	m := map[string]any{"type": "object", "properties": props}
-	if len(required) > 0 {
-		m["required"] = required
-	}
-	return m
-}
-
-func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
-func num(desc string) map[string]any { return map[string]any{"type": "integer", "description": desc} }
-func arr(items map[string]any, desc string) map[string]any {
-	return map[string]any{"type": "array", "items": items, "description": desc}
 }
 
 func spec(name, desc string, params map[string]any) agent.ToolSpec {
@@ -157,7 +152,7 @@ func toolTriage() *Tool {
 			"给邮件打上处置标签。一次把所有邮件都传进来，不要一封一封调。",
 			obj(map[string]any{
 				"items": arr(obj(map[string]any{
-					"no":      num("邮件编号"),
+					"no":      agent.Int("邮件编号"),
 					"verdict": map[string]any{"type": "string", "enum": []string{"important", "interest", "normal", "promo", "spam"}, "description": "important=需要尽快处理; interest=想读但不急; normal=留着即可; promo=营销推广; spam=垃圾或诈骗"},
 					"reason":  str("一句话理由，15 字以内"),
 				}, "no", "verdict", "reason"), "所有邮件的判断结果"),
@@ -280,7 +275,7 @@ func toolDraftReply() *Tool {
 		spec: spec("draft_reply",
 			"为某封邮件起草回信。body 要写成可以直接发出去的完整正文，不要写占位符。起草不会发出，用户确认后才由 send_draft 发送。",
 			obj(map[string]any{
-				"no":      num("要回复的邮件编号"),
+				"no":      agent.Int("要回复的邮件编号"),
 				"body":    str("回信正文全文，中文，包含称呼和结尾"),
 				"subject": str("可选。留空则自动用 Re: 原主题"),
 			}, "no", "body")),

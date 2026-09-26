@@ -10,6 +10,14 @@ import (
 	"github.com/dabao/jarvis/internal/agent"
 )
 
+// 下面这几行是**别名，不是第二份实现**——指向 agent 里那一份唯一定义
+// （见 agent/schema.go）。原先每个技能包各写一份函数体，而 num 已经在
+// ledger/health 和 mail/orgtools 之间漂成了 number 和 integer 两种。
+var (
+	obj = agent.Obj
+	str = agent.Str
+)
+
 // Skill 把健康记录接成秘书的一项技能。
 type Skill struct {
 	Store *Store
@@ -138,17 +146,6 @@ func (t tool) Preview(string) (string, string, error) { return "", "", nil }
 func (t tool) Run(args string) (string, bool, error)  { return t.run(args) }
 func (t tool) ReadOnly() bool                         { return t.readonly }
 
-func obj(props map[string]any, required ...string) map[string]any {
-	m := map[string]any{"type": "object", "properties": props}
-	if len(required) > 0 {
-		m["required"] = required
-	}
-	return m
-}
-
-func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
-func num(desc string) map[string]any { return map[string]any{"type": "number", "description": desc} }
-
 func (s *Skill) toolRecordVital() agent.Tool {
 	return tool{
 		spec: agent.ToolSpec{
@@ -157,9 +154,9 @@ func (s *Skill) toolRecordVital() agent.Tool {
 				"。LOINC 码和标准单位由工具查表填，不用传。",
 			Parameters: obj(map[string]any{
 				"kind":      str("测的是什么，取值：" + strings.Join(vitalNames, "、")),
-				"value":     num("数值。血压不填这个，填 systolic 和 diastolic"),
-				"systolic":  num("收缩压（高压），只有 kind 是血压时填"),
-				"diastolic": num("舒张压（低压），只有 kind 是血压时填"),
+				"value":     agent.Num("数值。血压不填这个，填 systolic 和 diastolic"),
+				"systolic":  agent.Num("收缩压（高压），只有 kind 是血压时填"),
+				"diastolic": agent.Num("舒张压（低压），只有 kind 是血压时填"),
 				"at":        str("测量时间，格式 2006-01-02 15:04，留空表示现在"),
 				"note":      str("附注，如「空腹」「运动后」"),
 			}, "kind"),
@@ -272,7 +269,7 @@ func (s *Skill) toolRecordMeal() agent.Tool {
 				"meal": str("哪一餐：早餐 / 午餐 / 晚餐 / 加餐"),
 				"items": map[string]any{"type": "array", "items": str("一样吃的东西"),
 					"description": "吃了些什么，如 [\"小米粥\", \"鸡蛋\"]"},
-				"kcal": num("大概多少千卡，不知道就不填"),
+				"kcal": agent.Num("大概多少千卡，不知道就不填"),
 				"at":   str("吃的时间，格式 2006-01-02 15:04，留空表示现在"),
 				"note": str("附注"),
 			}, "meal", "items"),
@@ -359,8 +356,8 @@ func (s *Skill) toolListHealth() agent.Tool {
 			Description: "查健康记录，用于回答「我最近怎么样」「上个月体重变化」。",
 			Parameters: obj(map[string]any{
 				"kind":  str("看哪一项：" + strings.Join(vitalNames, "、") + " 或 饮食；留空看全部"),
-				"days":  num("往回看几天，默认 30"),
-				"limit": num("最多给几条，默认 30"),
+				"days":  agent.Num("往回看几天，默认 30"),
+				"limit": agent.Num("最多给几条，默认 30"),
 			}),
 		},
 		readonly: true,

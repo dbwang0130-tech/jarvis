@@ -153,6 +153,21 @@ frontmatter 里 `name` + `description`）。**只有名字和用途常驻系统�
 
 **新增一项能力**：在 `internal/xxx/` 实现 `agent.Skill`，然后在 `internal/chat/chat.go` 的 `buildSkills()` 里加一行。同时在 `internal/agent/label.go` 的 `toolLabels` 表里补上工具名到中文标签的映射，否则界面直接显示英文工具名——那张表桌面端和 iOS 共用一份，`internal/chat/label_test.go` 会守着，漏了就红。
 
+**JSON Schema 那点词汇只有一份**：`internal/agent/schema.go` 的 `Obj` / `ObjAnyOf` /
+`Str` / `Int` / `Num` / `Flag` / `Arr`，各技能包里留的是一行别名（`var obj = agent.Obj`），
+不是第二份实现。原先是六个包各写一份函数体，而**已经漂出两处**：同一个 `num` 在
+ledger/health 里生成 `"number"`、在 mail/orgtools/plan 里生成 `"integer"`；orgtools 那份
+`obj`（当时叫 `schema`）还会多发一个 `"required": []`。照着邻居的写法抄一行，抄来的是
+另一种类型，而模型读的正是这个 schema，运行期也不会报错。所以整数和浮点分成两个名字，
+选哪个在调用处写明白。收拢那次靠 `internal/chat/testdata/tools.json` 这份金标对前后，
+35 个声明只允许那两处 `"required": []` 消失（33 个工具本来就没这个字段，一直正常工作）。
+
+**工具声明有金标**：`internal/chat/schemadump_test.go` 把全部工具的名字、风险、只读标记
+和参数 schema 倒成 `testdata/tools.json` 对比。工具表是常驻开销，让它的任何变化都在 diff
+里看得见；改动是有意的就 `go test ./internal/chat/ -run TestToolSchemas -update`，顺手也
+就看见自己让声明长了多少字节。它还兜住改共用辅助函数那类静默事故——编译和别的测试都
+不会响，只有这儿会。
+
 **工具表是要花钱的**：每个工具的声明每一轮都重发一遍，描述写长一点、参数多列一个，都是常驻开销。同一个对象的多项修改合成一个工具（`update_item` 就是 `schedule_item`/`set_deadline`/`set_todo_state`/`set_priority`/`set_repeat` 五个合来的），比摊成五个各带一遍 `ref`+`title` 省得多。约束也要写进 schema（`schemaOneOf` 生成 `anyOf`）而不只写在描述的散文里——模型读的是 schema，靠运行期报错纠正要白费一个来回。
 
 **「没给」和「给了空串」是两回事**，这条是 `internal/orgtools/args.go` 的存在理由。`args` 类型把这件事做成方法（`Has` / `OptStr`），`itemPatch` 让 `create_item` 和 `update_item` 读同一份结构：**没提**状态才落默认的 TODO，**给了空串**是要一条不带状态的条目；改的那边同理，没提就不动、给空串才清除。早先两个工具用 `""` 同时兼任两种意思，各记各的约定，`mobile/act.go` 也跟着分裂成两套写法。判据也要一致——`move_item` 的两条分支一度一条按「键在不在」、一条按「值是不是零」。`update_test.go` 里有一组专钉这套语义的用例。

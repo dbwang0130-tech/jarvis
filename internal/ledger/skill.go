@@ -10,6 +10,15 @@ import (
 	"github.com/dabao/jarvis/internal/agent"
 )
 
+// 下面这几行是**别名，不是第二份实现**——指向 agent 里那一份唯一定义
+// （见 agent/schema.go）。原先每个技能包各写一份函数体，而 num 已经在
+// ledger/health 和 mail/orgtools 之间漂成了 number 和 integer 两种。
+var (
+	obj = agent.Obj
+	str = agent.Str
+	arr = agent.Arr
+)
+
 // Skill 把记账能力作为秘书的一项技能接入。
 type Skill struct {
 	Book *Book
@@ -139,20 +148,6 @@ func (t tool) Preview(string) (string, string, error) { return "", "", nil }
 func (t tool) Run(args string) (string, bool, error)  { return t.run(args) }
 func (t tool) ReadOnly() bool                         { return t.readonly }
 
-func obj(props map[string]any, required ...string) map[string]any {
-	m := map[string]any{"type": "object", "properties": props}
-	if len(required) > 0 {
-		m["required"] = required
-	}
-	return m
-}
-
-func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
-func num(desc string) map[string]any { return map[string]any{"type": "number", "description": desc} }
-func arr(items map[string]any, desc string) map[string]any {
-	return map[string]any{"type": "array", "items": items, "description": desc}
-}
-
 func (s *Skill) toolAddTransaction() agent.Tool {
 	return tool{
 		spec: agent.ToolSpec{
@@ -163,7 +158,7 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 				"payee": str("摘要/收款方，如「午餐」「发工资」"),
 				"postings": arr(obj(map[string]any{
 					"account":   str("账户全名，从环境里列出的那张账户表里挑；确实没有才新建"),
-					"amount":    num("金额，正数表示该账户增加。付款那条留空，系统会配平成负数"),
+					"amount":    agent.Num("金额，正数表示该账户增加。付款那条留空，系统会配平成负数"),
 					"commodity": str("货币，默认 CNY；留空沿用同笔其他 posting 的货币"),
 				}, "account"), "借贷条目，至少两条"),
 			}, "payee", "postings"),
@@ -282,7 +277,7 @@ func (s *Skill) toolListTransactions() agent.Tool {
 			Description: "查看最近的交易流水。可按账户筛选，用于回答「我最近买了什么」「上月开销明细」。",
 			Parameters: obj(map[string]any{
 				"account": str("可选，账户名或前缀，如 Expenses:Food"),
-				"limit":   num("最多返回多少笔，默认 20"),
+				"limit":   agent.Num("最多返回多少笔，默认 20"),
 			}),
 		},
 		readonly: true,

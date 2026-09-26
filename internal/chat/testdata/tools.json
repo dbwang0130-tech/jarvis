@@ -1,0 +1,1043 @@
+[
+  {
+    "Skill": "日程",
+    "Name": "list_agenda",
+    "Risk": 0,
+    "ReadOnly": true,
+    "Spec": {
+      "name": "list_agenda",
+      "description": "查看某段日期范围内的日程安排，包含计划、截止、事件与逾期项。用于了解用户当前的时间占用情况。",
+      "parameters": {
+        "properties": {
+          "days": {
+            "description": "天数，默认 7",
+            "type": "integer"
+          },
+          "start_date": {
+            "description": "起始日期，格式 2006-01-02，留空表示今天",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "list_todos",
+    "Risk": 0,
+    "ReadOnly": true,
+    "Spec": {
+      "name": "list_todos",
+      "description": "查看待办事项列表，可按状态、标签、关键词或类别筛选。返回的 ref 字段用于后续修改操作。",
+      "parameters": {
+        "properties": {
+          "category": {
+            "description": "所属类别（通常是文件名或 #+CATEGORY）",
+            "type": "string"
+          },
+          "include_done": {
+            "description": "是否包含已完成条目，默认否",
+            "type": "boolean"
+          },
+          "query": {
+            "description": "标题关键词",
+            "type": "string"
+          },
+          "state": {
+            "description": "TODO 状态，如 TODO、NEXT、WAITING",
+            "type": "string"
+          },
+          "tag": {
+            "description": "标签名",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "find_free_slots",
+    "Risk": 0,
+    "ReadOnly": true,
+    "Spec": {
+      "name": "find_free_slots",
+      "description": "查看某天在可安排时段内的空闲时间段，用于给任务找合适的时间。",
+      "parameters": {
+        "properties": {
+          "date": {
+            "description": "日期，格式 2006-01-02，留空表示今天",
+            "type": "string"
+          },
+          "min_minutes": {
+            "description": "只返回不短于该分钟数的空档，默认 30",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "get_item",
+    "Risk": 0,
+    "ReadOnly": true,
+    "Spec": {
+      "name": "get_item",
+      "description": "查看单个条目的详细信息，包括计划时间、截止时间、标签、属性与正文。",
+      "parameters": {
+        "properties": {
+          "ref": {
+            "description": "条目引用，形如 work.org:12",
+            "type": "string"
+          },
+          "title": {
+            "description": "条目标题，用于校验，建议一并提供",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "update_item",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "update_item",
+      "description": "修改已有条目：状态、优先级、计划时间、截止时间、循环规则，一次可改多项。这几项跟 create_item 同名同义。只传要改的那几项——**没传的保持不变，传空字符串才是清除**（scheduled 传空就是取消计划）。要改好几项就一次带上，每调一次 ref 都会变。",
+      "parameters": {
+        "properties": {
+          "deadline": {
+            "description": "截止时间，格式 2006-01-02 或 2006-01-02 15:04；空表示取消截止",
+            "type": "string"
+          },
+          "priority": {
+            "description": "优先级 A、B 或 C；空表示去掉优先级",
+            "type": "string"
+          },
+          "ref": {
+            "description": "条目引用，形如 work.org:12",
+            "type": "string"
+          },
+          "repeat": {
+            "description": "循环规则：+1d 每天、+1w 每周、+1m 每月、.+3d 表示完成后再隔三天；空表示取消循环。条目需要先有计划或截止时间",
+            "type": "string"
+          },
+          "scheduled": {
+            "description": "计划时间，格式 2006-01-02、2006-01-02 15:04 或 2006-01-02 15:04-16:30；空表示取消计划",
+            "type": "string"
+          },
+          "state": {
+            "description": "TODO 状态，如 TODO、NEXT、WAITING、DONE、CANCELLED；空表示去掉状态",
+            "type": "string"
+          },
+          "title": {
+            "description": "条目标题，用于校验",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "delete_item",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "delete_item",
+      "description": "删除一个条目及其下属的全部子条目。这是破坏性操作，只在用户明确要求删除时使用；如果只是做完了，应该用 update_item 把 state 标成完成。",
+      "parameters": {
+        "properties": {
+          "ref": {
+            "description": "条目引用，形如 work.org:12",
+            "type": "string"
+          },
+          "title": {
+            "description": "条目标题，必须提供，用于确认删对了条目",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "title"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "create_item",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "create_item",
+      "description": "新建一个待办条目。用户提出新任务时用这个。",
+      "parameters": {
+        "properties": {
+          "body": {
+            "description": "正文说明，可多行",
+            "type": "string"
+          },
+          "deadline": {
+            "description": "截止时间，格式 2006-01-02 或 2006-01-02 15:04",
+            "type": "string"
+          },
+          "file": {
+            "description": "写入哪个文件，如 work.org；留空则写入默认收件箱",
+            "type": "string"
+          },
+          "parent": {
+            "description": "父条目引用，形如 work.org:5；给了就挂到它下面成为子条目，此时 file 忽略",
+            "type": "string"
+          },
+          "priority": {
+            "description": "优先级 A、B 或 C",
+            "type": "string"
+          },
+          "repeat": {
+            "description": "循环规则，如 +1w 表示每周重复；留空表示不循环",
+            "type": "string"
+          },
+          "scheduled": {
+            "description": "计划时间，格式 2006-01-02、2006-01-02 15:04 或 2006-01-02 15:04-16:30",
+            "type": "string"
+          },
+          "state": {
+            "description": "TODO 状态，不传默认 TODO；明确传空字符串则建一条不带状态的普通条目",
+            "type": "string"
+          },
+          "tags": {
+            "description": "标签列表",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "description": "条目标题",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "clock_in",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "clock_in",
+      "description": "开始为某个条目计时，写入 LOGBOOK 的 CLOCK 记录。用户说「开始计时/开始做这件事」时用。",
+      "parameters": {
+        "properties": {
+          "ref": {
+            "description": "条目引用，形如 work.org:12",
+            "type": "string"
+          },
+          "title": {
+            "description": "条目标题，用于校验",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "clock_out",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "clock_out",
+      "description": "结束某个条目的计时，补全 LOGBOOK 里的 CLOCK 记录。用户说「停止计时/做完了」时用。",
+      "parameters": {
+        "properties": {
+          "ref": {
+            "description": "条目引用，形如 work.org:12",
+            "type": "string"
+          },
+          "title": {
+            "description": "条目标题，用于校验",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "add_note",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "add_note",
+      "description": "在条目的 LOGBOOK 里记一条笔记。用户说「记一下进度/备注一下」时用。",
+      "parameters": {
+        "properties": {
+          "ref": {
+            "description": "条目引用，形如 work.org:12",
+            "type": "string"
+          },
+          "text": {
+            "description": "笔记内容",
+            "type": "string"
+          },
+          "title": {
+            "description": "条目标题，用于校验",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "text"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "toggle_checkbox",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "toggle_checkbox",
+      "description": "勾上或取消条目正文里的某个复选框（`- [ ] 买菜` 那种），标题上的 [n/m] 进度会跟着变。用户说「第二项做完了」时用。",
+      "parameters": {
+        "properties": {
+          "index": {
+            "description": "第几个复选框，从 1 数起",
+            "type": "integer"
+          },
+          "ref": {
+            "description": "条目引用，形如 work.org:12",
+            "type": "string"
+          },
+          "title": {
+            "description": "条目标题，用于校验",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "index"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "日程",
+    "Name": "move_item",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "move_item",
+      "description": "调整条目及其子条目在大纲里的位置。二选一：给 parent_ref 就挂到那个父条目下（传空字符串则移到文件顶层末尾）；给 level_delta 就原地升降级（+1 降一级变成更深的子任务，-1 升一级）。",
+      "parameters": {
+        "anyOf": [
+          {
+            "required": [
+              "parent_ref"
+            ]
+          },
+          {
+            "required": [
+              "level_delta"
+            ]
+          }
+        ],
+        "properties": {
+          "level_delta": {
+            "description": "升降几级：+1 降一级，-1 升一级",
+            "type": "integer"
+          },
+          "parent_ref": {
+            "description": "目标父条目引用，形如 work.org:5；传空字符串移到顶层末尾",
+            "type": "string"
+          },
+          "ref": {
+            "description": "要移动的条目引用，形如 work.org:12",
+            "type": "string"
+          },
+          "title": {
+            "description": "条目标题，用于校验",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "邮件",
+    "Name": "clean_mail",
+    "Risk": 1,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "clean_mail",
+      "description": "把指定邮件移进垃圾箱。只对确定是广告或垃圾的邮件用。用户会先看到清单并确认。",
+      "parameters": {
+        "properties": {
+          "nos": {
+            "description": "要清理的邮件编号",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "nos"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "邮件",
+    "Name": "draft_new",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "draft_new",
+      "description": "起草一封新邮件。body 要写成可以直接发出去的完整正文。起草不会发出。",
+      "parameters": {
+        "properties": {
+          "account": {
+            "description": "可选，用哪个账号发；留空用默认账号",
+            "type": "string"
+          },
+          "body": {
+            "description": "正文全文，中文，包含称呼和结尾",
+            "type": "string"
+          },
+          "cc": {
+            "description": "可选，抄送地址",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subject": {
+            "description": "邮件主题",
+            "type": "string"
+          },
+          "to": {
+            "description": "收件人邮箱地址",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "body"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "邮件",
+    "Name": "draft_reply",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "draft_reply",
+      "description": "为某封邮件起草回信。body 要写成可以直接发出去的完整正文，不要写占位符。起草不会发出，用户确认后才由 send_draft 发送。",
+      "parameters": {
+        "properties": {
+          "body": {
+            "description": "回信正文全文，中文，包含称呼和结尾",
+            "type": "string"
+          },
+          "no": {
+            "description": "要回复的邮件编号",
+            "type": "integer"
+          },
+          "subject": {
+            "description": "可选。留空则自动用 Re: 原主题",
+            "type": "string"
+          }
+        },
+        "required": [
+          "no",
+          "body"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "邮件",
+    "Name": "list_mail",
+    "Risk": 0,
+    "ReadOnly": true,
+    "Spec": {
+      "name": "list_mail",
+      "description": "列出当前已知的邮件清单（编号、发件人、主题、时间、正文开头）。这是本次拉取的结果，清理掉的邮件会从中消失。清单已在对话开头给过，只有需要重看时才调用。想从服务器重新同步用 refresh_mail。",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "邮件",
+    "Name": "load_more_mail",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "load_more_mail",
+      "description": "往前再加载一批更早的邮件，追加到清单末尾，已有邮件的编号不变。用户说「再往前看看」「还有更早的吗」「翻下一页」时用。",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "邮件",
+    "Name": "mark_read",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "mark_read",
+      "description": "把邮件在服务器上标成已读或未读。用户说「这几封我看过了」「把那封标回未读」时用。",
+      "parameters": {
+        "properties": {
+          "nos": {
+            "description": "邮件编号",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "read": {
+            "description": "true 标为已读，false 标回未读。默认 true",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "nos"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "邮件",
+    "Name": "refresh_mail",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "refresh_mail",
+      "description": "去服务器同步上次之后新到的邮件。用户说「刷新」「看看有没有新邮件」时用。已有邮件的编号不变，新邮件编号接着往下排。",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "邮件",
+    "Name": "send_draft",
+    "Risk": 2,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "send_draft",
+      "description": "把已起草的邮件真正发出去。只有用户明确表示要发时才调用。",
+      "parameters": {
+        "properties": {
+          "draft_id": {
+            "description": "草稿 id，形如 d1",
+            "type": "string"
+          }
+        },
+        "required": [
+          "draft_id"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "邮件",
+    "Name": "triage",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "triage",
+      "description": "给邮件打上处置标签。一次把所有邮件都传进来，不要一封一封调。",
+      "parameters": {
+        "properties": {
+          "items": {
+            "description": "所有邮件的判断结果",
+            "items": {
+              "properties": {
+                "no": {
+                  "description": "邮件编号",
+                  "type": "integer"
+                },
+                "reason": {
+                  "description": "一句话理由，15 字以内",
+                  "type": "string"
+                },
+                "verdict": {
+                  "description": "important=需要尽快处理; interest=想读但不急; normal=留着即可; promo=营销推广; spam=垃圾或诈骗",
+                  "enum": [
+                    "important",
+                    "interest",
+                    "normal",
+                    "promo",
+                    "spam"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "no",
+                "verdict",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "记账",
+    "Name": "add_transaction",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "add_transaction",
+      "description": "记一笔账。用户说「记一笔」「花了」「收入」「报销」时用。至少两条 posting，付款那条留空让系统配平。",
+      "parameters": {
+        "properties": {
+          "date": {
+            "description": "日期，格式 2006/01/02，留空表示今天",
+            "type": "string"
+          },
+          "payee": {
+            "description": "摘要/收款方，如「午餐」「发工资」",
+            "type": "string"
+          },
+          "postings": {
+            "description": "借贷条目，至少两条",
+            "items": {
+              "properties": {
+                "account": {
+                  "description": "账户全名，从环境里列出的那张账户表里挑；确实没有才新建",
+                  "type": "string"
+                },
+                "amount": {
+                  "description": "金额，正数表示该账户增加。付款那条留空，系统会配平成负数",
+                  "type": "number"
+                },
+                "commodity": {
+                  "description": "货币，默认 CNY；留空沿用同笔其他 posting 的货币",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "account"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "payee",
+          "postings"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "记账",
+    "Name": "list_accounts",
+    "Risk": 0,
+    "ReadOnly": true,
+    "Spec": {
+      "name": "list_accounts",
+      "description": "查看账户余额。可按账户前缀筛选，用于回答「还剩多少钱」「这个月花了多少」。",
+      "parameters": {
+        "properties": {
+          "account": {
+            "description": "可选，账户名或前缀，如 Expenses 或 Assets:Cash",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "记账",
+    "Name": "list_transactions",
+    "Risk": 0,
+    "ReadOnly": true,
+    "Spec": {
+      "name": "list_transactions",
+      "description": "查看最近的交易流水。可按账户筛选，用于回答「我最近买了什么」「上月开销明细」。",
+      "parameters": {
+        "properties": {
+          "account": {
+            "description": "可选，账户名或前缀，如 Expenses:Food",
+            "type": "string"
+          },
+          "limit": {
+            "description": "最多返回多少笔，默认 20",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "健康",
+    "Name": "record_vital",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "record_vital",
+      "description": "记一次身体测量：体重、身高、BMI、血压、静息心率、心率、体温、血氧、呼吸、血糖、腰围、步数、睡眠。LOINC 码和标准单位由工具查表填，不用传。",
+      "parameters": {
+        "properties": {
+          "at": {
+            "description": "测量时间，格式 2006-01-02 15:04，留空表示现在",
+            "type": "string"
+          },
+          "diastolic": {
+            "description": "舒张压（低压），只有 kind 是血压时填",
+            "type": "number"
+          },
+          "kind": {
+            "description": "测的是什么，取值：体重、身高、BMI、血压、静息心率、心率、体温、血氧、呼吸、血糖、腰围、步数、睡眠",
+            "type": "string"
+          },
+          "note": {
+            "description": "附注，如「空腹」「运动后」",
+            "type": "string"
+          },
+          "systolic": {
+            "description": "收缩压（高压），只有 kind 是血压时填",
+            "type": "number"
+          },
+          "value": {
+            "description": "数值。血压不填这个，填 systolic 和 diastolic",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "健康",
+    "Name": "record_meal",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "record_meal",
+      "description": "记一餐吃了什么。热量不知道就别填，凭菜名猜的数会被当成量出来的。",
+      "parameters": {
+        "properties": {
+          "at": {
+            "description": "吃的时间，格式 2006-01-02 15:04，留空表示现在",
+            "type": "string"
+          },
+          "items": {
+            "description": "吃了些什么，如 [\"小米粥\", \"鸡蛋\"]",
+            "items": {
+              "description": "一样吃的东西",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kcal": {
+            "description": "大概多少千卡，不知道就不填",
+            "type": "number"
+          },
+          "meal": {
+            "description": "哪一餐：早餐 / 午餐 / 晚餐 / 加餐",
+            "type": "string"
+          },
+          "note": {
+            "description": "附注",
+            "type": "string"
+          }
+        },
+        "required": [
+          "meal",
+          "items"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "健康",
+    "Name": "set_health_profile",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "set_health_profile",
+      "description": "填基础信息：生日、性别。身高会变，用 record_vital 记成一次测量。",
+      "parameters": {
+        "properties": {
+          "birth_date": {
+            "description": "生日，格式 2006-01-02",
+            "type": "string"
+          },
+          "gender": {
+            "description": "性别：男 / 女 / 其他",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "健康",
+    "Name": "list_health",
+    "Risk": 0,
+    "ReadOnly": true,
+    "Spec": {
+      "name": "list_health",
+      "description": "查健康记录，用于回答「我最近怎么样」「上个月体重变化」。",
+      "parameters": {
+        "properties": {
+          "days": {
+            "description": "往回看几天，默认 30",
+            "type": "number"
+          },
+          "kind": {
+            "description": "看哪一项：体重、身高、BMI、血压、静息心率、心率、体温、血氧、呼吸、血糖、腰围、步数、睡眠 或 饮食；留空看全部",
+            "type": "string"
+          },
+          "limit": {
+            "description": "最多给几条，默认 30",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "浏览器",
+    "Name": "browser_navigate",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "browser_navigate",
+      "description": "打开一个网址，返回最终地址和页面标题。",
+      "parameters": {
+        "properties": {
+          "url": {
+            "description": "网址，如 https://example.com",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "浏览器",
+    "Name": "browser_read",
+    "Risk": 0,
+    "ReadOnly": true,
+    "Spec": {
+      "name": "browser_read",
+      "description": "读取匹配 CSS 选择器的元素文本，最多约 2000 字，用于抓标题、价格、列表。只读不改页面，能跟别的查询并发；要执行有副作用的脚本用 browser_exec_js。",
+      "parameters": {
+        "properties": {
+          "links": {
+            "description": "为真时每行附上链接地址，用于抓链接列表",
+            "type": "boolean"
+          },
+          "selector": {
+            "description": "CSS 选择器，如 .price、#result、a.title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "浏览器",
+    "Name": "browser_click",
+    "Risk": 1,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "browser_click",
+      "description": "点击匹配 CSS 选择器的第一个元素。",
+      "parameters": {
+        "properties": {
+          "selector": {
+            "description": "CSS 选择器",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "浏览器",
+    "Name": "browser_type",
+    "Risk": 1,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "browser_type",
+      "description": "向匹配选择器的输入框输入文字。",
+      "parameters": {
+        "properties": {
+          "selector": {
+            "description": "CSS 选择器，如 input[name=q]",
+            "type": "string"
+          },
+          "text": {
+            "description": "要输入的文字",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "text"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "浏览器",
+    "Name": "browser_submit",
+    "Risk": 2,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "browser_submit",
+      "description": "提交匹配选择器的表单。这是会产生后果的操作，谨慎使用。",
+      "parameters": {
+        "properties": {
+          "selector": {
+            "description": "表单选择器，如 form",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "浏览器",
+    "Name": "browser_exec_js",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "browser_exec_js",
+      "description": "在页面里执行一段 JS 表达式并返回结果（建议用 JSON.stringify 返回紧凑结果）。用于精确抓取，比整页提取省 token。",
+      "parameters": {
+        "properties": {
+          "script": {
+            "description": "JS 表达式，返回字符串或可 JSON 化的值",
+            "type": "string"
+          }
+        },
+        "required": [
+          "script"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  {
+    "Skill": "记忆",
+    "Name": "remember",
+    "Risk": 0,
+    "ReadOnly": false,
+    "Spec": {
+      "name": "remember",
+      "description": "记住用户的一条长期偏好。用户明确说「记住/以后记得/我习惯」时用。",
+      "parameters": {
+        "properties": {
+          "note": {
+            "description": "要记住的内容，一句话说清",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "type": "object"
+      }
+    }
+  }
+]

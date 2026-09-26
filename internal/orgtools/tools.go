@@ -10,6 +10,16 @@ import (
 	"github.com/dabao/jarvis/internal/org"
 )
 
+// 下面这几行是**别名，不是第二份实现**——指向 agent 里那一份唯一定义
+// （见 agent/schema.go）。原先每个技能包各写一份函数体，而 num 已经在
+// ledger/health 和 mail/orgtools 之间漂成了 number 和 integer 两种。
+var (
+	schema      = agent.Obj
+	schemaOneOf = agent.ObjAnyOf
+	str         = agent.Str
+	flag        = agent.Flag
+)
+
 // orgTool 是日程工具对 agent.Tool 的适配：只读、无风险、执行交给 execOrg。
 type orgTool struct {
 	spec     agent.ToolSpec
@@ -23,34 +33,6 @@ func (t orgTool) Preview(string) (string, string, error) { return "", "", nil }
 func (t orgTool) Run(args string) (string, bool, error)  { return t.exec(args) }
 func (t orgTool) ReadOnly() bool                         { return t.readonly }
 
-func schema(props map[string]any, required ...string) map[string]any {
-	if required == nil {
-		required = []string{}
-	}
-	return map[string]any{"type": "object", "properties": props, "required": required}
-}
-
-// schemaOneOf 在普通 schema 上加一条「这几个字段至少给一个」的约束。
-//
-// 写成 JSON Schema 的 anyOf，模型在读工具声明时就能看见。不然这条规则
-// 只活在 Description 的散文里，全靠运行期报错去纠正——白费一个来回，
-// 而那一个来回是要付钱的。运行期该校验还是得校验（模型不一定照做），
-// 但别让声明层对约束一个字都不提。
-func schemaOneOf(props map[string]any, required []string, oneOf ...string) map[string]any {
-	m := schema(props, required...)
-	alts := make([]map[string]any, 0, len(oneOf))
-	for _, k := range oneOf {
-		alts = append(alts, map[string]any{"required": []string{k}})
-	}
-	m["anyOf"] = alts
-	return m
-}
-
-func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
-
-func num(desc string) map[string]any  { return map[string]any{"type": "integer", "description": desc} }
-func flag(desc string) map[string]any { return map[string]any{"type": "boolean", "description": desc} }
-
 // wsToolDefs 返回日程工具的全部声明。
 func wsToolDefs() []agent.ToolSpec {
 	return []agent.ToolSpec{
@@ -59,7 +41,7 @@ func wsToolDefs() []agent.ToolSpec {
 			Description: "查看某段日期范围内的日程安排，包含计划、截止、事件与逾期项。用于了解用户当前的时间占用情况。",
 			Parameters: schema(map[string]any{
 				"start_date": str("起始日期，格式 2006-01-02，留空表示今天"),
-				"days":       num("天数，默认 7"),
+				"days":       agent.Int("天数，默认 7"),
 			}),
 		},
 		{
@@ -78,7 +60,7 @@ func wsToolDefs() []agent.ToolSpec {
 			Description: "查看某天在可安排时段内的空闲时间段，用于给任务找合适的时间。",
 			Parameters: schema(map[string]any{
 				"date":        str("日期，格式 2006-01-02，留空表示今天"),
-				"min_minutes": num("只返回不短于该分钟数的空档，默认 30"),
+				"min_minutes": agent.Int("只返回不短于该分钟数的空档，默认 30"),
 			}, "date"),
 		},
 		{
@@ -162,7 +144,7 @@ func wsToolDefs() []agent.ToolSpec {
 			Parameters: schema(map[string]any{
 				"ref":   str("条目引用，形如 work.org:12"),
 				"title": str("条目标题，用于校验"),
-				"index": num("第几个复选框，从 1 数起"),
+				"index": agent.Int("第几个复选框，从 1 数起"),
 			}, "ref", "index"),
 		},
 		{
@@ -174,7 +156,7 @@ func wsToolDefs() []agent.ToolSpec {
 				"ref":         str("要移动的条目引用，形如 work.org:12"),
 				"title":       str("条目标题，用于校验"),
 				"parent_ref":  str("目标父条目引用，形如 work.org:5；传空字符串移到顶层末尾"),
-				"level_delta": num("升降几级：+1 降一级，-1 升一级"),
+				"level_delta": agent.Int("升降几级：+1 降一级，-1 升一级"),
 			}, []string{"ref"}, "parent_ref", "level_delta"),
 		},
 	}

@@ -61,6 +61,9 @@ func TestEveryToolHasALabel(t *testing.T) {
 // 九合五时，四个 readonly 工具全并进了 browser_exec_js，而 exec_js 能改
 // DOM、标不了只读，于是整个技能的只读覆盖率归零——编译、测试全绿，
 // 没有任何地方会响。
+// **记忆不在名单里，这是故意的**：它只有 remember 一个工具，是纯写入的，
+// 没有「只读覆盖率」可言。别顺手把 memory 加进来——加了会红，然后就有人去删
+// 这条断言，那才是真的损失。哪天记忆多了个查询工具，再把它加进来。
 func TestEverySkillKeepsAReadOnlyTool(t *testing.T) {
 	cfg := config.Default()
 	coll := &org.Collection{}

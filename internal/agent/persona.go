@@ -40,10 +40,6 @@ func (a *Agent) personaText() string {
 	return DefaultPersona
 }
 
-func str(desc string) map[string]any {
-	return map[string]any{"type": "string", "description": desc}
-}
-
 // personaTool 读写人设。
 //
 // **一个工具兼读写**，靠 text 给没给来分：没给是读，给了是写。摊成
@@ -63,8 +59,8 @@ func (t personaTool) Spec() ToolSpec {
 		Description: "读或改 Jarvis 自己的人设（性格、称呼、说话风格）。" +
 			"不带 text 是读出当前人设；带 text 是整段覆盖；text 给空串是恢复内置人设。" +
 			"用户说「以后正式一点」「别叫我先生」「说话短一些」这类要改你自己的话时用。",
-		Parameters: obj(map[string]any{
-			"text": str("新的人设全文，整段覆盖。只想读就别带这个参数"),
+		Parameters: Obj(map[string]any{
+			"text": Str("新的人设全文，整段覆盖。只想读就别带这个参数"),
 		}),
 	}
 }

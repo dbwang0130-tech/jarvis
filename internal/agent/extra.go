@@ -51,8 +51,8 @@ func (t skillTool) Spec() ToolSpec {
 		Name: "skill",
 		Description: "读一份「按需展开的技能」的正文。系统提示里列了有哪些、各管什么；" +
 			"要照某一份办事之前先调它把内容读进来。",
-		Parameters: obj(map[string]any{
-			"name": str("技能名，照系统提示里列的那个写"),
+		Parameters: Obj(map[string]any{
+			"name": Str("技能名，照系统提示里列的那个写"),
 		}, "name"),
 	}
 }

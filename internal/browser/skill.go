@@ -12,6 +12,15 @@ import (
 	"github.com/dabao/jarvis/internal/config"
 )
 
+// 下面这几行是**别名，不是第二份实现**——指向 agent 里那一份唯一定义
+// （见 agent/schema.go）。原先每个技能包各写一份函数体，而 num 已经在
+// ledger/health 和 mail/orgtools 之间漂成了 number 和 integer 两种。
+var (
+	obj  = agent.Obj
+	str  = agent.Str
+	flag = agent.Flag
+)
+
 // Skill 把浏览器自动化作为秘书的一项技能接入。
 type Skill struct {
 	Cfg    config.Config
@@ -75,20 +84,6 @@ func (t tool) Preview(args string) (string, string, error) {
 	return t.preview(args)
 }
 func (t tool) Run(args string) (string, bool, error) { return t.run(args) }
-
-func obj(props map[string]any, required ...string) map[string]any {
-	m := map[string]any{"type": "object", "properties": props}
-	if len(required) > 0 {
-		m["required"] = required
-	}
-	return m
-}
-
-func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
-
-func flag(desc string) map[string]any {
-	return map[string]any{"type": "boolean", "description": desc}
-}
 
 // jsStr 把 Go 字符串安全地转成 JS 字符串字面量，避免选择器里的引号破坏脚本。
 func jsStr(s string) string {
