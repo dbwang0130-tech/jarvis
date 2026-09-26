@@ -219,12 +219,19 @@ struct SettingRow: View {
 
 // MARK: - 模型
 
+/// 模型配置清单。
+///
+/// **跟邮箱那一页同一个形状**：列出来、点加号添一条、点一条改、左滑删。
+/// 原先是「顶上编辑一份匿名的当前配置，底下再起个名字存下来」——两套心智
+/// 模型搅在一起，那个「存」按钮尤其没道理：人刚填完就在用了，为什么还要
+/// 再存一次？现在只有一件事：清单里的一条。用哪条，点一下。
 struct ModelSettings: View {
     @EnvironmentObject var store: Store
     /// 上一层传下来的服务商清单。**空的时候自己再取一次**——这一页离了它
     /// 什么都选不了，而调用方可能还没取到（深链直接推进来就是这种）。
     let passedProviders: [ProviderInfo]
     @State private var fetched: [ProviderInfo] = []
+    @State private var editing: ModelProfile?
 
     private var providers: [ProviderInfo] {
         passedProviders.isEmpty ? fetched : passedProviders
@@ -232,245 +239,267 @@ struct ModelSettings: View {
 
     init(providers: [ProviderInfo]) { passedProviders = providers }
 
-    @State private var provider = ""
-    @State private var model = ""
-    @State private var baseURL = ""
-    @State private var apiKey = ""
-    @State private var newName = ""
-    @State private var checking = false
-    @State private var check: ModelCheck?
-#if DEBUG
-    /// 跟上一层同一个口子：让挑模型那一页直接推出来，好在模拟器里看。
-    @State private var debugToPicker =
-        ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "models"
-#endif
-
-    private var info: ProviderInfo? { providers.first { $0.name == provider } }
-
     var body: some View {
         List {
             Section {
-                Picker("服务商", selection: $provider) {
-                    ForEach(providers) { p in
-                        Text(p.vision ? "\(p.name) · 视觉" : p.name).tag(p.name)
-                    }
-                }
-                .onChange(of: provider) { _, name in
-                    // 换服务商就把上一家的模型名和地址清掉——留着的话会拿豆包的
-                    // 模型名去问 deepseek，报一个看不懂的 400。
-                    guard let p = providers.first(where: { $0.name == name }) else { return }
-                    model = ""
-                    baseURL = ""
-                    check = p.vision ? nil : ModelCheck(ok: false, message: "该模型不支持图像输入")
-                    save()
-                }
-                if info?.local != true {
-                    SecureField("密钥", text: $apiKey)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .onSubmit(save)
-                }
-            } header: {
-                Text("用哪个模型")
-            } footer: {
-                // **整个配置流程只有这一个真门槛。** 原先这儿只有一句「密钥存在
-                // 本机钥匙串」——那回答的是「安不安全」，而第一次用的人问的是
-                // 「它从哪儿来」。地址跟着 Go 那份服务商表走，不在这边另抄。
-                if info?.local == true {
-                    Text("本地模型不需要密钥。请先确保 Ollama 已在本机运行。")
-                } else if let url = info?.console, let link = URL(string: url) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("还没有密钥？在 \(provider) 的控制台创建一个，复制后粘贴到上方。")
-                        Link("打开 \(provider) 控制台", destination: link)
-                            .font(.footnote.weight(.medium))
-                    }
-                } else {
-                    Text("密钥存在本机钥匙串，不进 iCloud。")
-                }
-            }
-
-            Section {
-                Button(action: runCheck) {
-                    HStack(spacing: 8) {
-                        if checking { ProgressView().controlSize(.small) }
-                        Text(checking ? "连接中…" : "测试连接")
-                        Spacer()
-                        if let c = check, !checking {
-                            Label(c.message,
-                                  systemImage: c.ok ? "checkmark.circle.fill"
-                                                    : "exclamationmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(c.ok ? Color.green : Color.orange)
-                                .labelStyle(.tight)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.trailing)
-                        }
-                    }
-                }
-                .disabled(checking || (apiKey.isEmpty && info?.local != true))
-            } footer: {
-                // 按钮灰着的时候要说明为什么灰——不说的话人只会以为它坏了。
-                if apiKey.isEmpty && info?.local != true {
-                    Text("填入密钥后才能测试连接。")
-                } else {
-                    Text("会真实发起一次请求，确认密钥和地址无误。不测也能用，只是填错要到第一次提问时才会发现。")
-                }
-            }
-
-            // 进阶：绝大多数人一辈子不用动这两项，所以收在后面、说清「留空就行」。
-            Section {
-                // **模型名是挑的，不是打的。** 手打一个错字换来的是一个看不懂的
-                // 404，而第一次配的人根本不知道该填什么；下一层进去问服务商现要
-                // 一份，里面还带着「这个认不认图片」——那件事原先是我们硬编码在
-                // 预设表里猜的，厂商自己就说了。
-                NavigationLink {
-                    ModelPicker(config: configForQuery, preset: info?.model ?? "",
-                                picked: $model, onPick: save)
-                } label: {
-                    HStack {
-                        Text("模型名")
-                        Spacer()
-                        Text(model.isEmpty ? "用预设" : model)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
-                TextField("接口地址", text: $baseURL, prompt: Text(info?.baseURL ?? "用预设"))
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .onSubmit(save)
-            } header: {
-                Text("进阶")
-            } footer: {
-                Text("两项都留空就行，按服务商的预设来。只有要指定某个特定模型、或者走自建网关时才填。")
-            }
-
-            // 配好几套，随手切：干活用贵的，闲聊用便宜的，出门用本地的。
-            Section {
                 ForEach(store.settings.profiles) { p in
-                    Button {
-                        useProfile(p)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(p.name).foregroundStyle(.primary)
-                                Text(profileDesc(p)).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if store.settings.isActive(p) {
-                                Image(systemName: "checkmark").foregroundStyle(Brand.accent)
-                            }
-                        }
-                    }
+                    Button { editing = p } label: { row(p) }
                 }
-                .onDelete(perform: deleteProfiles)
+                .onDelete(perform: remove)
 
-                HStack {
-                    TextField("为当前这套起个名字", text: $newName)
-                        .autocorrectionDisabled()
-                    Button("存") { saveProfile() }
-                        .disabled(newName.trimmed.isEmpty || apiKey.trimmed.isEmpty)
+                Button { editing = ModelProfile() } label: {
+                    Label("加一个模型", systemImage: "plus")
                 }
-            } header: {
-                Text("已存的配置")
             } footer: {
                 Text(store.settings.profiles.isEmpty
-                     ? "干活用贵的、闲聊用便宜的，存下来就能随手切。"
-                     : "点一下切换，左滑删除。")
+                     ? "先加一个。填完服务商和密钥就能用了。"
+                     : "点一下切换到那一套，左滑删除。干活用贵的、闲聊用便宜的，随手切。")
             }
         }
         .navigationTitle("模型")
         .navigationBarTitleDisplayMode(.inline)
-#if DEBUG
-        .navigationDestination(isPresented: $debugToPicker) {
-            ModelPicker(config: configForQuery, preset: info?.model ?? "",
-                        picked: $model, onPick: save)
-        }
-#endif
+        .sheet(item: $editing) { ModelEditor(profile: $0, providers: providers) }
         .onAppear {
             if passedProviders.isEmpty, fetched.isEmpty { fetched = Bridge.providers() }
-            load()
+#if DEBUG
+            // 跟别的 JARVIS_UI_* 同一个口子：直接把编辑器开出来，
+            // 好在模拟器里一路看到挑模型那一页（simctl 点不了屏幕）。
+            if ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "models",
+               editing == nil {
+                editing = store.settings.profiles.first ?? ModelProfile()
+            }
+#endif
+            // 老版本里那份「游离的当前配置」收进清单，免得一进来看见空列表——
+            // 而他的 app 明明正常用着。幂等，重复进不会补出第二条。
+            var s = store.settings
+            let before = s.profiles.count
+            s.adoptCurrentModel()
+            if s.profiles.count != before {
+                s.save()
+                store.settings = s
+            }
         }
-        // **离开这一页就生效**，全页没有保存按钮。输入框在 onSubmit 时也存一次，
-        // 免得有人填完直接去点「测试连接」。
-        .onDisappear(perform: save)
     }
 
-    private func load() {
-        let s = store.settings
-        provider = s.model.provider.isEmpty ? "deepseek" : s.model.provider
-        model = s.model.model
-        baseURL = s.model.baseURL
-        apiKey = s.apiKey
+    /// 清单里的一行：名字、用的是哪家的哪个模型、在用的打勾。
+    @ViewBuilder
+    private func row(_ p: ModelProfile) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.name.isEmpty ? p.provider : p.name).foregroundStyle(.primary)
+                Text(desc(p)).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if p.apiKey.isEmpty, !isLocal(p.provider) {
+                Image(systemName: "key.slash")
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("还没填密钥")
+            }
+            if store.settings.isActive(p) {
+                Image(systemName: "checkmark").foregroundStyle(Brand.accent)
+            }
+        }
     }
 
-    /// 拉模型列表要用的那份配置：**界面上现填的**，不是上次存下的。
-    /// 人的习惯是填完密钥直接去挑模型，那会儿 store 里还是旧的。
+    /// 一行小字：哪家、哪个模型、认不认得图片。
+    ///
+    /// 只在用着预设默认模型时才敢说死视觉——自己挑了模型名就无从判断了
+    /// （那一页有服务商现报的标记，这儿没有）。
+    private func desc(_ p: ModelProfile) -> String {
+        let info = providers.first { $0.name == p.provider }
+        let name = p.model.isEmpty ? (info?.model ?? "默认") : p.model
+        var out = p.provider + " · " + name
+        if p.model.isEmpty, let info, info.vision { out += " · 视觉" }
+        return out
+    }
+
+    private func isLocal(_ provider: String) -> Bool {
+        providers.first { $0.name == provider }?.local ?? false
+    }
+
+    private func remove(_ offsets: IndexSet) {
+        var s = store.settings
+        s.removeProfiles(at: offsets)
+        s.save()
+        store.settings = s
+    }
+}
+
+// MARK: - 改一条模型配置
+
+/// 加一条或改一条模型配置。
+///
+/// 跟 `MailAccountEditor` 同一个形状：一张表，左上角取消、右上角保存。
+/// **没有「离开即生效」那一套**——清单式的页面里，改了不存就该不算数。
+struct ModelEditor: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+
+    let profile: ModelProfile
+    let providers: [ProviderInfo]
+
+    @State private var name = ""
+    @State private var provider = ""
+    @State private var model = ""
+    @State private var baseURL = ""
+    @State private var apiKey = ""
+    @State private var checking = false
+    @State private var check: ModelCheck?
+
+    private var info: ProviderInfo? { providers.first { $0.name == provider } }
+    private var isNew: Bool { profile.provider.isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("服务商", selection: $provider) {
+                        ForEach(providers) { p in
+                            Text(p.vision ? "\(p.name) · 视觉" : p.name).tag(p.name)
+                        }
+                    }
+                    .onChange(of: provider) { _, _ in
+                        // 换了一家就把上一家的模型名和地址清掉——留着的话会拿
+                        // 豆包的模型名去问 deepseek，报一个看不懂的 400。
+                        model = ""
+                        baseURL = ""
+                        check = nil
+                    }
+                    if info?.local != true {
+                        SecureField("密钥", text: $apiKey)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                } footer: {
+                    // **整个配置流程只有这一个真门槛。** 第一次用的人问的不是
+                    // 「安不安全」，而是「密钥从哪儿来」。
+                    if info?.local == true {
+                        Text("本地模型不需要密钥。请先确保 Ollama 已在本机运行。")
+                    } else if let url = info?.console, let link = URL(string: url) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("还没有密钥？在 \(provider) 的控制台创建一个，复制后粘贴到上方。")
+                            Link("打开 \(provider) 控制台", destination: link)
+                                .font(.footnote.weight(.medium))
+                        }
+                    } else {
+                        Text("密钥存在本机钥匙串，不进 iCloud。")
+                    }
+                }
+
+                Section {
+                    Button(action: runCheck) {
+                        HStack(spacing: 8) {
+                            if checking { ProgressView().controlSize(.small) }
+                            Text(checking ? "连接中…" : "测试连接")
+                            Spacer()
+                            if let c = check, !checking {
+                                Label(c.message,
+                                      systemImage: c.ok ? "checkmark.circle.fill"
+                                                        : "exclamationmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(c.ok ? Color.green : Color.orange)
+                                    .labelStyle(.tight)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+                    }
+                    .disabled(checking || (apiKey.isEmpty && info?.local != true))
+                } footer: {
+                    // 按钮灰着的时候要说明为什么灰——不说的话人只会以为它坏了。
+                    if apiKey.isEmpty && info?.local != true {
+                        Text("填入密钥后才能测试连接。")
+                    } else {
+                        Text("会真实发起一次请求，确认密钥和地址无误。不测也能用，只是填错要到第一次提问时才会发现。")
+                    }
+                }
+
+                Section {
+                    // 模型名是挑的，不是打的：下一层问服务商现要一份，
+                    // 里面标着哪个支持图像输入。
+                    NavigationLink {
+                        ModelPicker(config: configForQuery, preset: info?.model ?? "",
+                                    picked: $model, onPick: {})
+                    } label: {
+                        HStack {
+                            Text("模型名")
+                            Spacer()
+                            Text(model.isEmpty ? "用默认" : model)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    TextField("接口地址", text: $baseURL, prompt: Text(info?.baseURL ?? "用默认"))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                } header: {
+                    Text("进阶")
+                } footer: {
+                    Text("两项都留空就行，按服务商的默认来。只有要指定某个特定模型、或者走自建网关时才填。")
+                }
+
+                Section("备注") {
+                    TextField("留空就用服务商名", text: $name)
+                        .autocorrectionDisabled()
+                }
+            }
+            .navigationTitle(isNew ? "加模型" : "改模型")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("取消")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { save() } label: { Image(systemName: "checkmark") }
+                        .accessibilityLabel("保存")
+                        .disabled(provider.isEmpty)
+                }
+            }
+        }
+        .onAppear(perform: load)
+    }
+
+    /// 拉模型列表要用的那份配置：**界面上现填的**，不是存下来的那份。
+    /// 人的习惯是填完密钥直接去挑模型，那会儿还没按保存。
     private func configForQuery() -> ModelConfig {
-        var m = store.settings.model
+        var m = ModelConfig()
         m.provider = provider
         m.baseURL = baseURL.trimmed
         m.apiKey = apiKey.trimmed
         return m
     }
 
+    private func load() {
+        provider = profile.provider.isEmpty ? (providers.first?.name ?? "deepseek")
+                                            : profile.provider
+        name = profile.name
+        model = profile.model
+        baseURL = profile.baseURL
+        apiKey = profile.apiKey
+    }
+
     private func save() {
+        var p = profile
+        p.provider = provider
+        p.name = name.trimmed.isEmpty ? provider : name.trimmed
+        p.model = model.trimmed
+        p.baseURL = baseURL.trimmed
+        p.apiKey = apiKey.trimmed   // 存钥匙串，不进 UserDefaults
+
         var s = store.settings
-        s.model.provider = provider
-        s.model.model = model.trimmed
-        s.model.baseURL = baseURL.trimmed
-        s.apiKey = apiKey.trimmed
+        s.upsert(p)
         s.save()
         store.settings = s
-    }
-
-    /// 一套模型显示成一行小字：用哪个服务商的哪个模型。
-    private func profileDesc(_ p: ModelProfile) -> String {
-        let i = providers.first { $0.name == p.provider }
-        let name = p.model.isEmpty ? (i?.model ?? "") + "（预设）" : p.model
-        var desc = p.provider + " · " + name
-        // 只在用着预设默认模型时才敢说死——自己填了模型名就无从判断了。
-        if p.model.isEmpty, let i, i.vision { desc += " · 视觉" }
-        return desc
-    }
-
-    /// 切到某一套：整套换过去，界面上那几个框也跟着变。
-    private func useProfile(_ p: ModelProfile) {
-        var s = store.settings
-        s.use(p)
-        s.save()
-        store.settings = s
-        provider = p.provider
-        model = p.model
-        baseURL = p.baseURL
-        apiKey = p.apiKey
-        check = nil
         Haptics.success()
-    }
-
-    private func saveProfile() {
-        save()
-        var s = store.settings
-        s.saveProfile(named: newName.trimmed)
-        s.save()
-        store.settings = s
-        newName = ""
-        Haptics.success()
-    }
-
-    private func deleteProfiles(at offsets: IndexSet) {
-        var s = store.settings
-        s.profiles.remove(atOffsets: offsets)
-        s.save()
-        store.settings = s
+        dismiss()
     }
 
     private func runCheck() {
-        save()   // 拿刚填的那份去试，不是上次存下的
-        var m = store.settings.model
-        m.apiKey = apiKey.trimmed
+        var m = configForQuery()
+        m.model = model.trimmed
         checking = true
         check = nil
         Task {

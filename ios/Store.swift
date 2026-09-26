@@ -800,21 +800,57 @@ struct Settings: Codable {
         apiKey = p.apiKey
     }
 
-    /// 把当前这套存成一个名字。同名是「更新」，不该留下两条一模一样的。
-    mutating func saveProfile(named name: String) {
-        if let i = profiles.firstIndex(where: { $0.name == name }) {
-            var p = profiles[i]
-            p.provider = model.provider
-            p.model = model.model
-            p.baseURL = model.baseURL
-            p.apiKey = apiKey
+    /// 把一条配置写进清单：已有的就更新，没有的就添进去。
+    ///
+    /// 界面上「保存」按的就是它。改的如果正是当前在用的那条，顺手把它重新
+    /// 摊到 model 上——不然人改完密钥回到列表，用的还是旧的那份，而界面
+    /// 上明明已经是新值了。
+    mutating func upsert(_ p: ModelProfile) {
+        if let i = profiles.firstIndex(where: { $0.id == p.id }) {
+            let wasActive = isActive(profiles[i])
             profiles[i] = p
-            return
+            if wasActive { use(p) }
+        } else {
+            profiles.append(p)
+            // 第一条，或者人刚建的——建一个多半就是想用它。
+            use(p)
         }
-        let p = ModelProfile(name: name, provider: model.provider,
+    }
+
+    /// 从清单里删掉几条。
+    ///
+    /// **钥匙串里那几条密钥要一并清掉**：删了配置却把密钥留在钥匙串里，
+    /// 是一份谁也看不见、谁也删不掉的凭据。邮箱那一页早就这么做了。
+    /// 删掉的如果是当前在用的那条，把剩下的第一条顶上——让 app 停在一个
+    /// 「指着已经不存在的配置」的状态，比换一套更糟。
+    mutating func removeProfiles(at offsets: IndexSet) {
+        let killingActive = offsets.contains { isActive(profiles[$0]) }
+        for i in offsets { profiles[i].apiKey = "" }
+        profiles.remove(atOffsets: offsets)
+        if killingActive {
+            if let first = profiles.first {
+                use(first)
+            } else {
+                model = ModelConfig()
+                apiKey = ""
+            }
+        }
+    }
+
+    /// 把老版本里那份「游离的当前配置」收进清单。
+    ///
+    /// 界面从前是「顶上编辑一份匿名配置，底下再起个名字存下来」，于是
+    /// `model` 里那套可以压根不在 `profiles` 里。改成清单式之后，那样的
+    /// 用户一进来会看到空列表——而他的 app 明明正常用着。所以启动时补一条。
+    ///
+    /// 幂等：清单里已经有一模一样的就不补。
+    mutating func adoptCurrentModel() {
+        guard !model.provider.isEmpty else { return }
+        guard !profiles.contains(where: { isActive($0) }) else { return }
+        let p = ModelProfile(name: model.provider, provider: model.provider,
                              model: model.model, baseURL: model.baseURL)
         p.apiKey = apiKey
-        profiles.append(p)
+        profiles.insert(p, at: 0)
     }
 
     /// 某一套是不是正在用的那套。比的是决定「连到哪、用哪个模型」的三项。
