@@ -23,6 +23,23 @@ var (
 type Skill struct {
 	Book *Book
 	Now  func() time.Time
+
+	// touched 是**这次会话里**动过的账户，added 是记了几笔。
+	//
+	// 是会话而不是一轮：桌面端整个会话共用一个 Skill 实例（手机端每次 Ask 新建，
+	// 那边才正好等于一轮）。所以给模型的那句话写的是「这次会话」，不是「这一轮」
+	// ——说成一轮在桌面端就是假话。
+	//
+	// 为的是「一次记好几笔，报出来的余额要对得上」。原先这件事写成一条提示规则
+	// （「最后一步调 list_accounts 核一遍」），而模型不照做——它判断得对：
+	// add_transaction 的返回里已经有权威余额，再查一遍拿到的是同一个数，而提示里
+	// 另有「答案短就短」「别抄用户已经看得见的东西」。逼它做一个空动作是错的方向。
+	//
+	// 所以保证从「模型记得去查」搬到「递给它的数据本身完整」：第二笔起，返回里
+	// 带上**所有刚动过的账户**的当前余额。同一个账户被动两次时，第一笔那个
+	// 「后」已经旧了，而新的这一份永远是刚算的——引错数的机会没有了。
+	touched map[string]bool
+	added   int
 }
 
 // NewSkill 构造记账技能。path 为空表示尚未配置账本。
@@ -79,6 +96,9 @@ func (s *Skill) Describe(b *strings.Builder) {
 	}
 }
 
+// maxTouched 是那份汇总最多列几个账户。
+const maxTouched = 10
+
 func (s *Skill) Instructions() string {
 	return `记账走 ledger-cli 的纯文本格式，账本只追加、不改写。
 
@@ -104,17 +124,15 @@ Liabilities:JD:Baitiao、有时进 Liabilities:Baitiao，两边各记一半，�
 - 日期留空就是今天；用户说「昨天」「上周三」，自己按【当下】给的今天换算成 2006/01/02。
 - 只追加，不改写历史。记错了就再记一笔冲销——账本文件电脑和手机两头都在写，
   去改已经写进去的那笔，会把另一头的改动一起抹掉。
+- **一次记好几笔时，报余额只用最后那次返回里「这次会话里动过的账户」那一份。**
+  同一个账户被动了两次，前一笔报的「后」就已经旧了；那一份是刚算的，永远是对的。
+  不用再调 list_accounts 去核——工具已经把该核的都算好交给你了。
 
 怎么答：
 - 记完用一两句话说清记了什么、相关账户的新余额。余额用工具返回的那个数，
   别自己加减。
-- **记完再查一遍，确保对得上。** 一次记了不止一笔、或者同一个账户被动了两次，
-  末了调一次 list_accounts 把相关账户的余额取回来核一遍，再写进回话。
-  多笔叠加最容易出错：第二笔报的「前 → 后」是在第一笔生效之后算的，
-  顺着往下加会差一笔。
-  **核的基准是 add_transaction 刚返回的那个数**，不是【当下】里那张余额表——
-  那张是这一轮开始时的，跟它对不上是正常的（差的正是你刚记的那几笔）。
-- 用户只说记一笔，就只记这一笔。别顺带去查别的账户，别主动报「另外我发现」。
+- 用户只说记一笔，就只记这一笔。**别顺带去查别的账户**，别主动报
+  「另外我发现」。
 - 查余额用 list_accounts，查流水用 list_transactions。
 
 **什么时候别开口说账有问题。** 下面这几种都是正常的：
@@ -151,8 +169,9 @@ func (t tool) ReadOnly() bool                         { return t.readonly }
 func (s *Skill) toolAddTransaction() agent.Tool {
 	return tool{
 		spec: agent.ToolSpec{
-			Name:        "add_transaction",
-			Description: "记一笔账。用户说「记一笔」「花了」「收入」「报销」时用。至少两条 posting，付款那条留空让系统配平。",
+			Name: "add_transaction",
+			Description: "记一笔账。用户说「记一笔」「花了」「收入」「报销」时用。" +
+				"至少两条 posting，付款那条留空让系统配平。要记多笔就逐笔调。",
 			Parameters: obj(map[string]any{
 				"date":  str("日期，格式 2006/01/02，留空表示今天"),
 				"payee": str("摘要/收款方，如「午餐」「发工资」"),
@@ -229,6 +248,33 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 				now := bal[p.Account]
 				msg += fmt.Sprintf("\n  %s 余额 %.2f → %.2f（这笔 %+.2f）",
 					p.Account, now-p.Amount, now, p.Amount)
+			}
+
+			if s.touched == nil {
+				s.touched = map[string]bool{}
+			}
+			for _, p := range tx.Postings {
+				s.touched[p.Account] = true
+			}
+			s.added++
+			// **第二笔起把这一轮动过的账户汇总一遍。** 见 Skill.touched 的说明：
+			// 同一个账户被动两次时，前一笔报的「后」已经旧了，而这一份是刚算的。
+			// 只记一笔时不给——那会儿逐笔那几行本身就是全部，多一段是白占上下文。
+			if s.added > 1 {
+				msg += "\n这次会话里动过的账户，当前余额（报数就用这一份）："
+				names := make([]string, 0, len(s.touched))
+				for name := range s.touched {
+					names = append(names, name)
+				}
+				sort.Strings(names)
+				// 列多了是白占上下文。真记了十几笔的会话里，早先那几个账户
+				// 跟当下这笔已经没关系了。
+				if len(names) > maxTouched {
+					names = names[:maxTouched]
+				}
+				for _, name := range names {
+					msg += fmt.Sprintf("\n  %s %.2f", name, bal[name])
+				}
 			}
 			return msg, false, nil
 		},

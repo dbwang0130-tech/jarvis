@@ -122,7 +122,16 @@ var cases = []Case{
 		},
 	},
 	{
-		Name:   "一次记好几笔，末了要自己核一遍",
+		// **这条只管结果，不管它用什么手段。**
+		//
+		// 原先它断言「记完必须调 list_accounts 核一遍」，而真模型连着两次都不调
+		// ——它判断得对：add_transaction 的返回里已经有权威余额，再查是同一个数。
+		// 于是保证搬进了工具（第二笔起把这一轮动过的账户汇总一遍，见
+		// ledger.Skill.touched），那件事现在由单元测试钉
+		// （TestSecondTransactionSummarizesTouchedAccounts）。
+		//
+		// 评测这一层该管的是端到端的结果：两笔都真的进账本了、账户没裂开。
+		Name:   "一次记好几笔，两笔都要真落账且不裂账户",
 		Ledger: book,
 		Ask:    "早上买吃的花了 12，中午打车 18，都是微信付的",
 		Want: func(r Result) string {
@@ -133,10 +142,18 @@ var cases = []Case{
 				}
 			}
 			if n < 2 {
-				return fmt.Sprintf("只记了 %d 笔，说的是两笔", n)
+				return fmt.Sprintf("只调了 %d 次 add_transaction，说的是两笔", n)
 			}
-			if !r.Used("list_accounts") {
-				return "记完没核一遍余额（规则在 ledger.Instructions：多笔叠加最容易算错）"
+			for _, want := range []string{"12", "18", "Expenses:Food", "Expenses:Transport"} {
+				if !strings.Contains(r.Book, want) {
+					return "账本里没有 " + want + "——它说记了但没真记"
+				}
+			}
+			// 已有 Expenses:Food 和 Expenses:Transport，不许再造近似的。
+			for _, bad := range []string{"Expenses:早餐", "Expenses:Breakfast", "Expenses:打车"} {
+				if strings.Contains(r.Book, bad) {
+					return "新开了 " + bad + "，而账本里已经有对得上的账户"
+				}
 			}
 			return ""
 		},

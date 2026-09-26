@@ -656,7 +656,7 @@
     "ReadOnly": false,
     "Spec": {
       "name": "add_transaction",
-      "description": "记一笔账。用户说「记一笔」「花了」「收入」「报销」时用。至少两条 posting，付款那条留空让系统配平。",
+      "description": "记一笔账。用户说「记一笔」「花了」「收入」「报销」时用。至少两条 posting，付款那条留空让系统配平。要记多笔就逐笔调。",
       "parameters": {
         "properties": {
           "date": {

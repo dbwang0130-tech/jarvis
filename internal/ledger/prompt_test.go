@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,16 +54,78 @@ func TestInstructionsPointAtTheAccountTable(t *testing.T) {
 		"【当下】里那张账户表",        // 指回 Describe 那张账户表
 		"新开了",               // 新建账户要说出来，用户才有机会纠正
 		"list_transactions", // 报账目异常的前提
-		"记完再查一遍",            // 多笔叠加最容易算错，末了要自己核一遍
+		"这次会话里动过的账户",        // 多笔时报余额用哪一份
 		"list_accounts",     // 核的手段
 	} {
 		if !strings.Contains(ins, want) {
 			t.Errorf("行为规则里少了 %q", want)
 		}
 	}
+	// **这类字面断言只能证明「句子在」，证明不了「模型照做」。**
+	//
+	// 「多笔记完核一遍」这条第一次写进去时就是：提示里有、这个测试绿的，而模型
+	// 根本没调 list_accounts——因为紧接着的下一条写着「别顺带去查别的账户」，
+	// 两句话互相打架，它按后一条办了。**发现它的是 make eval**（真模型跑一遍、
+	// 断言实际调了哪些工具），不是这儿。所以这两层都要有。
+	//
 	// 快照挪到末尾之后，用方向指路一律是错的。这条**连同别的技能一起**
 	// 由 agent 那边的 TestPromptPutsVolatilePartsLast 兜着。
 	if strings.Contains(ins, "上面那张") {
 		t.Error("还在用「上面那张」指路——环境快照现在在系统提示的最后")
+	}
+}
+
+// 一次记好几笔，第二笔起的返回要带上**这次会话里动过的全部账户**的当前余额。
+//
+// 这是「报出来的余额对得上」那件事的真正保证。原先它是一条提示规则（「最后一步
+// 调 list_accounts 核一遍」），而真模型不照做——`make eval` 那条场景连着两次都
+// 红。它判断得对：add_transaction 的返回里已经有权威余额，再查一遍是同一个数，
+// 而提示里另有「答案短就短」。逼模型做空动作是错的方向，所以把保证搬进工具：
+// 递给它的数据本身完整，引错数的机会就没有了。
+//
+// 钉的是**同一个账户被动两次**那种情况——那才是前一笔的「后」会变旧的时候。
+func TestSecondTransactionSummarizesTouchedAccounts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "l.dat")
+	s := NewSkill(path)
+	s.Now = func() time.Time { return time.Date(2026, 9, 26, 12, 0, 0, 0, time.Local) }
+
+	add := func(payee, expense string, amount float64) string {
+		t.Helper()
+		args := fmt.Sprintf(`{"payee":%q,"postings":[
+			{"account":%q,"amount":%v,"commodity":"CNY"},
+			{"account":"Assets:WeChat:Balance"}]}`, payee, expense, amount)
+		var out string
+		for _, tl := range s.Tools() {
+			if tl.Spec().Name != "add_transaction" {
+				continue
+			}
+			got, _, err := tl.Run(strings.ReplaceAll(args, "\n", ""))
+			if err != nil {
+				t.Fatalf("记账失败：%v", err)
+			}
+			out = got
+		}
+		return out
+	}
+
+	// 第一笔：只给逐笔那几行，不给汇总——那会儿逐笔本身就是全部。
+	first := add("早餐", "Expenses:Food", 12)
+	if strings.Contains(first, "动过的账户") {
+		t.Errorf("只记一笔就给汇总，白占上下文：\n%s", first)
+	}
+
+	// 第二笔动的是同一个付款账户，它的余额该是 -30，而不是第一笔报的 -12。
+	second := add("打车", "Expenses:Transport", 18)
+	if !strings.Contains(second, "这次会话里动过的账户") {
+		t.Fatalf("第二笔没给汇总：\n%s", second)
+	}
+	for _, want := range []string{
+		"Assets:WeChat:Balance -30.00", // 两笔叠加之后的真值
+		"Expenses:Food 12.00",          // 第一笔那个账户也要在场
+		"Expenses:Transport 18.00",
+	} {
+		if !strings.Contains(strings.Join(strings.Fields(second), " "), want) {
+			t.Errorf("汇总里少了 %q：\n%s", want, second)
+		}
 	}
 }
