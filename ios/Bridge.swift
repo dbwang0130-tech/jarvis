@@ -343,6 +343,25 @@ enum Bridge {
         #endif
     }
 
+    /// 按邮箱地址查出 IMAP/SMTP 接入参数。**纯函数、不联网**，可以每改一个字调一次。
+    ///
+    /// 要它是因为服务器和端口是固定的公开常识（imap.qq.com:993 十年没变过），
+    /// 却要用户自己去搜；搜错一个字母，换来的是一句 IMAP 的英文超时。
+    static func mailProvider(_ address: String) -> MailProviderInfo {
+        guard let json = encode(["address": address]) else { return MailProviderInfo() }
+        let out = callMailProvider(json)
+        return (try? JSONDecoder().decode(MailProviderInfo.self, from: Data(out.utf8)))
+            ?? MailProviderInfo()
+    }
+
+    private static func callMailProvider(_ json: String) -> String {
+        #if canImport(Mobile)
+        return MobileMailProvider(json)
+        #else
+        return #"{"known":false}"#
+        #endif
+    }
+
     /// 问服务商它今天都有哪些模型。会发一次网络请求，**别在主线程上调**。
     ///
     /// 为的是让模型名从「自己打字」变成「挑一个」：打错一个字换来的是一个看不懂

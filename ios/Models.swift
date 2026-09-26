@@ -768,6 +768,35 @@ struct ProviderList: Codable {
     var error = ""
 }
 
+/// 按邮箱地址查出来的 IMAP/SMTP 接入参数。
+///
+/// 表在 Go 那边只有一份（`config.LookupMailProvider`），Swift 不另抄——
+/// 服务商表两端各写一份的毛病栽过一次，见 `ProviderInfo` 上面那段。
+struct MailProviderInfo: Codable {
+    /// 这家是收录过的。**不是「有没有结果」**：没收录的也给一份按
+    /// imap.<域名> 猜的，界面靠这个决定说「已识别为 QQ 邮箱」还是
+    /// 「按常见约定填的，连不上就自己改」。
+    var known = false
+    /// 显示名；没收录时就是域名本身。
+    var name = ""
+    var host = ""
+    var port = 0
+    var smtpHost = ""
+    var smtpPort = 0
+    /// 真正会卡住人的那一句：多数邮箱不收登录密码，要先开授权码。
+    var note = ""
+    /// 去哪儿开授权码。
+    var noteURL = ""
+    var error = ""
+
+    enum CodingKeys: String, CodingKey {
+        case known, name, host, port, note, error
+        case smtpHost = "smtp_host"
+        case smtpPort = "smtp_port"
+        case noteURL = "note_url"
+    }
+}
+
 /// 服务商自己报上来的一个模型。
 ///
 /// 跟 `ProviderInfo` 的分工：那个是**我们**内置的一份预设表（写在 Go 的

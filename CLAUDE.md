@@ -352,8 +352,25 @@ ledger/health 里生成 `"number"`、在 mail/orgtools/plan 里生成 `"integer"
   `ModelPicker` 的 `config` 是**闭包不是快照**——界面上那几个框还在改，按值传进去的
   是构造那一刻的样子，人刚粘进去的密钥还没算数，一进来就「没问到」（踩过）。
 
-模拟器里查界面的三个口子（都只在 Debug 里存在）：`JARVIS_UI_VAULT` 指定数据目录、
-`JARVIS_UI_SCREEN` 直接推到某一屏（`settings` / `model` / `models`）、`JARVIS_UI_KEY`
+**邮箱的服务器和端口不该让人填**：`internal/config/mailproviders.go` 按域名查出
+IMAP/SMTP 参数，两端共用（桌面 `/mail` 向导、iOS 加邮箱页的 `autofill`，桥是
+`mobile.MailProvider`）。这几项是固定的公开常识（imap.qq.com:993 十年没变过），
+却要用户自己去搜，搜错一个字母换来的是一句 IMAP 的英文超时。三条讲究：
+
+- **「认得」和「猜的」要分开**。没收录的域名照样给一份按 `imap.<域名>:993` 猜的
+  （自建和企业邮箱绝大多数守这个约定），但 `known` 是 false，界面才好说实话——
+  认得的说「已识别为 QQ 邮箱」，猜的说「按常见约定填的，连不上就自己改」。
+- **不守约定的那几家才是表存在的理由**：苹果是 `imap.mail.me.com`（SMTP 还在 587，
+  交给 `fill()` 推导会落到 465，收信正常、发信一直失败），讯飞收发都在
+  `mail.iflytek.com`。猜得出来的那些，列进表里只是顺手。
+- 只收**密码/授权码能登进去**的。微软个人版 Outlook 从 2024 年起停了 IMAP 的基本
+  认证，只剩 OAuth，列进来等于给一份必然失败的配置，比不列更糟。
+- iOS 的 `autofill` **只填空着的框**，判据是「跟上一份预设一模一样」——那说明这几项
+  是我们填的，不是人填的。少了这条，人改一个字就被弹回预设值。
+
+模拟器里查界面的四个口子（都只在 Debug 里存在）：`JARVIS_UI_VAULT` 指定数据目录、
+`JARVIS_UI_SCREEN` 直接推到某一屏（`settings` / `model` / `models` / `mail`）、
+`JARVIS_UI_MAIL` 给个地址直接开加邮箱那张表（好看自动填充的样子）、`JARVIS_UI_KEY`
 顶替钥匙串里的密钥——模拟器的钥匙串从外面写不进去（simctl 只管证书），没有它就
 永远看不到「密钥齐了」之后的那几屏。设了 `JARVIS_UI_SCREEN` 就不弹通知权限框：
 那个框 simctl 点不掉，会盖在要看的那一页上，截出来的图永远是它。

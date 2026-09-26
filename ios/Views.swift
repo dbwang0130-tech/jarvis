@@ -206,7 +206,7 @@ struct ChatView: View {
         // 设置页平时要点右上角才开得了，而 simctl 点不了屏幕。
         let _ = {
             let want = ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] ?? ""
-            if want == "settings" || want == "model" || want == "models", !openSettings {
+            if ["settings", "model", "models", "mail"].contains(want), !openSettings {
                 DispatchQueue.main.async { openSettings = true }
             }
         }()

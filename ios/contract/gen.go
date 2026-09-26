@@ -125,6 +125,12 @@ DEADLINE: <2026-09-18 Fri>
 		panic(err)
 	}
 	write(dir, "models_ok.json", string(list))
+
+	// 邮箱预设：纯函数、不联网。三条路都要能解——认得的、猜的、
+	// 地址还没打完的（那条什么都不该给）。
+	write(dir, "mailprovider_known.json", mobile.MailProvider(`{"address":"me@qq.com"}`))
+	write(dir, "mailprovider_guess.json", mobile.MailProvider(`{"address":"me@x.example"}`))
+	write(dir, "mailprovider_empty.json", mobile.MailProvider(`{"address":"me@"}`))
 }
 
 func mustJSON(v any) string {

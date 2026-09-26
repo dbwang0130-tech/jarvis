@@ -343,23 +343,51 @@ func (s *Session) addMail() {
 	if kind != evLine || user == "" {
 		return
 	}
-	host, kind := s.readLine("IMAP 服务器（如 imap.gmail.com）：")
-	if kind != evLine || host == "" {
-		return
+	// 服务器和端口是固定的公开常识，按域名查出来直接用，别让人去搜——
+	// 搜错一个字母，换来的是一句 IMAP 的英文超时。没收录的域名给一份按
+	// imap.<域名> 猜的，照样能回车接受。
+	pre, known := config.LookupMailProvider(user)
+	if known {
+		note("已识别为 %s：%s:%d", pre.Name, pre.Host, pre.Port)
+	} else if pre.Host != "" {
+		note("没收录这个域名，按常见约定猜的：%s:%d（连不上就改这两项）", pre.Host, pre.Port)
 	}
-	portStr, kind := s.readLine("IMAP 端口（默认 993）：")
+
+	host, kind := s.readLine(fmt.Sprintf("IMAP 服务器（回车用 %s）：", pre.Host))
 	if kind != evLine {
 		return
 	}
-	port := 993
+	if host == "" {
+		host = pre.Host
+	}
+	if host == "" {
+		return
+	}
+	portStr, kind := s.readLine(fmt.Sprintf("IMAP 端口（回车用 %d）：", pre.Port))
+	if kind != evLine {
+		return
+	}
+	port := pre.Port
 	if portStr != "" {
 		fmt.Sscanf(portStr, "%d", &port)
 	}
-	pw, kind := s.readSecret("密码/授权码（Gmail 用应用专用密码）：")
+	// 真正会卡住人的是这一句：绝大多数邮箱不收登录密码，要先去开授权码。
+	if pre.Note != "" {
+		note("%s", pre.Note)
+		if pre.NoteURL != "" {
+			note("%s", pre.NoteURL)
+		}
+	}
+	pw, kind := s.readSecret("密码/授权码：")
 	if kind != evLine || pw == "" {
 		return
 	}
 	acc := config.MailAccount{Name: name, User: user, Host: host, Port: port}
+	// 服务器是按预设填的，发信那两项也跟着预设走——苹果的 SMTP 在 587，
+	// 交给 Normalize 推导会落到 465，收信正常、发信一直失败。
+	if host == pre.Host {
+		acc.SMTPHost, acc.SMTPPort = pre.SMTPHost, pre.SMTPPort
+	}
 	acc.Normalize()
 	if err := config.KeychainSet("mail:"+name, user, pw); err != nil {
 		fail("%s", err.Error())

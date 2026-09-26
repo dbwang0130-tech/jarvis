@@ -31,6 +31,8 @@ struct SettingsView: View {
     /// models 也要推到模型页——那一层再往里推挑模型那一页。
     @State private var debugToModel =
         ["model", "models"].contains(ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] ?? "")
+    @State private var debugToMail =
+        ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "mail"
 #endif
 
     var body: some View {
@@ -88,6 +90,7 @@ struct SettingsView: View {
             .navigationDestination(isPresented: $debugToModel) {
                 ModelSettings(providers: providers)
             }
+            .navigationDestination(isPresented: $debugToMail) { MailAccountsView() }
 #endif
             .toolbar {
                 // **只有「完成」，没有「存」。** 这一页每一项都是改完就生效的，

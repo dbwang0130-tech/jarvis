@@ -165,6 +165,32 @@ check("ModelList") {
     return "正常 \(ok.models.count) 个 / 出错时 models=[]"
 }
 
+// 邮箱预设：**加邮箱那一页大半个表单都由它填**，字段名错一个就全空着。
+check("MailProviderInfo") {
+    let known = try dec.decode(MailProviderInfo.self,
+                               from: try load("mailprovider_known.json"))
+    guard known.known, known.host == "imap.qq.com", known.port == 993 else {
+        throw Err("认得的那条不对：\(known)")
+    }
+    // smtp_host / smtp_port / note_url 这三个键名带下划线，最容易漏掉映射。
+    guard known.smtpHost == "smtp.qq.com", known.smtpPort == 465,
+          !known.note.isEmpty, !known.noteURL.isEmpty else {
+        throw Err("带下划线的那几项没对上：\(known)")
+    }
+    let guess = try dec.decode(MailProviderInfo.self,
+                               from: try load("mailprovider_guess.json"))
+    guard !guess.known, guess.host == "imap.x.example" else {
+        throw Err("猜的那条不对：\(guess)")
+    }
+    // 地址还没打完时什么都别给——半截的 "imap." 填进框里比空着更糟。
+    let empty = try dec.decode(MailProviderInfo.self,
+                               from: try load("mailprovider_empty.json"))
+    guard empty.host.isEmpty, empty.port == 0, !empty.known else {
+        throw Err("地址没打完却给了东西：\(empty)")
+    }
+    return "认得/猜的/没打完 三条都解得开"
+}
+
 // AskInput 方向相反，是 Swift 编码给 Go 的，字段名同样得对上。
 check("AskInput 编码") {
     let inp = AskInput(files: ["a.org": "* TODO x"], ledger: "", question: "今天干嘛",
