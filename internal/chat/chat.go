@@ -17,7 +17,9 @@ import (
 	"github.com/dabao/jarvis/internal/memory"
 	"github.com/dabao/jarvis/internal/org"
 	"github.com/dabao/jarvis/internal/orgtools"
+	"github.com/dabao/jarvis/internal/persona"
 	"github.com/dabao/jarvis/internal/session"
+	extskills "github.com/dabao/jarvis/internal/skills"
 )
 
 // 极简 ANSI 配色（流式模式不依赖 lipgloss）。
@@ -48,12 +50,15 @@ type Session struct {
 	cfgPath string
 	cfg     config.Config
 
-	coll         *org.Collection
-	orgWS        *orgtools.Workspace
-	mailS        *mail.Session
-	ledgerSkill  *ledger.Skill
-	healthSkill  *health.Skill
-	memSkill     *memory.Skill
+	coll        *org.Collection
+	orgWS       *orgtools.Workspace
+	mailS       *mail.Session
+	ledgerSkill *ledger.Skill
+	healthSkill *health.Skill
+	memSkill    *memory.Skill
+	// extra 是启动时扫到的扩展技能，reloadAgent 也要用，所以留着。
+	extra        []extskills.Skill
+	extraWarn    []string
 	browserSkill *browser.Skill
 	skills       []agent.Skill
 	ag           *agent.Agent
@@ -162,11 +167,39 @@ func (s *Session) setup() error {
 	}
 	s.healthSkill = health.New(s.cfg.HealthFile)
 	s.memSkill = memory.New(s.cfg.MemoryPath())
+	// 用户放在 skills/ 下的扩展技能。读不出来只是少几项扩展能力，
+	// 照常进界面——进去了才能用 /setup 修。
+	s.extra, s.extraWarn = extskills.Load(s.cfg.SkillsPath())
+	s.startupWarn = append(s.startupWarn, s.extraWarn...)
 	s.browserSkill = browser.New(s.cfg)
 
 	s.skills = s.buildSkills()
-	s.ag, s.agentErr = agent.Build(s.cfg, s.skills...)
+	s.ag, s.agentErr = s.buildAgent()
 	return nil
+}
+
+// buildAgent 装配秘书，并把人设接上。
+//
+// 人设不在 agent.Build 里读，因为 mobile 也走那条路，而手机上 Go 一个文件
+// 都不许碰（见 mobile 包的说明）——读文件这件事只能留在各自这一端。
+func (s *Session) buildAgent() (*agent.Agent, error) {
+	ag, err := agent.Build(s.cfg, s.skills...)
+	if err != nil {
+		return nil, err
+	}
+	path := s.cfg.PersonaPath()
+	ag.SetPersona(persona.Load(path), func(text string) error {
+		return persona.Save(path, text)
+	})
+	// 扩展技能只把名字和用途放进提示，正文等模型调 skill 再读。
+	out := make([]agent.ExtraSkill, 0, len(s.extra))
+	for _, e := range s.extra {
+		out = append(out, agent.ExtraSkill{
+			Name: e.Name, Description: e.Description, Body: e.Body,
+		})
+	}
+	ag.SetExtraSkills(out)
+	return ag, nil
 }
 
 func (s *Session) buildSkills() []agent.Skill {
@@ -182,7 +215,7 @@ func (s *Session) buildSkills() []agent.Skill {
 
 func (s *Session) reloadAgent(msg string) {
 	s.skills = s.buildSkills()
-	s.ag, s.agentErr = agent.Build(s.cfg, s.skills...)
+	s.ag, s.agentErr = s.buildAgent()
 	if s.agentErr != nil {
 		fail("Jarvis 不可用：%v", s.agentErr)
 		return

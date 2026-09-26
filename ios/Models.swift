@@ -782,6 +782,14 @@ struct ModelConfig: Codable {
     }
 }
 
+/// 一份还没解析的扩展技能。
+struct RawSkill: Codable {
+    /// 所在目录名，frontmatter 里没写 name 就用它。
+    var dir: String
+    /// SKILL.md 全文。
+    var content: String
+}
+
 struct AskInput: Codable {
     var files: [String: String]
     var ledger: String
@@ -793,6 +801,14 @@ struct AskInput: Codable {
     var tz: String = TimeZone.current.identifier
     /// 长期记忆全文，跟电脑上共用 iCloud 里那一份。
     var memory: String = ""
+    /// 人设全文，同样两端共用。留空 Go 那边就用内置人设。
+    var persona: String = ""
+    /// skills/ 目录下每一份扩展技能的原文。
+    ///
+    /// **送原文，不在这边解析 frontmatter**：格式判据只留 Go 那一份
+    /// （skills.Parse），这边再写一个的话两边迟早不一样，表现出来是同一份
+    /// 技能电脑上认、手机上不认。
+    var skills: [RawSkill] = []
     /// 健康记录全文（FHIR NDJSON，一行一条资源）。
     var health: String = ""
     /// 邮箱账号。空的话这一轮就没有邮件能力。
@@ -802,6 +818,18 @@ struct AskInput: Codable {
     /// **只跟这一轮走，不进会话存档**：图片按 token 算贵得多，存进历史
     /// 每轮都重发一遍，几轮下来就把上下文撑爆了、钱也白花。
     var images: [String] = []
+    /// 本地邮件索引和正文的目录。秘书收完信要往这儿存一份，
+    /// 否则点聊天里那个邮件链接时找不到——它查的是索引。
+    var mailIndexDir = ""
+    var mailBodyDir = ""
+
+    enum CodingKeys: String, CodingKey {
+        case files, ledger, question, history, model, profile, memory, health, persona
+        case skills
+        case accounts, images, tz
+        case mailIndexDir = "mail_index_dir"
+        case mailBodyDir = "mail_body_dir"
+    }
 }
 
 /// 传给 Go 的邮箱账号。密码从 iOS 钥匙串取出来现填，不进 UserDefaults。
@@ -850,9 +878,22 @@ struct AskOutput: Codable {
     var steps: [Step]?
     /// 只在秘书改过记忆时才有。
     var memory: String?
+    /// 只在秘书改过人设时才有。
+    ///
+    /// **空串不等于「没改」**：那是「恢复内置人设」，照样要写回去。判空得用
+    /// `!= nil`，别跟别的字段那样写 `isEmpty == false`——那会让「恢复默认」
+    /// 永远落不了盘。Go 那边为这件事专门用的是指针，见 mobile/ask.go。
+    var persona: String?
     /// 只在健康记录被追加过时才有。
     var health: String?
     /// 这一轮是被叫停的，不是自己跑完的。
     var stopped: Bool?
+    /// 秘书这一轮收了信、本地索引已更新，界面该重读一下。
+    var mailSynced: Bool?
     var error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case reply, files, ledger, history, steps, memory, health, persona, stopped, error
+        case mailSynced = "mail_synced"
+    }
 }

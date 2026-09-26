@@ -127,7 +127,13 @@ type Config struct {
 	Files []string `json:"files"`
 	Inbox string   `json:"inbox,omitempty"`
 	// MemoryFile 是长期记忆放哪儿。空的话放配置目录，见 MemoryPath。
-	MemoryFile       string    `json:"memory_file,omitempty"`
+	MemoryFile string `json:"memory_file,omitempty"`
+	// PersonaFile 是 Jarvis 自己的人设放哪儿。空的话跟着记忆走，
+	// 见 PersonaPath。
+	PersonaFile string `json:"persona_file,omitempty"`
+	// SkillsDir 是用户扩展技能的目录（一个子目录一份 SKILL.md）。
+	// 空的话跟着人设走，见 SkillsPath。
+	SkillsDir        string    `json:"skills_dir,omitempty"`
 	DeadlineWarnDays int       `json:"deadline_warn_days"`
 	AgendaDays       int       `json:"agenda_days"`
 	LogStateChanges  bool      `json:"log_state_changes"`
@@ -196,6 +202,8 @@ func Default() Config {
 		c.Files = []string{filepath.Join(icloud, "org")}
 		c.LedgerFile = filepath.Join(icloud, "ledger.dat")
 		c.MemoryFile = filepath.Join(icloud, "memory.md")
+		c.PersonaFile = filepath.Join(icloud, "persona.md")
+		c.SkillsDir = filepath.Join(icloud, "skills")
 		c.HealthFile = filepath.Join(icloud, "health.ndjson")
 	}
 	return c
@@ -215,12 +223,14 @@ func defaultLocal() Config {
 			AutoCompact: true,
 			TimeoutSec:  120,
 		},
-		LedgerFile: "~/finance/ledger.dat",
-		HealthFile: "~/health/health.ndjson",
-		MemoryFile: "", // 空表示放配置目录，见 MemoryPath
-		Theme:      "auto",
-		Browser:    Browser{Endpoint: "ws://127.0.0.1:9222"},
-		Behavior:   Behavior{AutoConfirm: "clean"},
+		LedgerFile:  "~/finance/ledger.dat",
+		HealthFile:  "~/health/health.ndjson",
+		MemoryFile:  "", // 空表示放配置目录，见 MemoryPath
+		PersonaFile: "", // 同上，见 PersonaPath
+		SkillsDir:   "", // 同上，见 SkillsPath
+		Theme:       "auto",
+		Browser:     Browser{Endpoint: "ws://127.0.0.1:9222"},
+		Behavior:    Behavior{AutoConfirm: "clean"},
 	}
 }
 
@@ -305,6 +315,8 @@ func (c *Config) normalize() {
 	}
 	c.Inbox = Expand(c.Inbox)
 	c.MemoryFile = Expand(c.MemoryFile)
+	c.PersonaFile = Expand(c.PersonaFile)
+	c.SkillsDir = Expand(c.SkillsDir)
 	c.LedgerFile = Expand(c.LedgerFile)
 	c.HealthFile = Expand(c.HealthFile)
 }
@@ -410,6 +422,34 @@ func (c Config) MemoryPath() string {
 		return filepath.Join(icloud, "memory.md")
 	}
 	return filepath.Join(Dir(), "memory.md")
+}
+
+// PersonaPath 返回人设文件的路径。
+//
+// 跟记忆同一个道理，也放 iCloud：人设是「秘书是谁」，手机上那位和电脑上
+// 这位必须是同一个人——两边各存一份的话，用户在手机上说「以后别叫我先生」，
+// 回到电脑上它照旧叫，而这种不一致看起来像模型记性差，不像配置问题。
+func (c Config) PersonaPath() string {
+	if c.PersonaFile != "" {
+		return c.PersonaFile
+	}
+	if icloud := ICloudDir(); icloud != "" {
+		return filepath.Join(icloud, "persona.md")
+	}
+	return filepath.Join(Dir(), "persona.md")
+}
+
+// SkillsPath 返回扩展技能目录。
+//
+// 跟人设、记忆同一个地方：用户在手机上放进去的技能，电脑上这位也该会。
+func (c Config) SkillsPath() string {
+	if c.SkillsDir != "" {
+		return c.SkillsDir
+	}
+	if icloud := ICloudDir(); icloud != "" {
+		return filepath.Join(icloud, "skills")
+	}
+	return filepath.Join(Dir(), "skills")
 }
 
 // MigrateMemory 把老位置（配置目录）的记忆挪到现在该在的地方。

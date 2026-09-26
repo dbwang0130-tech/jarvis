@@ -117,13 +117,18 @@ func TestAskReturnsPlainAnswer(t *testing.T) {
 	if len(tr.seen) != 1 {
 		t.Fatalf("只该问模型一次，实际 %d 次", len(tr.seen))
 	}
-	// 第一条永远是系统提示，用户那句跟在后面。
+	// 第一条永远是系统提示；**最后一条是【当下】**，为了服务端的前缀缓存
+	// 它垫在整个列表末尾（见 stateNote），用户那句排在它前面。
 	msgs := tr.seen[0].Messages
 	if msgs[0].Role != "system" {
 		t.Fatalf("第一条该是 system，实际 %q", msgs[0].Role)
 	}
-	if last := msgs[len(msgs)-1]; last.Role != "user" || last.Content != "在吗" {
-		t.Fatalf("最后一条该是用户那句：%+v", last)
+	if last := msgs[len(msgs)-1]; last.Role != "system" ||
+		!strings.Contains(last.Content, "【当下】") {
+		t.Fatalf("最后一条该是【当下】：%+v", last)
+	}
+	if user := msgs[len(msgs)-2]; user.Role != "user" || user.Content != "在吗" {
+		t.Fatalf("倒数第二条该是用户那句：%+v", user)
 	}
 }
 
@@ -431,10 +436,17 @@ func TestSystemPrompt(t *testing.T) {
 
 	// 当下几点几号是所有场景都要的。只配了邮箱、没加载日程的那一轮，
 	// 模型会连今天几号都不知道，「明天」「这周」全算错。
+	//
+	// **它不在系统提示里，在最后那条【当下】里**——每分钟都变的东西留在
+	// 系统提示里，会把它后面所有内容的服务端缓存一起废掉。见 stateNote。
+	now := a.stateNote().Content
 	for _, want := range []string{"2026-09-17", "周四", "14:30"} {
-		if !strings.Contains(p, want) {
-			t.Errorf("提示里没有 %q：\n%s", want, p)
+		if !strings.Contains(now, want) {
+			t.Errorf("【当下】里没有 %q：\n%s", want, now)
 		}
+	}
+	if strings.Contains(p, "14:30") {
+		t.Error("时间又回到系统提示里了——它每分钟都变，会废掉后面全部缓存")
 	}
 
 	// 手上有什么能力要说明白，不然模型会照着「全能管家」应承，

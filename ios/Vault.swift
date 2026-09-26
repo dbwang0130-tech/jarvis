@@ -106,6 +106,40 @@ final class Vault {
         }
     }
 
+    /// 读人设。跟记忆一样两端共用——手机上说「以后别叫我先生」，
+    /// 电脑上那位也得照着改。
+    func readPersona() throws -> String {
+        guard let root else { throw VaultError.notConfigured }
+        return try withAccess(to: root) {
+            let url = root.appendingPathComponent("persona.md")
+            guard exists(url) else { return "" }
+            return try readCoordinated(url)
+        }
+    }
+
+    /// 读 skills/ 下每一份扩展技能的原文。
+    ///
+    /// 只读不解析——frontmatter 怎么算由 Go 那边定（skills.Parse）。
+    /// 读不出来的那份跳过：少一项扩展能力，不该让这一轮问不出话。
+    func readSkills() throws -> [RawSkill] {
+        guard let root else { throw VaultError.notConfigured }
+        return try withAccess(to: root) {
+            let dir = root.appendingPathComponent("skills", isDirectory: true)
+            guard exists(dir) else { return [] }
+            let subs = (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+            var out: [RawSkill] = []
+            for sub in subs {
+                // 点开头的不扫，跟 Go 那边一致。
+                if sub.lastPathComponent.hasPrefix(".") { continue }
+                let md = sub.appendingPathComponent("SKILL.md")
+                guard exists(md), let text = try? readCoordinated(md) else { continue }
+                out.append(RawSkill(dir: sub.lastPathComponent, content: text))
+            }
+            return out
+        }
+    }
+
     // MARK: - 写
 
     /// 把改动写回去。只写真的变过的那几个文件——多写一次就多一次
@@ -124,7 +158,8 @@ final class Vault {
     /// 改动，也不能悄悄吃掉另一头的。
     @discardableResult
     func write(orgFiles: [String: String], ledger: String?, memory: String? = nil,
-               health: String? = nil, expecting: [String: String] = [:]) throws -> [String] {
+               health: String? = nil, persona: String? = nil,
+               expecting: [String: String] = [:]) throws -> [String] {
         guard let root else { throw VaultError.notConfigured }
         return try withAccess(to: root) {
             let orgDir = root.appendingPathComponent("org", isDirectory: true)
@@ -149,6 +184,7 @@ final class Vault {
                 ("ledger.dat", ledger, expecting["ledger.dat"]),
                 ("memory.md", memory, expecting["memory.md"]),
                 ("health.ndjson", health, expecting["health.ndjson"]),
+                ("persona.md", persona, expecting["persona.md"]),
             ] {
                 guard let content else { continue }
                 let url = root.appendingPathComponent(name)

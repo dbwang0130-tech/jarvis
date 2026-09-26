@@ -18,6 +18,7 @@ import (
 	"github.com/dabao/jarvis/internal/memory"
 	"github.com/dabao/jarvis/internal/org"
 	"github.com/dabao/jarvis/internal/orgtools"
+	extskills "github.com/dabao/jarvis/internal/skills"
 )
 
 // iOS 端只带日程和记账两项技能：它们改的都是本地文件、都可逆，
@@ -45,8 +46,21 @@ type AskInput struct {
 	TZ string `json:"tz"`
 	// Memory 是长期记忆全文（iCloud 里的 memory.md），没有就留空。
 	Memory string `json:"memory"`
+	// Persona 是人设全文（iCloud 里的 persona.md），留空就用内置那套。
+	Persona string `json:"persona"`
+	// Skills 是 skills/ 目录下每一份技能的**原文**，Swift 读出来原样送过来。
+	//
+	// **送原文而不是送解析好的字段**：格式解析留在 Go 那一份（skills.Parse），
+	// Swift 那边再写一个 frontmatter 解析器的话，「BOM 算不算」「没闭合怎么办」
+	// 这类判据迟早两边不一样，表现出来是同一份技能电脑上认、手机上不认。
+	Skills []RawSkill `json:"skills"`
 	// Health 是健康记录全文（iCloud 里的 health.ndjson，一行一条 FHIR 资源）。
 	Health string `json:"health"`
+	// MailIndexDir / MailBodyDir 是本地邮件索引和正文的目录，跟 MailInput
+	// 里那两个是同一处。秘书收完信要往这儿存一份，否则邮件页看不到——
+	// 它读的是索引，而 refresh_mail 只动内存里的会话。
+	MailIndexDir string `json:"mail_index_dir"`
+	MailBodyDir  string `json:"mail_body_dir"`
 	// Accounts 是邮箱账号，空的话这一轮就没有邮件能力。
 	Accounts []MailAccount `json:"accounts"`
 	// Model 是模型接入参数。
@@ -84,12 +98,30 @@ type AskOutput struct {
 	Steps []Step `json:"steps,omitempty"`
 	// Memory 只在秘书改过记忆时才有，界面拿去写回 iCloud。
 	Memory string `json:"memory,omitempty"`
+	// Persona 只在秘书改过人设时才有，界面拿去写回 iCloud。
+	//
+	// **是指针不是 string**：人设是整段覆盖，「这一轮没改」和「改成空串
+	// （恢复内置人设）」是两件事，用 string 的话两种意思挤在同一个零值上，
+	// 于是「恢复默认」传到 Swift 那边看起来就跟没改一样，永远生效不了。
+	// 这跟 orgtools/args.go 里「没给」和「给了空串」是一回事。
+	Persona *string `json:"persona,omitempty"`
 	// Health 只在健康记录被追加过时才有。
 	Health string `json:"health,omitempty"`
 	// Stopped 表示这一轮是被叫停的，不是自己跑完的。
 	Stopped bool `json:"stopped,omitempty"`
+	// MailSynced 表示这一轮秘书收了信、本地索引已经更新。界面据此刷新
+	// 邮件页——不然人刚听秘书说「收到三封」，切过去还是空的。
+	MailSynced bool `json:"mail_synced,omitempty"`
 	// Error 非空表示这一轮没办成。
 	Error string `json:"error,omitempty"`
+}
+
+// RawSkill 是一份还没解析的扩展技能。
+type RawSkill struct {
+	// Dir 是它所在目录的名字，frontmatter 里没写 name 就用它。
+	Dir string `json:"dir"`
+	// Content 是 SKILL.md 的全文。
+	Content string `json:"content"`
 }
 
 // Step 是干活过程里的一条。
@@ -214,13 +246,36 @@ func askWith(inputJSON string, host Host) string {
 	}
 	// 配了邮箱才带上邮件能力。会话跨轮次留着，不然上一轮的编号和草稿全没了。
 	// 发信这类收不回来的动作靠 Host.Confirm 问用户，不用把工具摘掉。
-	if ms := mailSessionFor(in.Accounts); ms != nil {
-		skills = append(skills, mail.NewSkill(ms))
+	mailSess := mailSessionFor(in.Accounts)
+	if mailSess != nil {
+		skills = append(skills, mail.NewSkill(mailSess))
 	}
 	ag, err := agent.Build(cfg, skills...)
 	if err != nil {
 		return askError("%v", err)
 	}
+	// 人设跟记忆一样两端共用 iCloud 里那一份。落盘那一步不在这儿做：
+	// 手机上文件访问的坑全留在 Swift 的 Vault 里，这边只把新文本记下来
+	// 跟着出参交出去。
+	var newPersona *string
+	ag.SetPersona(in.Persona, func(text string) error {
+		newPersona = &text
+		return nil
+	})
+
+	// 扩展技能：只有名字和用途进提示，正文等模型调 skill 再读。
+	// 坏掉的那几份直接跳过——手机上没有地方显示启动警告，与其把一句
+	// 「某份技能格式不对」塞进对话里打断正事，不如当它不存在。
+	var extra []agent.ExtraSkill
+	for _, r := range in.Skills {
+		if sk, _, ok := extskills.Parse(r.Dir, r.Content); ok {
+			extra = append(extra, agent.ExtraSkill{
+				Name: sk.Name, Description: sk.Description, Body: sk.Body,
+			})
+		}
+	}
+	ag.SetExtraSkills(extra)
+
 	ag.Stream = false // 手机上一次性拿结果，不做流式
 	ag.AutoCompact = true
 	ag.Auto = agent.AutoClean // 本地文件改动都可逆，不用逐项点头
@@ -242,7 +297,13 @@ func askWith(inputJSON string, host Host) string {
 		reply = "停下了。已经做完的那部分保留着。"
 	}
 
+	// 秘书这一轮要是收了信，把会话里的邮件并进本地索引，邮件页才看得到。
+	// 邮件链接里的编号换成界面认得的 key，翻不出来的拆回纯文本。
+	// 见 resolveMailLinks——会话就在这儿，翻译放别处都得把它传过去。
+	reply = resolveMailLinks(reply, sessionMailKey(mailSess))
+
 	out := AskOutput{Reply: reply, History: ag.History, Steps: steps, Stopped: stopped}
+	out.MailSynced = persistMailSession(in.MailIndexDir, in.MailBodyDir, mailSess, in.Accounts)
 	out.Files, err = wd.changed()
 	if err != nil {
 		return askError("读回改动失败：%v", err)
@@ -252,6 +313,10 @@ func askWith(inputJSON string, host Host) string {
 	}
 	if raw, err := os.ReadFile(memoryPath); err == nil && string(raw) != in.Memory {
 		out.Memory = string(raw)
+	}
+	// 只在真改过的时候给：没动过就让 Swift 那边完全不碰 persona.md。
+	if newPersona != nil && *newPersona != strings.TrimSpace(in.Persona) {
+		out.Persona = newPersona
 	}
 	if raw, err := os.ReadFile(healthPath); err == nil && string(raw) != in.Health {
 		out.Health = string(raw)

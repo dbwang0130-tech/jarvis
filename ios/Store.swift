@@ -16,6 +16,34 @@ final class Store: ObservableObject, AskEvents {
     }
     @Published var loading = false
 
+    /// 分享进来的图，替人问的那一句。
+    ///
+    /// 说「判断该做什么」而不是「这是什么」：后者会得到一段描述，还得再问
+    /// 一遍才动手。日程和记账都是 RiskNone，判断准了它会直接办完；拿不准
+    /// 就让它开口问，别瞎猜——猜错了记一笔假账，比多问一句烦人得多。
+    static let sharedImagePrompt =
+        "这张图我刚分享给你。看看是什么，判断该做什么——小票就记账，"
+        + "截图里有时间地点就排进日程，都不像就说说你看到了什么。"
+        + "拿不准该记成哪一类就先问我，别猜。"
+
+    /// 点「该收信了」那条通知，替人说的那一句。
+    static let mailCheckPrompt = "收一下邮件，挑要紧的跟我说。"
+    /// 点了早上那条简报。**问一句，而不是打开一个列表**——通知问的是
+    /// 「今天要干什么」，秘书挑过、说人话的答案比一屏条目有用。
+    static let plannerPrompt = "今天什么安排？有没有撞钟点或者该先做的。"
+
+    /// 当前这套模型认不认得图片。
+    ///
+    /// 只在用着预设默认模型时才敢说死（见 Go 那边的 SupportsVision）——
+    /// 自己填了模型名就无从判断，这时候当它认得：**宁可白发一轮，也别把
+    /// 能看图的模型挡在外面**。表是会过期的，而挡错了人根本不知道发生过
+    /// 什么，只看到图片默默落回输入框。
+    var modelSeesImages: Bool {
+        let name = settings.model.provider
+        guard let p = Bridge.providers().first(where: { $0.name == name }) else { return true }
+        return settings.model.model.isEmpty ? p.vision : true
+    }
+
     /// 从别的 app 分享进来的图，等着界面来取。
     ///
     /// 跟通知那个标记一个路子：图是系统投递给 app 的（onOpenURL），
@@ -33,10 +61,13 @@ final class Store: ObservableObject, AskEvents {
 
     /// 点通知进来要办的事。
     ///
-    /// 界面看到它就打开邮件页并立刻收一次——通知里说的是「点一下，我这就
+    /// 界面看到它就让秘书立刻收一次——通知里说的是「点一下，我这就
     /// 去收」，那就得真去收，而不是把人扔在对话页自己找。办完清空，
     /// 免得下次切回前台又触发一遍。
     @Published var wantsMailCheck = false
+    /// 秘书收过信之后换一个值，界面据此重读本地索引。
+    /// 用 UUID 而不是 Bool：连着收两次也能各自触发一遍。
+    @Published var mailUpdated = UUID()
     @Published var lastError: String? {
         // 新的一条盖上来时，旧的那个重试办法就不作数了——照着它再试一次，
         // 试的是上一件事。谁报错谁顺手设 retry（`fail(_:retry:)`）。
@@ -83,16 +114,19 @@ final class Store: ObservableObject, AskEvents {
     private var ledger = ""
     private var memory = ""
     private var health = ""
+    private var persona = ""
+    /// skills/ 下的扩展技能原文，每轮跟着入参一起过桥。
+    private var extraSkills: [RawSkill] = []
 
     /// 工具条上那两个数字。
     ///
     /// 没了标签栏，就没有「扫一眼就知道有没有事」的地方了——这两个数是
     /// 那一眼的替代品。逾期是从快照里现算的；未读要读一次本地邮件索引，
-    /// 不连网，跟打开邮件页是同一条路。
+    /// 不连网，跟点开一封邮件是同一条路。
     @Published var mailUnread = 0
     /// 逾期几条。
     ///
-    /// 存起来而不是每次现算：ToolStrip 坐在 ChatView 的 body 里，
+    /// 存起来而不是每次现算：ChatTitle 坐在 ChatView 的 body 里，
     /// 秘书干活时每来一步都会带着它重画，而待办上限是一千条。
     @Published var overdueCount = 0
 
@@ -147,11 +181,19 @@ final class Store: ObservableObject, AskEvents {
             async let hea = Task.detached(priority: .userInitiated) { [vault] in
                 try vault.readHealth()
             }.value
-            let (f, l, m, h) = try await (orgs, led, mem, hea)
+            async let per = Task.detached(priority: .userInitiated) { [vault] in
+                try vault.readPersona()
+            }.value
+            async let sks = Task.detached(priority: .userInitiated) { [vault] in
+                try vault.readSkills()
+            }.value
+            let (f, l, m, h, p, sk) = try await (orgs, led, mem, hea, per, sks)
             files = f
             ledger = l
             memory = m
             health = h
+            persona = p
+            extraSkills = sk
 
             let snap = await Task.detached(priority: .userInitiated) { [f, l, h] in
                 Bridge.snapshot(files: f, ledger: l, health: h)
@@ -228,8 +270,10 @@ final class Store: ObservableObject, AskEvents {
         // 而且这里必须是**本轮之前**的——agent 自己会把这次提问追加进去。
         var input = AskInput(files: files, ledger: ledger, question: text,
                              history: engineHistory, model: model, profile: settings.profile,
-                             memory: memory, health: health,
-                             accounts: settings.mailAccounts())
+                             memory: memory, persona: persona, skills: extraSkills,
+                             health: health, accounts: settings.mailAccounts())
+        input.mailIndexDir = mailIndexDir
+        input.mailBodyDir = mailBodyDir
         input.images = images.map { "data:image/jpeg;base64," + $0.base64EncodedString() }
 
         let out = await Task.detached(priority: .userInitiated) { [weak self] in
@@ -253,12 +297,19 @@ final class Store: ObservableObject, AskEvents {
         steps = out.steps ?? []
         persist()
         ImageStore.sweep(keep: Set(messages.flatMap { $0.imageRefs }))
+        // 秘书收了信，未读数得跟上——不然人刚听它说完「收到三封」，
+        // 切过去还是空的，还得自己再下拉一次。
+        if out.mailSynced == true { mailUpdated = UUID() }
 
         // 秘书改了东西就写回 iCloud，然后重新解析一遍。
+        // 人设判的是 `!= nil` 而不是 isEmpty：空串是「恢复内置人设」，
+        // 也得写回去。别跟着上面几个的写法抄。
         if (out.files?.isEmpty == false) || (out.ledger?.isEmpty == false)
-            || (out.memory?.isEmpty == false) || (out.health?.isEmpty == false) {
+            || (out.memory?.isEmpty == false) || (out.health?.isEmpty == false)
+            || out.persona != nil {
             await writeBack(org: out.files ?? [:], ledger: out.ledger,
-                            memory: out.memory, health: out.health)
+                            memory: out.memory, health: out.health,
+                            persona: out.persona)
         }
 
         await refreshIfMissed()
@@ -367,7 +418,7 @@ final class Store: ObservableObject, AskEvents {
         return r.message
     }
 
-    /// 数一下本地存着几封没读的。只读盘不连网，跟打开邮件页是同一条路。
+    /// 数一下本地存着几封没读的。只读盘不连网，跟点开一封邮件是同一条路。
     /// 读完一封信就把它标成已读。
     ///
     /// 以前没有这一步：正文读出来了，那封信还是未读，工具条上的角标
@@ -537,7 +588,7 @@ final class Store: ObservableObject, AskEvents {
 
     /// 记一笔账。
     ///
-    /// 财务页一直是只读的：余额、账户、流水都看得见，可「刚花了 35 块」
+    /// 账本一直是只读着看的：余额、账户、流水秘书都说得出，可「刚花了 35 块」
     /// 只能开口跟秘书说一句——一个记账 app 在手机上记不了账。
     @discardableResult
     func spend(payee: String, amount: Double, from: String, to: String,
@@ -650,19 +701,21 @@ final class Store: ObservableObject, AskEvents {
     private func writeBack(org: [String: String] = [:],
                            ledger newLedger: String? = nil,
                            memory newMemory: String? = nil,
-                           health newHealth: String? = nil) async -> Bool {
+                           health newHealth: String? = nil,
+                           persona newPersona: String? = nil) async -> Bool {
         // 动手前那份一起交上去。盘上的要是已经变了，说明另一头也改过，
         // 整文件覆盖会把人家的改动抹掉。
         var before = files
         before["ledger.dat"] = ledger
         before["memory.md"] = memory
         before["health.ndjson"] = health
+        before["persona.md"] = persona
         let expecting = before
         do {
             let conflicts = try await Task.detached(priority: .userInitiated) { [vault] in
                 try vault.write(orgFiles: org, ledger: newLedger,
                                 memory: newMemory, health: newHealth,
-                                expecting: expecting)
+                                persona: newPersona, expecting: expecting)
             }.value
             if !conflicts.isEmpty {
                 lastError = conflictNote(conflicts)
@@ -677,6 +730,7 @@ final class Store: ObservableObject, AskEvents {
         if let newLedger { ledger = newLedger }
         if let newMemory { memory = newMemory }
         if let newHealth { health = newHealth }
+        if let newPersona { persona = newPersona }
         await reparse()
         return true
     }

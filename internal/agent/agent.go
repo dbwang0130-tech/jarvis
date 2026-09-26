@@ -73,6 +73,16 @@ type Agent struct {
 	Auto AutoLevel
 	// Profile 是用户的自述，交给模型判断什么算要紧。
 	Profile string
+	// Persona 是 Jarvis 自己的人设，空串表示用内置的 DefaultPersona。
+	// 它存在 iCloud 里，两端共用一份，由调用方读好了塞进来——agent
+	// 不碰文件，这跟它对业务零感知是同一条线。
+	Persona string
+	// SavePersona 落盘新人设，nil 表示这一端不让改（工具就不注入）。
+	// 见 SetPersona。
+	SavePersona func(text string) error
+	// Extra 是用户放在 skills/ 目录下的扩展技能，只有名字和用途常驻提示，
+	// 正文靠 skill 工具按需读。见 extra.go。
+	Extra []ExtraSkill
 	// Plan 是模型列出的执行计划，供界面展示进度。
 	Plan []Step
 }
@@ -97,6 +107,18 @@ func (a *Agent) SetSkills(skills []Skill) {
 func (a *Agent) flattenTools() []Tool {
 	out := []Tool{planTool{a: a}, stepDoneTool{a: a}}
 	seen := map[string]bool{"plan": true, "step_done": true}
+	// 人设可写才给这个工具。存不下来还摆着它，模型会回一句「已经改好了」
+	// 而下一轮人设原样——见 SetPersona。
+	if a.SavePersona != nil {
+		out = append(out, personaTool{a: a})
+		seen["persona"] = true
+	}
+	// 一份扩展技能都没有就别摆这个工具：摆了模型会去试，试出来一句
+	// 「没有任何扩展技能」，白花一个来回。
+	if len(a.Extra) > 0 {
+		out = append(out, skillTool{a: a})
+		seen["skill"] = true
+	}
 	for _, s := range a.Skills {
 		for _, t := range s.Tools() {
 			if seen[t.Spec().Name] {
@@ -133,25 +155,31 @@ func (a *Agent) NoteInterrupted() {
 		Content: "用户中途叫停了上一条指令，它没有执行完。已经做过的动作保留，没做的就别当成做过了。"})
 }
 
-// systemPrompt 生成统一系统提示：身份 + 当下 + 有哪些能力 + 各场景的规则
-// + 档位 + 用户自述。
+// systemPrompt 生成统一系统提示。
 //
-// 结构上有意分成「办事 / 说话 / 出岔子」三块。混在一张清单里的话，模型
-// 容易只照顾到前几条；分块之后每一块都短，也好往里加。
+// **顺序是按「变不变」排的，不是按「重不重要」排的。** 前面是整段会话里一个字
+// 都不变的部分（人设、能力清单、各技能的行为规则、通用规则、档位、用户自述），
+// 最后才是每一轮都不一样的【当下】（几点几号、各技能的环境快照）。
+//
+// 为的是服务端的前缀缓存。那些兼容 OpenAI 协议的家伙（deepseek、kimi 这些）
+// 都按「跟上一次请求的最长公共前缀」计费，命中的那段便宜一个数量级。原先
+// 「现在是 … 14:21」排在第二行——它每分钟都变，于是从第二行往后全都命不中，
+// 能缓存的只有人设那两百来字节，后面 10KB 行为规则每轮原样重发、一分钱便宜
+// 都占不到。挪到最后之后，可缓存的前缀从两百字节变成两万多。
+//
+// 所以**往这儿加东西之前先问一句：它会不会每轮都变？** 会变的只能往最后那段
+// 里加；加在前面等于把它后面所有东西的缓存一起废掉。
+//
+// 行为规则那部分有意分成「办事 / 说话 / 出岔子」三块。混在一张清单里的话，
+// 模型容易只照顾到前几条；分块之后每一块都短，也好往里加。
 func (a *Agent) systemPrompt() string {
 	var b strings.Builder
 
-	b.WriteString("你是 Jarvis，用户的私人 AI 管家——就像钢铁侠身边的那一位。\n")
-	b.WriteString("性格：沉稳、干练、忠诚，带一点英式冷幽默。说话简洁，不奉承。\n")
-	b.WriteString("玩笑让位于准确——让人分不清你是真办了还是在说俏皮话，那就不好笑了。\n")
-	b.WriteString("称呼用户为「先生」。全程中文，短句为主，不说空话套话。\n\n")
-
-	// 当下几点几号是所有场景都要的，不能挂在某个技能下面——
-	// 只配了邮箱、没加载日程的那一轮，模型会连今天几号都不知道，
-	// 「明天」「这周」全算错。
-	now := a.now()
-	fmt.Fprintf(&b, "现在是 %s %s（%s）。\n",
-		now.Format("2006-01-02"), weekdayCN(now), now.Format("15:04"))
+	// 人设从 iCloud 里的 persona.md 来（见 persona.go）。没配、没同步下来、
+	// 或者被清空，都退回 DefaultPersona——这一段要是空了，秘书当场
+	// 变成一个没身份的模型，而原因在文件系统那头，最难猜。
+	b.WriteString(a.personaText())
+	b.WriteString("\n")
 
 	// 说清楚这一轮手上有什么。不说的话，模型会照着「一个全能管家」去应承，
 	// 张口就是「我去看看邮件」——而手机上根本没带邮件这项能力。
@@ -162,13 +190,16 @@ func (a *Agent) systemPrompt() string {
 		b.WriteString("这一轮你没有任何工具，只能聊天。\n\n")
 	}
 
+	// 这儿只写行为规则。环境快照（余额、未读数、最近一次体重…）每轮都变，
+	// 统一收进最后那段【当下】——夹在规则中间的话，它后面的规则就全都
+	// 命不中缓存了。
 	for _, s := range a.Skills {
 		fmt.Fprintf(&b, "【%s】\n", s.Name())
-		s.Describe(&b)
-		b.WriteString("\n")
 		b.WriteString(s.Instructions())
 		b.WriteString("\n\n")
 	}
+
+	a.describeExtra(&b)
 
 	b.WriteString(`办事：
 - 先从上文找答案，再考虑发问。用户说话短、带指代（「那个」「更新一下」「日程里面」），
@@ -184,7 +215,7 @@ func (a *Agent) systemPrompt() string {
 - 答案短就短。别为了显得认真加小标题、加总结段、加「希望对您有帮助」。
 
 出岔子：
-- **说「这里好像不对」之前先自己查一遍。** 上面那份环境快照是**这一轮开始时**的，
+- **说「这里好像不对」之前先自己查一遍。** 最后那条【当下】里的环境快照是**这一轮开始时**的，
   你干完活它就旧了；工具刚返回的数跟它对不上，差的多半正是你刚改的那一笔。
   没查证就别提，误报一次用户就得跑去核对一遍，最后发现是你算错的，
   下次你报什么他都不敢信了。
@@ -210,10 +241,52 @@ func (a *Agent) systemPrompt() string {
 		b.WriteString("判断什么算「要紧」和「关注」，以这段描述为准。\n")
 	}
 
-	b.WriteString("\n最后一条：**动手查之前，先用一句中文说你要干什么**，像这样——\n")
+	b.WriteString("\n最后一条规矩：**动手查之前，先用一句中文说你要干什么**，像这样——\n")
 	b.WriteString("「我看一下这周的日程。」「先去服务器收一趟信。」「查查上个月这笔账。」\n")
 	b.WriteString("一句话，句号收尾，然后就去调工具。第一个字必须是中文。\n")
+
 	return b.String()
+}
+
+// stateNote 是【当下】那条消息：几点几号，加各技能的环境快照。
+//
+// **它是消息列表的最后一条，不是系统提示的最后一段。** 这两者差别很大：
+// 请求的前缀是「工具声明 + system + 历史…」，服务端按跟上一次的最长公共前缀
+// 算便宜价。这段东西每轮都变，只要它待在 system 里，**它后面的整段对话历史
+// 就全都命不中缓存**——而长会话里历史能占两万多 token，那才是钱的大头。
+// 挪到最后之后，system 和历史都落在公共前缀里，每轮按原价的只有这几百字节
+// 加上人新说的那句话。
+//
+// 用 system 角色而不是 user：它不是人说的话，标成 user 的话模型会去回应它
+// （「你告诉我现在几点，所以呢？」）。
+//
+// **它不进 History。** 进了的话，上一轮的旧快照会永远留在上下文里，几轮之后
+// 就是一串互相矛盾的余额；而且历史一变，缓存又废了。
+//
+// 各技能的规则里要指回这儿的话，说「【当下】里那张…」，别说「上面那张」：
+// 它现在在最后面。用名字指而不是用方向指，下次再调顺序也不会说错——
+// `internal/chat/label_test.go` 的 TestNoSkillPointsUpwards 守着这条。
+func (a *Agent) stateNote() Message {
+	var sb strings.Builder
+	b := &sb
+	b.WriteString("【当下】\n")
+
+	// 几点几号是所有场景都要的，不能挂在某个技能下面——只配了邮箱、没加载
+	// 日程的那一轮，模型会连今天几号都不知道，「明天」「这周」全算错。
+	now := a.now()
+	fmt.Fprintf(b, "现在是 %s %s（%s）。\n",
+		now.Format("2006-01-02"), weekdayCN(now), now.Format("15:04"))
+
+	for _, s := range a.Skills {
+		var one strings.Builder
+		s.Describe(&one)
+		if strings.TrimSpace(one.String()) == "" {
+			continue
+		}
+		fmt.Fprintf(b, "\n【%s】\n", s.Name())
+		b.WriteString(one.String())
+	}
+	return Message{Role: "system", Content: sb.String()}
 }
 
 // now 是当前时间。做成字段是为了测试能把时间钉死——
@@ -259,7 +332,10 @@ func (a *Agent) AskWith(ctx context.Context, input string, images []string,
 	tools := a.wireTools()
 
 	for step := 0; step < a.MaxSteps; step++ {
+		// 稳定的 system 在前、历史居中、每轮都变的【当下】垫在最后——
+		// 这个顺序是为了服务端的前缀缓存，见 stateNote。
 		msgs := append([]Message{{Role: "system", Content: a.systemPrompt()}}, a.History...)
+		msgs = append(msgs, a.stateNote())
 
 		var onDelta func(Delta)
 		if a.Stream {
@@ -470,3 +546,10 @@ func autoNotice(l AutoLevel) string {
 	}
 	return "用户刚把档位切回逐项确认：有风险的动作都要他点头。"
 }
+
+// SystemPromptForTest 把系统提示交出去给别的包量一量（缓存前缀占多少）。
+// 只给测试用——真正拼请求的地方在 Ask 里，不走这儿。
+func (a *Agent) SystemPromptForTest() string { return a.systemPrompt() }
+
+// StateNoteForTest 同上，把【当下】那条交出去量一量。
+func (a *Agent) StateNoteForTest() string { return a.stateNote().Content }

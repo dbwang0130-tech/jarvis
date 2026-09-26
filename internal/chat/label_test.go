@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dabao/jarvis/internal/agent"
@@ -80,6 +81,39 @@ func TestEverySkillKeepsAReadOnlyTool(t *testing.T) {
 		if !found {
 			t.Errorf("技能 %q 一个只读工具都没有——它的查询会把同一批里"+
 				"别的只读调用一起拖成串行", sk.Name())
+		}
+	}
+}
+
+// 各技能的行为规则不许用方向指路（「上面那张表」）。
+//
+// 环境快照（余额表、未读数、最近一次体重）为了服务端的前缀缓存，整段挪到了
+// 系统提示的**最末尾**——见 agent.systemPrompt。于是「上面那张表」当场成了
+// 错话：那张表在下面。统一改成用名字指（「【当下】里那张账户表」），
+// 再调顺序也不会说错。
+//
+// 放在 chat 这儿是因为只有这个包看得见全部真技能；agent 反向 import 不了它们。
+// 跟 TestEveryToolHasALabel 同一个道理：跨技能的约定，只在一处守。
+func TestNoSkillPointsUpwards(t *testing.T) {
+	cfg := config.Default()
+	coll := &org.Collection{}
+	skills := []agent.Skill{
+		orgtools.NewSkill(orgtools.NewWorkspace(coll, cfg)),
+		mail.NewSkill(mail.NewSession(cfg)),
+		ledger.NewSkill(""),
+		health.New(""),
+		browser.New(cfg),
+		memory.New(""),
+	}
+	// 「上面那张清单」这种指的是 Instructions 自己里头列的东西（比如健康那份
+	// 会把认得的体征就地列一遍），那是对的，所以只拦指向快照的几种说法。
+	bad := []string{"上面那张表", "上面那张余额表", "上面给的今天", "上面那份快照"}
+	for _, sk := range skills {
+		ins := sk.Instructions()
+		for _, b := range bad {
+			if strings.Contains(ins, b) {
+				t.Errorf("%s 的规则里有 %q——环境快照在系统提示的最后，不在上面", sk.Name(), b)
+			}
 		}
 	}
 }

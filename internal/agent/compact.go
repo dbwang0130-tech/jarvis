@@ -58,8 +58,12 @@ func EstimateToolTokens(defs []ToolDef) int {
 // 成本也撑不起缓存——界面那层早按 History 长度缓存了整个 ContextUsage
 // 结果（chat.contextRatio），真打到这儿的只有「又追加了一条消息」和压缩检查。
 func (a *Agent) fixedTokens() int {
-	return EstimateTokens([]Message{{Role: "system", Content: a.systemPrompt()}}) +
-		EstimateToolTokens(a.wireTools())
+	// 【当下】那条也得算进来：它每轮都发，只是排在最后。漏了它，预算就少算
+	// 几百 token——不多，但「算的是一次请求的全部」这句话得是真的。
+	return EstimateTokens([]Message{
+		{Role: "system", Content: a.systemPrompt()},
+		a.stateNote(),
+	}) + EstimateToolTokens(a.wireTools())
 }
 
 // ContextUsage 返回这一轮请求的估算 token 数与占预算的比例。
