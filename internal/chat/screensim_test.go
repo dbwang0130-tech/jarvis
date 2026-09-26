@@ -143,10 +143,6 @@ func (s *fakeScreen) clearLine() {
 	}
 }
 
-func (s *fakeScreen) text() string {
-	return strings.TrimRight(strings.Join(s.lines, "\n"), "\n ")
-}
-
 // screenText 把整屏按行返回（去掉颜色），不足的行补空串。
 func (s *fakeScreen) screenText(h int) []string {
 	outs := make([]string, h)

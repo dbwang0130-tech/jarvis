@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test fmt clean ios-framework ios-contract ios-check ios-install ios-project ios-assets
+.PHONY: build install uninstall install-remind uninstall-remind test lint fmt clean ios-framework ios-contract ios-check ios-install ios-project ios-assets
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -30,6 +30,10 @@ uninstall-remind:
 
 test:
 	go test ./...
+
+# 代码质量：go vet + 死代码。死代码那步要先装 deadcode，没装就跳过并说明怎么装。
+lint:
+	@sh lint.sh
 
 fmt:
 	gofmt -l -w .

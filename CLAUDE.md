@@ -70,7 +70,16 @@ go test ./internal/org/ -run TestParse -v
 go vet ./...
 
 make install-remind   # 装 launchd 定时任务（每 5 分钟 jarvis remind）
+
+make lint             # go vet + 死代码（deadcode，没装会说明怎么装）
 ```
+
+`make lint` 里那个死代码检查有一处不显然：**gomobile 那道边界 deadcode 看不过去**。
+`mobile` 包的导出函数是给 Swift 调的，Go 这边一个调用点都没有，于是 Ask、AskLive、
+Snapshot、Providers 全被报成不可达——十几条噪音，人看两次就再也不看这个检查了。
+所以豁免名单**从 Swift 的实际调用点现取**（gomobile 把 `AskLive` 导成 `MobileAskLive`，
+在 `ios/*.swift` 里搜 `Mobile<名字>` 就知道那一侧还用不用它），不手写。手写的话，
+哪天 Swift 不用了这儿也不会响，而那正是最该报出来的时候。
 
 拉依赖要绕开代理：
 

@@ -90,9 +90,6 @@ type Day struct {
 	Items []Item
 }
 
-// IsToday 报告这一天是否是今天。
-func (d Day) IsToday() bool { return sameDay(d.Date, time.Now()) }
-
 // Agenda 是一段连续日期上的日程视图。
 type Agenda struct {
 	Start time.Time

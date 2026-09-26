@@ -2,7 +2,6 @@ package org
 
 import (
 	"regexp"
-	"strings"
 )
 
 var (
@@ -66,9 +65,4 @@ func Plain(s string) string {
 		}
 	}
 	return s
-}
-
-// IsHeadline 报告一行是否是 org 标题行。
-func IsHeadline(line string) bool {
-	return strings.HasPrefix(line, "*") && headlineRe.MatchString(line)
 }
