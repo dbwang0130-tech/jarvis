@@ -16,6 +16,17 @@ final class Vault {
     private(set) var root: URL?
 
     init() {
+#if DEBUG
+        // **只给模拟器上看界面用**：给一个目录路径就直接用它，跳过文件选择器。
+        //
+        // 选择器没法从命令行点（simctl 点不了屏幕），而要检查的恰恰是选完之后
+        // 那几屏——标题栏、气泡、可点链接、趋势卡片。真机上走的还是书签那条路。
+        // Release 构建里这几行不存在。
+        if let p = ProcessInfo.processInfo.environment["JARVIS_UI_VAULT"], !p.isEmpty {
+            root = URL(fileURLWithPath: p, isDirectory: true)
+            return
+        }
+#endif
         root = resolveBookmark()
     }
 

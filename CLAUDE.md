@@ -40,8 +40,27 @@ make ios-check      # Swift 在真实 iOS SDK 下类型检查，要完整 Xcode
 加一份断言就能跑，不需要模拟器、也不需要在工程里挂测试目标。解析器本来就不该知道
 SwiftUI 的事，所以这个拆分本身也是对的。
 
-画那一半（`MarkdownText` / `ChartCard` / 输入框）仍然只能装到手机上看——它要真跑
-起来才看得出。
+画那一半（`MarkdownText` / `ChartCard` / 输入框）**只能真跑起来看**。模拟器就够用，
+不用每次装真机：
+
+```sh
+SIM=$(xcrun simctl list devices booted | awk -F'[()]' '/iPhone/{print $2; exit}')
+xcodebuild -project ios/Jarvis.xcodeproj -scheme Jarvis -configuration Debug     -destination "id=$SIM" build
+APP=$(xcodebuild ... -showBuildSettings | awk -F' = ' '/ BUILT_PRODUCTS_DIR/{print $2;exit}')/Jarvis.app
+xcrun simctl install "$SIM" "$APP"
+C=$(xcrun simctl get_app_container "$SIM" com.dabao.jarvis data)
+# 预置金库和一段假对话，然后带着 JARVIS_UI_VAULT 启动
+SIMCTL_CHILD_JARVIS_UI_VAULT="$C/Documents/Jarvis"     xcrun simctl launch --terminate-running-process "$SIM" com.dabao.jarvis
+xcrun simctl io "$SIM" screenshot /tmp/ui.png
+```
+
+`JARVIS_UI_VAULT` 是 `Vault.init` 里一个 **`#if DEBUG` 的口子**：给一个目录就直接用，
+跳过文件选择器。选择器没法从命令行点（simctl 点不了屏幕），而要看的恰恰是选完之后
+那几屏。Release 构建里这几行不存在。对话本身不用改代码就能预置——`SessionStore` 存的是
+`Library/Application Support/session.json`，从宿主机写进去即可（模拟器里路径就是真路径）。
+
+**这条路抓到过一个别的层面都抓不到的 bug**，见 `Sparkline` 里 `yDomain` 那段注释：
+代码、注释、意图全对，只有画出来的东西不对。
 
 iOS 端带日程、记账、健康、记忆四项（都是 RiskNone、改的都是本地文件，所以
 不会冒出确认框），配了邮箱再加上邮件——发信那类收不回来的动作靠

@@ -97,17 +97,48 @@ struct Sparkline: View {
         .allowsHitTesting(false)
     }
 
+    /// 纵轴范围：贴着数据本身，再上下各留一点余量。
+    ///
+    /// 留余量是为了让线不贴边——正好贴着最大值的话，那个点会压在卡片上沿上，
+    /// 看着像被切掉了。数据全一样时（只量过同一个数）给一个固定的窄带，
+    /// 否则域退化成一个点，Charts 画不出来。
+    private func yDomain(_ pts: [HealthPoint], paired: Bool) -> ClosedRange<Double> {
+        var lo = Double.greatestFiniteMagnitude
+        var hi = -Double.greatestFiniteMagnitude
+        for p in pts {
+            lo = min(lo, p.v)
+            hi = max(hi, p.v)
+            if paired, p.v2 > 0 {
+                lo = min(lo, p.v2)
+                hi = max(hi, p.v2)
+            }
+        }
+        guard lo <= hi else { return 0...1 }   // 一个点都没有
+        let span = hi - lo
+        let pad = span > 0 ? span * 0.15 : max(abs(hi) * 0.02, 0.5)
+        return (lo - pad)...(hi + pad)
+    }
+
     private var lineline: some View {
         // 血压一条记录有两个数，两条线都画——只画收缩压的话，
         // 卡片上那条小线跟点进去看到的图对不上。
         let pts = shown
         let paired = pts.contains { $0.v2 > 0 }
+        let domain = yDomain(pts, paired: paired)
         return Chart(pts) { p in
             LineMark(x: .value("时间", p.date), y: .value("值", p.v),
                      series: .value("线", "主"))
                 .interpolationMethod(.monotone)
                 .lineStyle(.init(lineWidth: 1.6, lineCap: .round))
-            AreaMark(x: .value("时间", p.date), y: .value("值", p.v))
+            // **面积从域的底边起，不是从 0 起。**
+            //
+            // AreaMark 默认填到基线 0，而纵轴域现在是 [77.4, 78.5]——0 在域外
+            // 很远的地方，那块填充就画到图表框外面去了，一路盖住下面的横幅和
+            // 输入框。截图里看得清清楚楚：一大片淡紫从气泡里漫出来，盖到了
+            // 「还没填模型密钥」那一条上。
+            AreaMark(x: .value("时间", p.date),
+                     yStart: .value("底", domain.lowerBound),
+                     yEnd: .value("值", p.v))
                 .interpolationMethod(.monotone)
                 .foregroundStyle(
                     LinearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
@@ -123,11 +154,21 @@ struct Sparkline: View {
         .foregroundStyle(tint)
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
-        // **纵轴不从 0 起。** 体重在 70 上下浮动两公斤，从 0 画起就是一条
-        // 拉平的直线，什么都看不出来。这里要看的是变化，不是绝对量。
-        .chartYScale(domain: .automatic(includesZero: false))
+        // **纵轴不从 0 起，而且得自己把范围算出来。**
+        //
+        // 体重在 77 上下浮动一公斤，从 0 画起就是一条贴着顶边的直线，什么都
+        // 看不出来。原先这儿写的是 `.automatic(includesZero: false)`，意思是对的
+        // ——**但被 AreaMark 悄悄抵消了**：面积图天然是「从数值填到基线 0」，
+        // Charts 把那个基线也算进纵轴域，于是域又变回 [0, 78.4]。
+        //
+        // 代码、注释、意图全都对，只有画出来的东西不对，而且没有任何测试能发现
+        // ——是装进模拟器截图看出来的：一条平线贴在顶上，底下一整块纯色。
+        .chartYScale(domain: domain)
         .chartLegend(.hidden)
         .frame(height: 28)
+        // 兜一道。这次是 AreaMark 漏到框外，下次可能是别的 mark——漏出去的
+        // 后果不是图难看，是它盖住下面半屏的东西。
+        .clipped()
         .allowsHitTesting(false)
     }
 }
@@ -296,7 +337,12 @@ struct VitalDetail: View {
                 }
             }
         }
-        // 同上：不从 0 起，否则真实的起伏会被压成一条直线。
+        // 不从 0 起，否则真实的起伏会被压成一条直线。
+        //
+        // **这儿 .automatic 是够用的，卡片那边不够**：区别在有没有 AreaMark。
+        // 面积图天然是「从数值填到基线 0」，Charts 会把那个基线算进纵轴域，
+        // 把 includesZero: false 悄悄抵消掉；这张图只有线和点，没有基线，
+        // 所以自动算出来的域就是数据本身的范围。
         .chartYScale(domain: .automatic(includesZero: false))
         .chartYAxis {
             AxisMarks { v in
