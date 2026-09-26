@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test lint fmt clean ios-framework ios-contract ios-check ios-install ios-project ios-assets
+.PHONY: build install uninstall install-remind uninstall-remind test lint eval fmt clean ios-framework ios-contract ios-check ios-install ios-project ios-assets
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -30,6 +30,14 @@ uninstall-remind:
 
 test:
 	go test ./...
+
+# 行为评测：**拿真模型跑固定场景，要钱要网**，所以不在 make test 里。
+#
+# 别的测试都给模型写好台词（假 RoundTripper 放脚本），于是提示词改一个字都不会
+# 有任何测试响——而这个 app 的行为几乎全长在提示里。这个目标是唯一能发现
+# 「提示改了、行为退了」的手段。场景和断言见 internal/eval。
+eval:
+	@JARVIS_EVAL=1 go test ./internal/eval/ -v -count=1 -timeout 20m
 
 # 代码质量：go vet + 死代码。死代码那步要先装 deadcode，没装就跳过并说明怎么装。
 lint:

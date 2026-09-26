@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"time"
+
 	"github.com/dabao/jarvis/internal/agent"
 	"github.com/dabao/jarvis/internal/browser"
 	"github.com/dabao/jarvis/internal/config"
@@ -22,10 +24,19 @@ import (
 //
 // 这里只负责把 Session 上那几个字段填成空的/临时的，技能清单本身由
 // buildSkills() 说了算：加一项就自动进这四道守卫。
+// testClock 是测试里的「现在」。
+//
+// **金标类的测试必须钉住它。** 日程的 Describe 会印出今天的日期，不钉的话金标
+// 每天都不一样——而且长度往往相同（日期位数不变），报出来只是「内容不同」，
+// 最难猜。
+var testClock = time.Date(2026, 9, 26, 14, 21, 0, 0, time.Local)
+
 func testSkills() []agent.Skill {
 	cfg := config.Default()
 	s := &Session{cfg: cfg}
-	s.orgWS = orgtools.NewWorkspace(&org.Collection{}, cfg)
+	ws := orgtools.NewWorkspace(&org.Collection{}, cfg)
+	ws.Now = func() time.Time { return testClock }
+	s.orgWS = ws
 	s.mailS = mail.NewSession(cfg)
 	s.ledgerSkill = ledger.NewSkill("")
 	s.healthSkill = health.New("")
