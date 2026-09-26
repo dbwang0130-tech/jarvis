@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test lint eval fmt clean ios-framework ios-contract ios-check ios-install ios-project ios-assets
+.PHONY: build install uninstall install-remind uninstall-remind test lint eval fmt clean ios-framework ios-contract ios-check ios-ui ios-install ios-project ios-assets
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -79,6 +79,17 @@ ios-project:
 # 几秒钟的事，不值得为了省它去手机上调试。
 ios-install: ios/Mobile.xcframework ios-contract
 	@sh ios/install-device.sh
+
+# 界面那半纯逻辑的测试：链接怎么解、哪一行算一张图表、markdown 怎么切块。
+#
+# 用纯 swiftc 编 MarkdownParse.swift 加一份断言就能跑——不需要模拟器，也不需要
+# 在 Xcode 工程里挂一个测试目标。跟 ios-contract 同一个路子。
+#
+# 画那一半（MarkdownText / ChartCard / 输入框）不在这儿：那要真跑起来才看得出，
+# 靠装到手机上看。
+ios-ui:
+	@command -v swiftc >/dev/null || { echo "没有 swiftc，先 xcode-select --install"; exit 1; }
+	@tmp=$$(mktemp -d) && 	swiftc -swift-version 5 ios/MarkdownParse.swift ios/uitest/main.swift -o $$tmp/uitest && 	$$tmp/uitest; rc=$$?; rm -rf $$tmp; exit $$rc
 
 # 拿真正的 iOS SDK 类型检查 Swift 代码。macOS 上编能过不代表 iOS 上能过——
 # 不少 SwiftUI 的初始化器只在 iOS 有，或者签名不一样。需要完整 Xcode。

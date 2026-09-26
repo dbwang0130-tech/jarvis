@@ -29,8 +29,19 @@ iOS 那边文件访问的坑（沙箱授权、iCloud 占位符、`NSFileCoordina
 
 ```sh
 make ios-contract   # 拿 ios/Models.swift 去解 Go 真实出参，只要 swiftc
+make ios-ui         # 界面那半纯逻辑（链接解析、markdown 切块），只要 swiftc
 make ios-check      # Swift 在真实 iOS SDK 下类型检查，要完整 Xcode
 ```
+
+**markdown 那块拆成两半**：`MarkdownParse.swift` 只管「怎么看懂」（`JarvisLink`、
+`Block`、`Markdown.blocks`，只 import Foundation），`Markdown.swift` 只管「怎么画」。
+拆的理由是测试——合在一起的时候要测解析就得把 `ChartCard` 连带 `Store`、HealthKit
+一路拖进来编，于是 iOS 那边一条测试都没有。现在 `ios/uitest` 拿纯 swiftc 编一个文件
+加一份断言就能跑，不需要模拟器、也不需要在工程里挂测试目标。解析器本来就不该知道
+SwiftUI 的事，所以这个拆分本身也是对的。
+
+画那一半（`MarkdownText` / `ChartCard` / 输入框）仍然只能装到手机上看——它要真跑
+起来才看得出。
 
 iOS 端带日程、记账、健康、记忆四项（都是 RiskNone、改的都是本地文件，所以
 不会冒出确认框），配了邮箱再加上邮件——发信那类收不回来的动作靠
