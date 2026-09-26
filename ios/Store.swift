@@ -361,12 +361,52 @@ final class Store: ObservableObject, AskEvents {
         p.answer(ok)
     }
 
+    /// 开一段新对话：**先把这一段归档，再清空。**
+    ///
+    /// 原先这里是直接删，所以按钮上得挂个确认框问一句「真要开始新对话？」。
+    /// 归档之后那句就没必要问了——东西没丢，在「设置 → 历史对话」里，
+    /// 随时读得回来。少一次确认，而且是靠让后果变轻来少的，不是靠把
+    /// 危险动作做得更顺手。
+    ///
+    /// 归档失败（没选金库、iCloud 不可用）**也照样清空**：人按这个键是
+    /// 想开始新的一段，不能因为存档没写成就卡在旧对话里。但要说一声。
     func clearChat() {
+        let old = Session(chat: messages, engine: engineHistory)
+        let vault = self.vault
+        if !old.chat.isEmpty {
+            do {
+                try SessionArchive.archive(old, to: vault)
+            } catch {
+                lastError = "这段对话没能存进历史：\(error.localizedDescription)"
+            }
+        }
         messages = []
         engineHistory = []
         steps = []
         persist()
+        // 图片是按「还有哪条消息引着」清的。归档留的是文字，图不跟着走——
+        // 否则金库里会越积越多，而历史对话里的图也没有地方显示。
         ImageStore.sweep(keep: [])
+    }
+
+    /// 把一段存档读回来当成当前对话。
+    ///
+    /// 当前这段**先归档**，不然点一下历史就把手头的聊天冲掉了。
+    @discardableResult
+    func loadArchived(_ id: String) -> Bool {
+        guard let restored = SessionArchive.load(id, from: vault) else {
+            lastError = "这段对话读不出来了"
+            return false
+        }
+        let current = Session(chat: messages, engine: engineHistory)
+        if !current.chat.isEmpty {
+            try? SessionArchive.archive(current, to: vault)
+        }
+        messages = restored.chat
+        engineHistory = restored.engine
+        steps = []
+        persist()
+        return true
     }
 
     /// 存档可能有几百 KB，别占着主线程。

@@ -9,7 +9,7 @@ import Foundation
 /// 否则跟 Mac 那头同时改会互相踩。
 ///
 /// 这些麻烦全关在这个类里——Go 那边一个文件都不碰，只收内容、吐内容。
-final class Vault {
+final class Vault: SessionFiles {
     /// 书签存在这个键下面，换设备要重新选一次目录。
     private static let bookmarkKey = "jarvis.vault.bookmark"
 
@@ -136,6 +136,62 @@ final class Vault {
                 out.append(RawSkill(dir: sub.lastPathComponent, content: text))
             }
             return out
+        }
+    }
+
+    // MARK: - 会话存档
+
+    /// 存档目录：`<金库>/sessions/`。**一个会话一个 .jsonl 文件。**
+    ///
+    /// 放 iCloud 是为了换设备、换手机都还在——这些是用户说过的话，跟日程
+    /// 账本一样属于他自己。但**正在进行的那一轮不放这儿**（见 SessionStore）：
+    /// 每说一句就写一次 iCloud，同步会疯，也多一次跟另一头撞车的机会。
+    /// 只在开新对话时把上一轮整个归档过来，一次写完就不再动。
+    private func sessionsDir(_ root: URL) -> URL {
+        root.appendingPathComponent("sessions", isDirectory: true)
+    }
+
+    /// 列出存档里有哪些文件，按名字倒序（名字是时间戳，倒序就是最近的在前）。
+    func sessionFiles() throws -> [String] {
+        guard let root else { throw VaultError.notConfigured }
+        return try withAccess(to: root) {
+            let dir = sessionsDir(root)
+            guard exists(dir) else { return [] }
+            let all = (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: nil)) ?? []
+            return all.map(\.lastPathComponent)
+                .filter { $0.hasSuffix(".jsonl") && !$0.hasPrefix(".") }
+                .sorted(by: >)
+        }
+    }
+
+    func readSession(_ name: String) throws -> String {
+        guard let root else { throw VaultError.notConfigured }
+        return try withAccess(to: root) {
+            let url = sessionsDir(root).appendingPathComponent(name)
+            guard exists(url) else { return "" }
+            return try readCoordinated(url)
+        }
+    }
+
+    func writeSession(_ name: String, _ content: String) throws {
+        guard let root else { throw VaultError.notConfigured }
+        try withAccess(to: root) {
+            let dir = sessionsDir(root)
+            if !exists(dir) {
+                try FileManager.default.createDirectory(
+                    at: dir, withIntermediateDirectories: true)
+            }
+            try writeCoordinated(dir.appendingPathComponent(name), content)
+        }
+    }
+
+    func deleteSession(_ name: String) throws {
+        guard let root else { throw VaultError.notConfigured }
+        try withAccess(to: root) {
+            let url = sessionsDir(root).appendingPathComponent(name)
+            guard exists(url) else { return }
+            try FileManager.default.removeItem(at: url)
         }
     }
 

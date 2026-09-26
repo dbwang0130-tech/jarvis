@@ -144,6 +144,114 @@ check("空输入不炸") {
     return "5 种边角输入都没崩"
 }
 
+
+// MARK: - 会话存档
+
+/// 内存版的金库，只实现存档要的那几样。真 Vault 背后是安全作用域书签、
+/// iCloud 占位符、写协调那一堆，测试里起不来。
+final class FakeFiles: SessionFiles {
+    var store: [String: String] = [:]
+    func sessionFiles() throws -> [String] { store.keys.sorted(by: >) }
+    func readSession(_ name: String) throws -> String { store[name] ?? "" }
+    func writeSession(_ name: String, _ content: String) throws { store[name] = content }
+    func deleteSession(_ name: String) throws { store[name] = nil }
+}
+
+// 存了要能原样读回来。**engine 那份尤其要紧**：它是喂回模型的上下文，
+// 少一个 tool_call_id，下一轮请求就会被服务端直接拒（tool 消息必须紧跟在
+// 声明了对应 tool_calls 的 assistant 后面）。
+check("存档往返") {
+    let files = FakeFiles()
+    var s = Session()
+    s.chat = [ChatMessage(role: "user", text: "把周会挪到周五"),
+              ChatMessage(role: "assistant", text: "挪好了，先生。")]
+    var call = Message(role: "assistant", content: "")
+    call.toolCalls = [ToolCall(id: "c1", type: "function",
+                               function: ToolFunction(name: "update_item",
+                                                      arguments: "{\"ref\":\"w.org:9\"}"))]
+    var result = Message(role: "tool", content: "已安排")
+    result.toolCallID = "c1"
+    result.name = "update_item"
+    s.engine = [Message(role: "user", content: "把周会挪到周五"), call, result,
+                Message(role: "assistant", content: "挪好了，先生。")]
+
+    guard let name = try SessionArchive.archive(s, to: files) else {
+        throw Err("没存出文件")
+    }
+    guard name.hasSuffix(".jsonl") else { throw Err("文件名不对：\(name)") }
+    guard let back = SessionArchive.load(name, from: files) else { throw Err("读不回来") }
+    guard back.chat.count == 2, back.chat[0].text == "把周会挪到周五" else {
+        throw Err("chat 没对上：\(back.chat)")
+    }
+    guard back.engine.count == 4 else { throw Err("engine 少了：\(back.engine.count)") }
+    guard back.engine[1].toolCalls?.first?.function?.name == "update_item" else {
+        throw Err("工具调用丢了：\(String(describing: back.engine[1].toolCalls))")
+    }
+    guard back.engine[2].toolCallID == "c1", back.engine[2].name == "update_item" else {
+        throw Err("tool 那条的配对信息丢了：\(back.engine[2])")
+    }
+    return "chat \(back.chat.count) 条 / engine \(back.engine.count) 条，工具调用配对完整"
+}
+
+// 列表只读头几行就要给出标题和条数——engine 那份一轮几十 KB，
+// 翻一次列表全读进来再丢掉是几 MB 的无用功。
+check("存档列表") {
+    let files = FakeFiles()
+    for (i, q) in ["今天什么安排", "这个月花了多少"].enumerated() {
+        var s = Session()
+        s.chat = [ChatMessage(role: "user", text: q),
+                  ChatMessage(role: "assistant", text: "……")]
+        _ = try SessionArchive.archive(s, to: files,
+                                       at: Date(timeIntervalSince1970: 1_790_000_000 + Double(i) * 3600))
+    }
+    let list = SessionArchive.list(from: files)
+    guard list.count == 2 else { throw Err("列出 \(list.count) 条") }
+    // 名字是时间戳，倒序就是最近的在前。
+    guard list[0].title == "这个月花了多少" else { throw Err("排序不对：\(list.map(\.title))") }
+    guard list[0].count == 2 else { throw Err("条数不对：\(list[0].count)") }
+    guard list[0].started != nil else { throw Err("时间没解出来") }
+    return "2 条，最近的在前"
+}
+
+// 空对话不该留下一个空文件——那会在列表里堆出一串「（没有标题）」。
+check("空对话不存") {
+    let files = FakeFiles()
+    guard try SessionArchive.archive(Session(), to: files) == nil else {
+        throw Err("空对话也存了")
+    }
+    return "没留下文件"
+}
+
+// **坏了一行只坏那一行**，这正是一行一条的好处。整段对话不该因为中间
+// 某一行写坏了就全读不出来。
+check("坏行跳过") {
+    let files = FakeFiles()
+    try files.writeSession("x.jsonl", """
+    {"type":"meta","started":"2026-09-26T22:33:00Z","title":"还在"}
+    {"type":"chat","role":"user","text":"第一句"}
+    这一行不是 JSON
+    {"type":"chat","role":"assistant","text":"第二句"}
+    {"type":"没见过的东西","x":1}
+    """)
+    guard let s = SessionArchive.load("x.jsonl", from: files) else { throw Err("整个读不出来了") }
+    guard s.chat.count == 2 else { throw Err("好行也跟着丢了：\(s.chat.count)") }
+    let list = SessionArchive.list(from: files)
+    guard list.first?.title == "还在" else { throw Err("标题丢了") }
+    return "坏行和不认得的 type 都跳过，好行全在"
+}
+
+// 标题取第一句用户说的话，长的要截断——列表一行放不下整段话。
+check("存档标题") {
+    let files = FakeFiles()
+    var s = Session()
+    s.chat = [ChatMessage(role: "user", text: String(repeating: "长", count: 80))]
+    let name = try SessionArchive.archive(s, to: files)!
+    guard let t = SessionArchive.list(from: files).first?.title else { throw Err("没标题") }
+    guard t.count <= 41, t.hasSuffix("…") else { throw Err("没截断：\(t.count) 字") }
+    _ = name
+    return "截到 \(t.count) 字"
+}
+
 if failed > 0 {
     print("\n\(failed) 条没过。")
     exit(1)

@@ -89,7 +89,7 @@ ios-install: ios/Mobile.xcframework ios-contract
 # 靠装到手机上看。
 ios-ui:
 	@command -v swiftc >/dev/null || { echo "没有 swiftc，先 xcode-select --install"; exit 1; }
-	@tmp=$$(mktemp -d) && 	swiftc -swift-version 5 ios/MarkdownParse.swift ios/uitest/main.swift -o $$tmp/uitest && 	$$tmp/uitest; rc=$$?; rm -rf $$tmp; exit $$rc
+	@tmp=$$(mktemp -d) && 	swiftc -swift-version 5 ios/MarkdownParse.swift ios/Models.swift ios/Keychain.swift ios/Session.swift ios/Paths.swift ios/SessionArchive.swift ios/uitest/main.swift -o $$tmp/uitest && 	$$tmp/uitest; rc=$$?; rm -rf $$tmp; exit $$rc
 
 # 拿真正的 iOS SDK 类型检查 Swift 代码。macOS 上编能过不代表 iOS 上能过——
 # 不少 SwiftUI 的初始化器只在 iOS 有，或者签名不一样。需要完整 Xcode。

@@ -35,6 +35,8 @@ struct SettingsView: View {
         ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "mail"
     @State private var debugToPrivacy =
         ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "privacy"
+    @State private var debugToSessions =
+        ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] == "sessions"
 #endif
 
     var body: some View {
@@ -70,6 +72,12 @@ struct SettingsView: View {
                                    value: store.settings.profile.isEmpty ? "没写" : "已写")
                     }
                     NavigationLink {
+                        SessionsView()
+                    } label: {
+                        SettingRow(icon: "clock.arrow.circlepath", tint: .indigo,
+                                   title: "历史对话")
+                    }
+                    NavigationLink {
                         DataSettings()
                     } label: {
                         SettingRow(icon: "folder", tint: .blue, title: "数据",
@@ -102,6 +110,7 @@ struct SettingsView: View {
             }
             .navigationDestination(isPresented: $debugToMail) { MailAccountsView() }
             .navigationDestination(isPresented: $debugToPrivacy) { PrivacyView() }
+            .navigationDestination(isPresented: $debugToSessions) { SessionsView() }
 #endif
             .toolbar {
                 // **只有「完成」，没有「存」。** 这一页每一项都是改完就生效的，
@@ -109,6 +118,11 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }.fontWeight(.semibold)
                 }
+            }
+            // 从「历史对话」里读回一段之后，整张设置都得收掉——不然人读完
+            // 还盯着设置页，看不见自己刚读回来的那段对话。
+            .onReceive(NotificationCenter.default.publisher(for: .jarvisCloseSettings)) { _ in
+                dismiss()
             }
         }
         .onAppear { if providers.isEmpty { providers = Bridge.providers() } }

@@ -239,6 +239,23 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 `PrepareImport` / `AppendTo`——它们只为那条路存在，留着就是死代码。
 上架的其余事项见 `APPSTORE.md`，隐私政策正文见 `PRIVACY.md`。
 
+**对话分两处放，这是有讲究的**：正在进行的那一段在本机
+（`SessionStore`，Application Support 里的 `session.json`），**归档的在金库的
+`sessions/` 下，一段一个 `.jsonl`**（`SessionArchive`）。每说一句就写一次 iCloud，
+同步会疯，也多一次跟另一头撞车的机会；而攒完一整段一次写完就不再动，换设备、
+换手机都还在——这些是用户说过的话，跟日程账本一样该是他自己能打开看的文件。
+
+**「新建对话」不再问了**，因为后果变轻了：`clearChat` 先归档再清空，读得回来。
+注意这是靠**让动作可撤销**来省掉确认，不是靠把危险动作做得更顺手——发信、删邮件
+那类收不回来的照旧要问。归档失败也照样清空（人按那个键是想开始新的一段），
+但要在 `lastError` 里说一声。
+
+`SessionArchive` 对文件系统的依赖抽成了 `SessionFiles` 协议，**为的是能测**：
+jsonl 拼错、字段漏映射，表现是「历史读不出来」或者读回来少了半段，而 `Vault`
+背后那堆安全作用域书签、iCloud 占位符、写协调在测试里起不来。`make ios-ui` 拿
+纯 swiftc 编它加一个内存实现就能跑。engine 那份尤其要钉住——少一个
+`tool_call_id`，下一轮请求会被服务端直接拒。
+
 **隐私政策只有一份文件**：仓库根的 `PRIVACY.md`。它既要发成网页填进 App Store
 Connect（那是必填项，app 内置的替代不了），又要在「设置 → 隐私政策」里看得到，
 所以 `ios/genproject.py` 把它从上一层引进来打进 bundle，`PrivacyView` 读的就是
@@ -391,7 +408,7 @@ IMAP/SMTP 参数，两端共用（桌面 `/mail` 向导、iOS 加邮箱页的 `a
   是我们填的，不是人填的。少了这条，人改一个字就被弹回预设值。
 
 模拟器里查界面的四个口子（都只在 Debug 里存在）：`JARVIS_UI_VAULT` 指定数据目录、
-`JARVIS_UI_SCREEN` 直接推到某一屏（`settings` / `model` / `models` / `mail`）、
+`JARVIS_UI_SCREEN` 直接推到某一屏（`settings` / `model` / `models` / `mail` / `privacy` / `sessions`）、
 `JARVIS_UI_MAIL` 给个地址直接开加邮箱那张表（好看自动填充的样子）、`JARVIS_UI_KEY`
 顶替钥匙串里的密钥——模拟器的钥匙串从外面写不进去（simctl 只管证书），没有它就
 永远看不到「密钥齐了」之后的那几屏。设了 `JARVIS_UI_SCREEN` 就不弹通知权限框：

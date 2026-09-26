@@ -180,7 +180,6 @@ struct ChatView: View {
     @State private var openSettings = false
     /// 记一笔账的表单。Siri 说「记一笔 35」时直接摆开它。
     @State private var spending = false
-    @State private var askNew = false
     /// Siri 说「记一笔账」时带来的金额，直接摆开记账表单。
     @State private var spendAmount: Double?
     /// 这一轮要一起发出去的图。
@@ -206,7 +205,7 @@ struct ChatView: View {
         // 设置页平时要点右上角才开得了，而 simctl 点不了屏幕。
         let _ = {
             let want = ProcessInfo.processInfo.environment["JARVIS_UI_SCREEN"] ?? ""
-            if ["settings", "model", "models", "mail", "privacy"].contains(want), !openSettings {
+            if ["settings", "model", "models", "mail", "privacy", "sessions"].contains(want), !openSettings {
                 DispatchQueue.main.async { openSettings = true }
             }
         }()
@@ -334,32 +333,24 @@ struct ChatView: View {
                 // 那件事——换个话题重新开始。iMessage、微信的「发起新对话」
                 // 都是这支笔。
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { askNew = true } label: {
+                    // **不问了。** 原先这儿挂着确认框，因为按下去这一段就
+                    // 真的没了。现在 clearChat 会先把它归档进金库的
+                    // sessions/，「设置 → 历史对话」里随时读得回来——后果
+                    // 变轻了，那一问也就没必要。
+                    //
+                    // 注意这是靠**让动作可撤销**来省掉确认，不是靠把一个
+                    // 危险动作做得更顺手。收不回来的事（发信、删邮件）照旧要问。
+                    Button {
+                        store.clearChat()
+                        Haptics.tap()
+                    } label: {
                         Image(systemName: "square.and.pencil")
                     }
                     .disabled(store.messages.isEmpty)
                     .accessibilityLabel("新建对话")
-                    // **确认框挂在这颗按钮上，不是挂在整屏对话上。**
-                    // iPad 上（以及 iPhone 横屏那几种布局）它是个 popover，
-                    // 箭头指向挂载的那个视图——挂在 transcript 上就指向屏幕
-                    // 正中，看着像凭空冒出来的，人得自己找是哪个按钮弹的。
-                    .confirmationDialog("开始新对话？", isPresented: $askNew,
-                                        titleVisibility: .visible) {
-                        // 仍然是 destructive：换个说法不改变后果，
-                        // 这一段真的没了。
-                        Button("新建", role: .destructive) {
-                            store.clearChat()
-                            Haptics.warning()
-                        }
-                        Button("算了", role: .cancel) {}
-                    } message: {
-                        Text("现在这段对话会从这台设备上删掉，日程和账本不受影响。")
-                    }
                 }
                 SettingsLink()
             }
-            // 一下点掉整段对话，之前是碰到就没了。别的收不回来的事
-            // （发信、删邮件）都要点头，自己这一处不该例外。
     }
 
     // MARK: - 对话记录
