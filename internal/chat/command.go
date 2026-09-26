@@ -23,7 +23,7 @@ var commands = []command{
 	{"/setup", "", "从头走一遍配置（模型、日程、邮箱、账本…）"},
 	{"/login", "<key>", "设置模型密钥"},
 	{"/provider", "<名字>", "切换服务商（deepseek/qwen/kimi/minimax…）"},
-	{"/model", "[名字|list|save <名字>|rm <名字>]", "模型：看清单、切换、服务商可用模型、存一套、删一套"},
+	{"/model", "[名字|list|save <名字>|rm <名字>]", "模型：看清单、切换、拉服务商的可用模型、存一套、删一套"},
 	{"/auto", "<off|clean|all>", "有风险动作的自动档"},
 	{"/mail", "", "添加邮箱账号"},
 	{"/accounts", "", "看已有的邮箱账号"},
@@ -350,7 +350,7 @@ func (s *Session) addMail() {
 	if known {
 		note("已识别为 %s：%s:%d", pre.Name, pre.Host, pre.Port)
 	} else if pre.Host != "" {
-		note("没收录这个域名，按常见约定猜的：%s:%d（连不上就改这两项）", pre.Host, pre.Port)
+		note("没收录这个域名，按常见约定推断：%s:%d（连不上就改这两项）", pre.Host, pre.Port)
 	}
 
 	host, kind := s.readLine(fmt.Sprintf("IMAP 服务器（回车用 %s）：", pre.Host))

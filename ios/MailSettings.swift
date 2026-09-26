@@ -146,7 +146,7 @@ struct MailAccountEditor: View {
                             } else {
                                 Image(systemName: "bolt.horizontal.circle")
                             }
-                            Text(checking ? "连着看看…" : "测一下")
+                            Text(checking ? "连接中…" : "测试连接")
                             Spacer(minLength: 0)
                             if let c = check, !checking {
                                 Image(systemName: c.ok ? "checkmark.circle.fill"
@@ -170,7 +170,7 @@ struct MailAccountEditor: View {
                     field("显示名", $from, placeholder: "发信时对方看到的名字")
                 }
 
-                Section("这个账号叫什么") {
+                Section("备注") {
                     field("备注", $name, placeholder: "留空就用账号名")
                 }
             }

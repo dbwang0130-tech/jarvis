@@ -35,7 +35,7 @@ struct MailBodyView: View {
             }
 
             if content.inlineDropped > 0 {
-                Label("有 \(content.inlineDropped) 张图太大没显示",
+                Label("有 \(content.inlineDropped) 张图片过大，未显示",
                       systemImage: "exclamationmark.circle")
                     .font(.caption2)
                     .foregroundStyle(.secondary)

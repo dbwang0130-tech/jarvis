@@ -144,7 +144,7 @@ struct SpendView: View {
                         if reading {
                             HStack(spacing: 8) {
                                 ProgressView().controlSize(.small)
-                                Text("认一下…").foregroundStyle(.secondary)
+                                Text("识别中…").foregroundStyle(.secondary)
                             }
                             .font(.footnote)
                         } else if !readNote.isEmpty {

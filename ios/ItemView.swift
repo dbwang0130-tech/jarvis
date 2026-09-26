@@ -524,7 +524,7 @@ struct NoteButton: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("这会儿是什么情况", text: $text, axis: .vertical)
+                    TextField("进展或备注", text: $text, axis: .vertical)
                         .lineLimit(3...8)
                         .focused($focused)
                 } footer: {

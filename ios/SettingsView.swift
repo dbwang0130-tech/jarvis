@@ -266,7 +266,7 @@ struct ModelSettings: View {
                 // 本机钥匙串」——那回答的是「安不安全」，而第一次用的人问的是
                 // 「它从哪儿来」。地址跟着 Go 那份服务商表走，不在这边另抄。
                 if info?.local == true {
-                    Text("本地跑的，不用密钥。先确保 Ollama 已经在这台机器上跑着。")
+                    Text("本地模型不需要密钥。请先确保 Ollama 已在本机运行。")
                 } else if let url = info?.console, let link = URL(string: url) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("还没有密钥？在 \(provider) 的控制台创建一个，复制后粘贴到上方。")
@@ -300,9 +300,9 @@ struct ModelSettings: View {
             } footer: {
                 // 按钮灰着的时候要说明为什么灰——不说的话人只会以为它坏了。
                 if apiKey.isEmpty && info?.local != true {
-                    Text("先填密钥，才能试着连一次。")
+                    Text("填入密钥后才能测试连接。")
                 } else {
-                    Text("真发一次请求，确认密钥和地址都对。不测也能用，只是第一次提问时才会发现填错。")
+                    Text("会真实发起一次请求，确认密钥和地址无误。不测也能用，只是填错要到第一次提问时才会发现。")
                 }
             }
 
@@ -357,13 +357,13 @@ struct ModelSettings: View {
                 .onDelete(perform: deleteProfiles)
 
                 HStack {
-                    TextField("起个名字，存下现在这套", text: $newName)
+                    TextField("为当前这套起个名字", text: $newName)
                         .autocorrectionDisabled()
                     Button("存") { saveProfile() }
                         .disabled(newName.trimmed.isEmpty || apiKey.trimmed.isEmpty)
                 }
             } header: {
-                Text("存着的几套")
+                Text("已存的配置")
             } footer: {
                 Text(store.settings.profiles.isEmpty
                      ? "干活用贵的、闲聊用便宜的，存下来就能随手切。"
@@ -678,7 +678,7 @@ struct RemindSettings: View {
                     Picker(selection: $briefHour) {
                         ForEach([6, 7, 8, 9, 10], id: \.self) { h in Text("\(h):00").tag(h) }
                     } label: {
-                        Label("几点说", systemImage: "alarm")
+                        Label("几点发", systemImage: "alarm")
                     }
                     .onChange(of: briefHour) { _, _ in save() }
                 }
@@ -806,21 +806,21 @@ struct DataSettings: View {
                     LabeledContent("账户", value: "\(l.accounts.count) 个")
                 }
                 HStack {
-                    Text("端上模型")
+                    Text("设备端模型")
                     Spacer()
                     if LocalModel.available {
                         Label("可用", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green).font(.caption).labelStyle(.titleAndIcon)
                     } else {
-                        Text(LocalModel.unavailableReason ?? "用不了")
+                        Text(LocalModel.unavailableReason ?? "不可用")
                             .font(.caption).foregroundStyle(.secondary)
                             .multilineTextAlignment(.trailing)
                     }
                 }
             } header: {
-                Text("现在读到的")
+                Text("本机状态")
             } footer: {
-                Text("端上模型把「明天三点跟老张开会」拆成表单字段，在本机算，不联网。")
+                Text("设备端模型把「明天三点跟老张开会」拆成表单字段，在本机运行，不联网。")
             }
 
             if let err = store.lastError {

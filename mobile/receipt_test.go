@@ -56,12 +56,18 @@ func TestParseReceiptRefusesJunk(t *testing.T) {
 	}
 }
 
-// 最常见的失败是模型不支持看图，而接口返回的多半是一句语焉不详的 400——
+// 最常见的失败是模型不支持图像输入，而接口返回的多半是一句语焉不详的 400——
 // 原样甩给用户，他会以为是小票拍糊了。
+//
+// 断言的是**有没有指路**，不是某个词：话术怎么改都行，但必须说清「换个模型」
+// 和「去哪儿换」。原先这儿钉着「多模态」三个字，而那版文案还顺手硬编码了三个
+// 模型名——名字会过时，正是「模型名改成挑的」要治的毛病。
 func TestExplainReceiptError(t *testing.T) {
 	got := explainReceiptError("400 invalid_request: this model does not support image input")
-	if !strings.Contains(got, "多模态") {
-		t.Errorf("没提示换模型：%s", got)
+	for _, want := range []string{"模型", "设置"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("没说清该换什么、去哪儿换（缺 %q）：%s", want, got)
+		}
 	}
 }
 

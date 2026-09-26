@@ -51,7 +51,7 @@ func VoidHealth(inputJSON string) string {
 		return marshal(&VoidHealthOutput{Error: err.Error()})
 	}
 	return marshal(&VoidHealthOutput{
-		Message: "标成「录错了」了，这条不再算数",
+		Message: "已标为录错，这条不再计入",
 		Health:  out,
 	})
 }

@@ -648,7 +648,7 @@ struct Starters: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("可以这么使唤它")
+            Text("试试这样说")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             ForEach(examples, id: \.self) { e in
@@ -824,7 +824,7 @@ struct Bubble: View {
                         Button {
                             Task { await store.retryLast() }
                         } label: {
-                            Label("重答一遍", systemImage: "arrow.clockwise")
+                            Label("重新生成", systemImage: "arrow.clockwise")
                         }
                         .disabled(store.thinking)
                     }

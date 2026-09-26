@@ -33,15 +33,15 @@ enum LocalModel {
         case .available:
             return nil
         case .unavailable(.deviceNotEligible):
-            return "这台设备不支持端上模型"
+            return "这台设备不支持设备端模型"
         case .unavailable(.appleIntelligenceNotEnabled):
             return "先到「设置 → Apple 智能与 Siri」里打开"
         case .unavailable(.modelNotReady):
             return "模型还在下载，稍后再试"
         case .unavailable:
-            return "这会儿用不了端上模型"
+            return "设备端模型暂时不可用"
         @unknown default:
-            return "这会儿用不了端上模型"
+            return "设备端模型暂时不可用"
         }
     }
 

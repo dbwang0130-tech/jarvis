@@ -28,8 +28,8 @@ struct PhotoButton: View {
         }
         .buttonStyle(.plain)
         .disabled(shots.count >= Self.maxShots)
-        .accessibilityLabel("发张图")
-        .confirmationDialog("发张图", isPresented: $menu, titleVisibility: .hidden) {
+        .accessibilityLabel("发送图片")
+        .confirmationDialog("发送图片", isPresented: $menu, titleVisibility: .hidden) {
             Button("拍一张") { camera = true }
             Button("从相册选") { showPicker = true }
             Button("算了", role: .cancel) {}

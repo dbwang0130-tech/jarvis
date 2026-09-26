@@ -9,10 +9,10 @@ import SwiftUI
 /// 打出来要半分钟，说出来五秒。
 ///
 /// **本机识别，一个字不上传。** `requiresOnDeviceRecognition = true` 强制
-/// 走端上模型：这个 app 的全部立场就是「数据是你自己的文件」，为了省事把
+/// 走设备端模型：这个 app 的全部立场就是「数据是你自己的文件」，为了省事把
 /// 用户说的每句话送到苹果服务器去转文字，跟这个立场直接冲突。
 ///
-/// 代价是端上模型不一定装了（要在「设置 → 通用 → 键盘 → 听写」里下过对应
+/// 代价是设备端模型不一定装了（要在「设置 → 通用 → 键盘 → 听写」里下过对应
 /// 语言），装了才给用。没有就把麦克风按钮藏起来——给一个点了不出字的按钮，
 /// 比没有这个按钮更糟。
 @MainActor
@@ -21,7 +21,7 @@ final class Dictation: ObservableObject {
     @Published private(set) var listening = false
     /// 边说边更新的那段文字。
     @Published private(set) var text = ""
-    /// 出了什么事（没权限、端上模型没装）。
+    /// 出了什么事（没权限、设备端模型没装）。
     @Published var problem: String?
 
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh_CN"))

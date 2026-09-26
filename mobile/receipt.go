@@ -162,14 +162,13 @@ func explainReceiptError(raw string) string {
 	switch {
 	case strings.Contains(l, "image"), strings.Contains(l, "vision"),
 		strings.Contains(l, "multimodal"), strings.Contains(l, "not support"):
-		return "这个模型看不了图。换一个多模态的（比如 qwen-vl-max、doubao-vision、glm-4v），" +
-			"在设置里改模型名。"
+		return "这个模型不支持图像输入。去「设置 → 模型 → 模型名」挑一个标着「视觉」的。"
 	case strings.Contains(l, "401"), strings.Contains(l, "unauthorized"):
 		return "密钥不对，去设置里检查一下。"
 	case strings.Contains(l, "timeout"), strings.Contains(l, "deadline"):
-		return "等太久了。图片有点大的话，换个网络再试。"
+		return "请求超时。图片较大时换个网络再试。"
 	case strings.Contains(l, "413"), strings.Contains(l, "too large"):
-		return "图片太大了，服务商收不下。"
+		return "图片超出服务商的大小限制。"
 	default:
 		return raw
 	}
