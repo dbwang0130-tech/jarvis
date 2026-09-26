@@ -1,4 +1,64 @@
 import Charts
+
+// HealthGroup 原来在 HealthTab.swift 里。健康页删掉之后只剩这儿在用
+// （VitalDetail 的配色和图标），就跟着搬过来了。它是**界面的东西**——
+// 名字由 Go 那张体征表给，颜色和 SF Symbol 是这边自己定的。
+
+/// 一类指标。名字由 Go 那张体征表给（`HealthVital.group`），
+/// 这边只负责它长什么样——颜色和图标是界面的事，不是 FHIR 的事。
+///
+/// 配色跟着系统「健康」：身体测量紫、心脏红、活动橙、睡眠青、呼吸蓝绿、
+/// 化验靛蓝、饮食绿。认不出来的走 `.other`，是灰的但**不会消失**——
+/// Go 那边新加一类，这儿最差也就是没上色，不至于整段不显示。
+enum HealthGroup: String, CaseIterable, Hashable {
+    case body = "身体测量"
+    case heart = "心脏"
+    case activity = "活动"
+    case sleep = "睡眠"
+    case respiratory = "呼吸"
+    case lab = "化验"
+    case nutrition = "饮食"
+    case other = "其他"
+
+    var name: String { rawValue }
+
+    var tint: Color {
+        switch self {
+        case .body:        return .purple
+        case .heart:       return .red
+        case .activity:    return .orange
+        case .sleep:       return .teal
+        case .respiratory: return .cyan
+        case .lab:         return .indigo
+        case .nutrition:   return .green
+        case .other:       return .secondary
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .body:        return "figure.stand"
+        case .heart:       return "heart.fill"
+        case .activity:    return "figure.walk"
+        case .sleep:       return "bed.double.fill"
+        case .respiratory: return "lungs.fill"
+        case .lab:         return "drop.fill"
+        case .nutrition:   return "fork.knife"
+        case .other:       return "square.grid.2x2"
+        }
+    }
+
+    static func of(_ name: String) -> HealthGroup {
+        HealthGroup(rawValue: name) ?? .other
+    }
+
+    /// 这批数据里出现过的类别，按枚举顺序。
+    static func order(in vitals: [HealthVital]) -> [HealthGroup] {
+        let present = Set(vitals.map { HealthGroup.of($0.group) })
+        return allCases.filter { present.contains($0) }
+    }
+}
+
 import SwiftUI
 
 /// 卡片上那条小线。
@@ -330,3 +390,76 @@ struct VitalDetail: View {
 
 }
 
+/// 挂在回答底下的那张趋势卡片。
+///
+/// **它是回答的一部分，不是一个要去翻的地方。** 秘书说「体重 77.6，比上周
+/// 轻 0.4」——这句话里唯一说不清的就是走势，而那恰恰是一张图一眼就给的东西。
+/// 原来要看它得进健康页、找到那张卡、点开；现在它在话底下。
+///
+/// 图表是**附加的**：没有这项体征、或者只有一个点画不出线，就什么都不画，
+/// 绝不在回答里留一句「暂无数据」——那句话没有任何用处，还让人以为出错了。
+/// 点一下进 VitalDetail 看更细的（换时间跨度、逐条核对）。
+struct ChartCard: View {
+    @EnvironmentObject var store: Store
+    let kind: String
+    /// 链接上那几个字。桌面端只剩它，所以模型写的就该是人话（「体重趋势」）。
+    let label: String
+
+    @State private var detail: HealthVital?
+
+    private var vital: HealthVital? {
+        store.snapshot.health?.vitals.first { $0.kind == kind }
+    }
+
+    var body: some View {
+        if let v = vital, v.hasTrendLine {
+            Button {
+                Haptics.tap()
+                detail = v
+            } label: {
+                card(v)
+            }
+            .buttonStyle(.plain)
+            .sheet(item: $detail) { VitalDetail(vital: $0) }
+            // 卡片里已经有体征名、数字和趋势，读屏软件不必再把图念一遍。
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(spoken(v))
+            .accessibilityHint("点开看更细的")
+        }
+    }
+
+    private func card(_ v: HealthVital) -> some View {
+        let tint = HealthGroup.of(v.group).tint
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(v.kind)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                Spacer(minLength: 4)
+                // 数字大、单位小：同一个字号的话一眼分不出哪个是重点。
+                Text(v.number)
+                    .font(.callout.weight(.semibold).monospacedDigit())
+                Text(v.unit)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if !v.trend.isEmpty {
+                    Text(v.trend)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Sparkline(points: v.points, tint: tint, bars: v.isTotal)
+        }
+        // **不给它自己的框和底。** 气泡本身就是容器了，里面再套一个圆角盒
+        // 就是盒中盒——跟标题栏那个「头像的圆套在玻璃圆里」是同一个毛病。
+        // 分段靠上面那点间距和折线本身的颜色，够了。
+        .padding(.top, 2)
+    }
+
+    private func spoken(_ v: HealthVital) -> String {
+        var s = "\(v.kind) \(v.number) \(v.unit)"
+        if !v.trend.isEmpty { s += "，较上次 \(v.trend)" }
+        if !v.ago.isEmpty { s += "，\(v.ago)" }
+        return s
+    }
+}

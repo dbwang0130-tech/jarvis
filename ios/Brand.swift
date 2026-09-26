@@ -116,28 +116,61 @@ enum Haptics {
     }
 }
 
-/// 忙着的时候的头像：轻轻喘气。
+/// 「正在输入」的三个点，依次轻轻跳。
 ///
-/// 裸一个转圈哪个 app 都长一样，那几秒钟界面就不是「他在给你办」，
-/// 而是「系统在忙」。原先只有首屏读 iCloud 那儿这么做，对话里等回复
-/// 反倒是个静止的头像——同一件事两种样子。收在这儿，两处用同一个。
+/// 原先等回复时是一个转圈加一张喘气的头像。转圈说的是「系统在忙」，
+/// 跳动的点说的是「对面在打字」——同一段等待，后者才是聊天该有的样子。
+/// 微信、WhatsApp、iMessage 都是这个。
 ///
-/// 幅度压得很小（±5%）：它要的是「活着」，不是「在动」；在对话里
-/// 每来一条回复就蹦一下会很吵。关了动效的人直接拿到一个静的。
-struct BusyAvatar: View {
-    var size: CGFloat = 56
+/// 幅度压得很小：它要的是「有话要来」，不是「在动」。**整个 app 里只有
+/// 这一处会动**——头像一律是静的，动的只有这三个点，所以它不必再抢戏。关了动效的人拿到三个静止的点——不能是空白，
+/// 那颗气泡本身就是「回答马上到这儿」的承诺。
+struct TypingDots: View {
+    var size: CGFloat = 7
 
-    @State private var breathe = false
+    @State private var up = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Avatar(size: size)
-            .scaleEffect(breathe ? 1.05 : 0.95)
-            .opacity(breathe ? 1 : 0.7)
-            .onAppear { breathe = !reduceMotion }
-            .animation(reduceMotion ? nil
-                       : .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
-                       value: breathe)
+        HStack(spacing: size * 0.6) {
+            // 三颗点用同一个开关驱动，靠 delay 错开。各自一个 @State
+            // 加计时器的话，三颗点的相位会在息屏、切后台之后慢慢散开。
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .frame(width: size, height: size)
+                    .foregroundStyle(Brand.onSoft.opacity(0.5))
+                    .offset(y: up ? -size * 0.5 : 0)
+                    .animation(reduceMotion ? nil
+                               : .easeInOut(duration: 0.42)
+                                   .repeatForever(autoreverses: true)
+                                   .delay(Double(i) * 0.14),
+                               value: up)
+            }
+        }
+        .onAppear { up = !reduceMotion }
+        .accessibilityHidden(true)
+    }
+}
+
+/// 玻璃上的头像：**头像自己就是那个玻璃圆**。
+///
+/// 标题栏的工具栏项自带一圈圆形玻璃底，而头像本身已经裁成圆、还描了一圈
+/// accent——两个同心圆摞着，内圈看着偏心。融成一个：头像关掉自己那圈边，
+/// 外沿贴一层玻璃当圈边（跟 ThinkingRow 那颗停止按钮同一个手法），屏幕上
+/// 就只剩一个圆。工具栏那层共享底在调用处撤掉，不然又多套一层。
+///
+struct GlassAvatar: View {
+    var size: CGFloat = 30
+
+    var body: some View {
+        // **不带任何动画。** 头像是「这是谁」，不是「他在忙」——忙不忙由
+        // 标题栏那行「正在输入…」和气泡里跳动的点去说。原先它会呼吸（先是
+        // 缩放，后来改成淡入淡出），在标题栏里紧挨着字标，一动就显得跟旁边
+        // 没对齐；首屏那个大的更是一进来就在那儿喘。
+        Avatar(size: size, ring: false)
+            // 玻璃只露出薄薄一圈，正好顶掉原来那圈描边的位置。
+            .padding(2)
+            .glassEffect(.regular, in: .circle)
     }
 }
 
@@ -191,6 +224,11 @@ struct BrandHeader: View {
 /// 只会剩下巴和胸口，头发全没了。
 struct Avatar: View {
     var size: CGFloat = 64
+    /// 要不要自己描那圈边。
+    ///
+    /// 摆在玻璃上的那个（标题栏，见 GlassAvatar）要关掉：玻璃自己就带一圈边
+    /// 和一层阴影，头像再描一圈就是两层同心圆，内圈还看着偏心。
+    var ring = true
 
     var body: some View {
         Image("Avatar")
@@ -199,8 +237,12 @@ struct Avatar: View {
             .frame(width: size, height: size)
             .clipShape(Circle())
             // 浅蓝底配浅蓝边会糊在一起，描一圈更亮的
-            .overlay(Circle().strokeBorder(Brand.accent.opacity(0.35),
-                                           lineWidth: max(1, size / 48)))
+            .overlay {
+                if ring {
+                    Circle().strokeBorder(Brand.accent.opacity(0.35),
+                                          lineWidth: max(1, size / 48))
+                }
+            }
             // 它是装饰，不是信息。每条回复前面都挂一个的话，VoiceOver
             // 会在每句话之前先念一遍「Avatar」——谁说的那件事由气泡
             // 自己的标签讲（见 Bubble）。

@@ -32,8 +32,27 @@ make ios-contract   # 拿 ios/Models.swift 去解 Go 真实出参，只要 swift
 make ios-check      # Swift 在真实 iOS SDK 下类型检查，要完整 Xcode
 ```
 
-iOS 端只带日程和记账两项技能（都是 RiskNone、改的都是本地文件），所以不会
-冒出确认框；邮件和浏览器留在桌面端。
+iOS 端带日程、记账、健康、记忆四项（都是 RiskNone、改的都是本地文件，所以
+不会冒出确认框），配了邮箱再加上邮件——发信那类收不回来的动作靠
+`Host.Confirm` 问用户。浏览器只在桌面端。
+
+**界面只有一整屏对话。** 早先是四个并排的标签页，后来换成输入框上面一排
+四个胶囊（点开盖一张卡片），现在连那一排也没了：它们回答的问题（今天什么
+安排、还剩多少、有什么要紧的信、体重多少）问一句话就有答案，而且答案是
+挑过的。桌面端更早走完了同一步，见下面「界面」那一节。
+
+该看细节的时候照样看，**从话里点进去**：秘书提到条目和邮件时写成
+`[标题](jarvis://item/work.org:12)`、`[主题](jarvis://mail/<编号>)`，
+`ChatView` 拦下 `jarvis://`（`OpenURLAction`）弹原来那几张卡片
+（`ItemDetail` / `MailDetail`）。体征则是另起一行写
+`[体重趋势](jarvis://chart/体重)`，`Markdown.swift` 把这一行识别成一种**块**，
+画成挂在回答底下的趋势图（`ChartCard`）——「最近往上还是往下」一句话说不清，
+而它一眼就给。三条要点：①编号只在这一轮会话里有意义，而界面那份清单来自
+本地索引（标识是「账号:UID」），所以 `mobile/maillink.go` 在出口把编号改写成
+key，**翻不出来的退化成纯文本**——点了没反应的蓝字比不可点更糟；②邮件 key
+要 `url.PathEscape`（账号名可能是中文，否则 Swift 那边 URL 直接解不出来）；
+③提示两端共用，所以 `internal/chat/markdown.go` 给 `jarvis://` 开了例外：
+不发 OSC 8 死链接，只留下划线。
 
 ## 常用命令
 
@@ -76,9 +95,27 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 - `compact.go` 在估算 token 超过 `ContextLimit`（默认 32000）时把早期对话压成一份「交接说明」。
   **预算算的是一次请求的全部**：系统提示 + 工具声明 + 对话历史。早先只数 History，
   固定开销一分不算，于是工具表一路长到五十几个、每轮白发两万字节也没人发现——
-  长的那部分根本不在账上。`fixedTokens()` 把这笔算进来并缓存，`SetSkills` 负责作废。
-  （删掉 configskill / workflow、`update_item` 五合一之后，现在是 36 个工具、
-  声明 14KB、行为规则 10KB。）
+  长的那部分根本不在账上。`fixedTokens()` 把这笔算进来，**但不缓存**——这两样里只有
+  工具声明是真不变的，系统提示带着各技能的环境快照（余额、未读数、当前时间），
+  `/auto` 换档也会换掉一段文案，按技能集合缓存一次就等于整个会话都用开头那一版，
+  漏算的恰好是会长的那部分。
+  （删掉 configskill / workflow、`update_item` 五合一之后是 36 个；加上后来的
+  `persona` 和 `skill` 共 39，声明 14KB 上下、行为规则 10KB。）
+- **提示的顺序是按「变不变」排的，不是按「重不重要」排的。** 请求的前缀是
+  「工具声明 + system + 对话历史…」，那些兼容 OpenAI 协议的家伙都按「跟上一次请求的
+  最长公共前缀」计费，命中的那段便宜一个数量级。所以：`systemPrompt()` 里**一个会变的
+  字都没有**（人设、能力清单、各技能的 `Instructions`、通用规则、档位、用户自述），
+  每轮都变的东西（几点几号、各技能 `Describe` 出来的环境快照）收进 `stateNote()`，
+  作为**消息列表的最后一条**（role 用 system，不是 user——它不是人说的话），
+  而且**不进 History**（进了的话旧快照永远留着，几轮之后就是一串互相矛盾的余额）。
+  原先「现在是 … 14:21」排在系统提示第二行，每分钟一变，能缓存的只有人设那 360 字节；
+  现在 14.9KB 的系统提示整段稳定、连同历史一起命中，每轮按原价的只剩末尾那 500 多字节。
+  **往提示里加东西之前先问一句：它会不会每轮都变？** 会变的只能往 `stateNote` 里加，
+  加在前面等于把它后面所有东西的缓存一起废掉。`internal/agent/prompt_test.go` 的
+  `TestSystemPromptIsByteStableAcrossTurns` 守着这条，`internal/chat/cacheratio_test.go`
+  拿真技能量实际数字（`go test ./internal/chat/ -run TestCachePrefixRatio -v`）。
+  技能的规则里要指回快照，说「【当下】里那张…」，**不许说「上面那张」**——它在最后面；
+  `internal/chat/label_test.go` 的 `TestNoSkillPointsUpwards` 守着。
 - `client.go` 只讲 OpenAI 兼容协议，`Presets` 里列了 deepseek/qwen/kimi/minimax/zhipu/doubao/spark/baichuan/ollama。
 - `build.go` 的 `agent.Build(cfg, skills...)` 是唯一的装配点；未配 provider 时返回 `(nil, err)`，调用方降级而不是崩。
 
@@ -94,6 +131,25 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 | `internal/health` | 健康：体征与饮食记录。NDJSON 一行一条 FHIR 资源，只追加——手机和电脑两头都在写，整文件重写会互相吃改动 |
 | `internal/browser` | Chrome DevTools 自动化，连不上已有 Chrome 就自己起一个独立 profile |
 | `internal/memory` | 跨会话长期记忆（`memory.md`），`/dream` 整理 |
+| `internal/persona` | 人设文件（`persona.md`）的读写，两端共用一份规则 |
+| `internal/skills` | 用户放在 `skills/` 下的扩展技能（SKILL.md），只解析不执行 |
+
+**人设不在代码里**：`internal/agent/persona.go` 有 `DefaultPersona` 兜底，真正用的那份在
+iCloud 的 `persona.md`（`config.PersonaPath()`）。`Agent.SetPersona(text, save)` 把文本和
+落盘方式一起装上，`save` 为 nil 就不注入那个工具——注入了却存不下来更糟，模型会回一句
+「已经改好了」而下一轮人设原样，这恰恰是最不该骗人的地方。读文件留在各自那一端
+（桌面 `chat.buildAgent`，手机由 Swift 读了过桥），agent 不碰文件。
+`persona` 工具**一个兼读写**，靠 `text` 给没给分：没给是读，给了是覆盖，给空串是恢复
+内置。参数是 `*string`，否则「恢复默认」和「只想看看」挤在同一个零值上——跟
+`orgtools/args.go` 是同一笔账。出参里 `AskOutput.Persona` 同理必须是指针。
+
+**用户可以自己加技能**：`skills/` 下一个子目录一份 `SKILL.md`（格式跟 Claude Code 的一样，
+frontmatter 里 `name` + `description`）。**只有名字和用途常驻系统提示**，正文等模型调
+`skill` 工具才读进来——全都常驻的话，放十份进去就是每轮白发几万字节，而其中九份跟当下
+无关。它们**不带工具**：一份 markdown 讲的是「这件事该怎么办」，动作还是骑在现有工具上；
+想加真正的新动作得写 Go。格式解析只有 `skills.Parse` 一份，手机端由 Swift 送原文过来
+（`AskInput.Skills`），**不在 Swift 那边再写一个 frontmatter 解析器**——两边判据迟早不一样，
+表现出来是同一份技能电脑上认、手机上不认。
 
 **新增一项能力**：在 `internal/xxx/` 实现 `agent.Skill`，然后在 `internal/chat/chat.go` 的 `buildSkills()` 里加一行。同时在 `internal/agent/label.go` 的 `toolLabels` 表里补上工具名到中文标签的映射，否则界面直接显示英文工具名——那张表桌面端和 iOS 共用一份，`internal/chat/label_test.go` 会守着，漏了就红。
 

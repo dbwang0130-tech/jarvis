@@ -14,7 +14,6 @@
 		36D972D0389CA1DC08605531 /* CameraShot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E8C39D663A43C9DD36E554 /* CameraShot.swift */; };
 		2016B7DD9F177EE83EB5F3F3 /* Dictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE8CAD46C975F9D7A7CE0398 /* Dictation.swift */; };
 		E90E041CB6DA0641EE38EABA /* HealthKitImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E1A3C9E1C97252EEC4D08D /* HealthKitImporter.swift */; };
-		72C6A0D8861565F0A690BB70 /* HealthTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */; };
 		CD7D6EE8C1FC2FACE868C2CC /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED768A3B3DD5258B7A2387DA /* ImageStore.swift */; };
 		23E73D661E879A0EBBD9DDA2 /* Intents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A45511E2548529E93AF2CB /* Intents.swift */; };
 		0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F1B6CBE154F3A41E575653 /* ItemView.swift */; };
@@ -23,19 +22,16 @@
 		92FC9F6976C5724D4F2C680D /* MailBodyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4B5769A10A945FEA42C7B2 /* MailBodyView.swift */; };
 		92D10A1535135C1E20339B5E /* MailDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7DC35E434D241BDE803CC35 /* MailDetail.swift */; };
 		CF5C83BA4B0A39263BFA68AB /* MailSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A5C0D585A76B6DAE4286283 /* MailSettings.swift */; };
-		6E6655A8A12058D1D5D61F96 /* MailTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D8F62D2D94F42EEBEF365B6 /* MailTab.swift */; };
 		D25F2AD2996ABF22EB6249C7 /* Markdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13CC7509BE6ABAE9789FB465 /* Markdown.swift */; };
 		BA6FE2EC1562EB2EFF447CDA /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ACDE73AD888934E32EB25F9 /* Models.swift */; };
 		A6C53E6D9E1777039AC2B07E /* Notifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63F95F665447CB3BF30134B1 /* Notifier.swift */; };
 		231668D64451882E099898AF /* Paths.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3356B5F12F973EC7DD2DF0A /* Paths.swift */; };
 		9A3C5F85C4F5DAE8AFDF2C46 /* PhotoInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA0D56073BC7B082F36823BD /* PhotoInput.swift */; };
-		15EE763C5605E7A1623AD205 /* QuickAdd.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03CFB3EDEEED276C5A9D5B27 /* QuickAdd.swift */; };
 		F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7CAA3A267067C3AC9942A5 /* Session.swift */; };
 		EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */; };
 		E6B91211C95E59F87266753B /* SharedImages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DDC9246807E690D1683459F /* SharedImages.swift */; };
 		FC23004741C28D3A879C33E2 /* SpendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C50616DC0BB4CB2080FAA2E /* SpendView.swift */; };
 		621910C5F045309EAEBB1B6A /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 090A09C1465CE23ABD827A8F /* Store.swift */; };
-		BC9F10B66AE5A92DAA1557A5 /* Tools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */; };
 		7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5464F1D332FD60C84FF7555B /* Vault.swift */; };
 		484365F4C183DDFCE32CCAA6 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11FD182F6BBEFF87A5F395CA /* Views.swift */; };
 		11A223FDC6CE12AE74972E19 /* VitalChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739021A1FA9AD3FAB41391A4 /* VitalChart.swift */; };
@@ -87,7 +83,6 @@
 		03E8C39D663A43C9DD36E554 /* CameraShot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraShot.swift; sourceTree = "<group>"; };
 		FE8CAD46C975F9D7A7CE0398 /* Dictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dictation.swift; sourceTree = "<group>"; };
 		99E1A3C9E1C97252EEC4D08D /* HealthKitImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitImporter.swift; sourceTree = "<group>"; };
-		DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthTab.swift; sourceTree = "<group>"; };
 		ED768A3B3DD5258B7A2387DA /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		E5A45511E2548529E93AF2CB /* Intents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents.swift; sourceTree = "<group>"; };
 		E8F1B6CBE154F3A41E575653 /* ItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemView.swift; sourceTree = "<group>"; };
@@ -96,19 +91,16 @@
 		7B4B5769A10A945FEA42C7B2 /* MailBodyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailBodyView.swift; sourceTree = "<group>"; };
 		D7DC35E434D241BDE803CC35 /* MailDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailDetail.swift; sourceTree = "<group>"; };
 		1A5C0D585A76B6DAE4286283 /* MailSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailSettings.swift; sourceTree = "<group>"; };
-		2D8F62D2D94F42EEBEF365B6 /* MailTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailTab.swift; sourceTree = "<group>"; };
 		13CC7509BE6ABAE9789FB465 /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
 		8ACDE73AD888934E32EB25F9 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		63F95F665447CB3BF30134B1 /* Notifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifier.swift; sourceTree = "<group>"; };
 		C3356B5F12F973EC7DD2DF0A /* Paths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Paths.swift; sourceTree = "<group>"; };
 		BA0D56073BC7B082F36823BD /* PhotoInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoInput.swift; sourceTree = "<group>"; };
-		03CFB3EDEEED276C5A9D5B27 /* QuickAdd.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAdd.swift; sourceTree = "<group>"; };
 		FF7CAA3A267067C3AC9942A5 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7DDC9246807E690D1683459F /* SharedImages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedImages.swift; sourceTree = "<group>"; };
 		5C50616DC0BB4CB2080FAA2E /* SpendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendView.swift; sourceTree = "<group>"; };
 		090A09C1465CE23ABD827A8F /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
-		4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tools.swift; sourceTree = "<group>"; };
 		5464F1D332FD60C84FF7555B /* Vault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vault.swift; sourceTree = "<group>"; };
 		11FD182F6BBEFF87A5F395CA /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
 		739021A1FA9AD3FAB41391A4 /* VitalChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VitalChart.swift; sourceTree = "<group>"; };
@@ -148,7 +140,6 @@
 				03E8C39D663A43C9DD36E554 /* CameraShot.swift */,
 				FE8CAD46C975F9D7A7CE0398 /* Dictation.swift */,
 				99E1A3C9E1C97252EEC4D08D /* HealthKitImporter.swift */,
-				DD84B09B824EE1DE74E6C9A5 /* HealthTab.swift */,
 				ED768A3B3DD5258B7A2387DA /* ImageStore.swift */,
 				E5A45511E2548529E93AF2CB /* Intents.swift */,
 				E8F1B6CBE154F3A41E575653 /* ItemView.swift */,
@@ -157,19 +148,16 @@
 				7B4B5769A10A945FEA42C7B2 /* MailBodyView.swift */,
 				D7DC35E434D241BDE803CC35 /* MailDetail.swift */,
 				1A5C0D585A76B6DAE4286283 /* MailSettings.swift */,
-				2D8F62D2D94F42EEBEF365B6 /* MailTab.swift */,
 				13CC7509BE6ABAE9789FB465 /* Markdown.swift */,
 				8ACDE73AD888934E32EB25F9 /* Models.swift */,
 				63F95F665447CB3BF30134B1 /* Notifier.swift */,
 				C3356B5F12F973EC7DD2DF0A /* Paths.swift */,
 				BA0D56073BC7B082F36823BD /* PhotoInput.swift */,
-				03CFB3EDEEED276C5A9D5B27 /* QuickAdd.swift */,
 				FF7CAA3A267067C3AC9942A5 /* Session.swift */,
 				6C8FF0B3E28A59BF7F0120B7 /* SettingsView.swift */,
 				7DDC9246807E690D1683459F /* SharedImages.swift */,
 				5C50616DC0BB4CB2080FAA2E /* SpendView.swift */,
 				090A09C1465CE23ABD827A8F /* Store.swift */,
-				4D4D4F40DA3E1C92ECA38F0B /* Tools.swift */,
 				5464F1D332FD60C84FF7555B /* Vault.swift */,
 				11FD182F6BBEFF87A5F395CA /* Views.swift */,
 				739021A1FA9AD3FAB41391A4 /* VitalChart.swift */,
@@ -332,7 +320,6 @@
 				36D972D0389CA1DC08605531 /* CameraShot.swift in Sources */,
 				2016B7DD9F177EE83EB5F3F3 /* Dictation.swift in Sources */,
 				E90E041CB6DA0641EE38EABA /* HealthKitImporter.swift in Sources */,
-				72C6A0D8861565F0A690BB70 /* HealthTab.swift in Sources */,
 				CD7D6EE8C1FC2FACE868C2CC /* ImageStore.swift in Sources */,
 				23E73D661E879A0EBBD9DDA2 /* Intents.swift in Sources */,
 				0774A9418671ACE625A5D3C9 /* ItemView.swift in Sources */,
@@ -341,19 +328,16 @@
 				92FC9F6976C5724D4F2C680D /* MailBodyView.swift in Sources */,
 				92D10A1535135C1E20339B5E /* MailDetail.swift in Sources */,
 				CF5C83BA4B0A39263BFA68AB /* MailSettings.swift in Sources */,
-				6E6655A8A12058D1D5D61F96 /* MailTab.swift in Sources */,
 				D25F2AD2996ABF22EB6249C7 /* Markdown.swift in Sources */,
 				BA6FE2EC1562EB2EFF447CDA /* Models.swift in Sources */,
 				A6C53E6D9E1777039AC2B07E /* Notifier.swift in Sources */,
 				231668D64451882E099898AF /* Paths.swift in Sources */,
 				9A3C5F85C4F5DAE8AFDF2C46 /* PhotoInput.swift in Sources */,
-				15EE763C5605E7A1623AD205 /* QuickAdd.swift in Sources */,
 				F4C50C20E64A2E372D7E01B5 /* Session.swift in Sources */,
 				EB2C8025ACAE5C6000EF1D4D /* SettingsView.swift in Sources */,
 				E6B91211C95E59F87266753B /* SharedImages.swift in Sources */,
 				FC23004741C28D3A879C33E2 /* SpendView.swift in Sources */,
 				621910C5F045309EAEBB1B6A /* Store.swift in Sources */,
-				BC9F10B66AE5A92DAA1557A5 /* Tools.swift in Sources */,
 				7F1E137EB7EC5521466DC9CC /* Vault.swift in Sources */,
 				484365F4C183DDFCE32CCAA6 /* Views.swift in Sources */,
 				11A223FDC6CE12AE74972E19 /* VitalChart.swift in Sources */,
@@ -428,7 +412,7 @@
 				CODE_SIGN_ENTITLEMENTS = Jarvis.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = "4WC77BAC8N";
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -468,7 +452,7 @@
 				CODE_SIGN_ENTITLEMENTS = Jarvis.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = "4WC77BAC8N";
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -507,7 +491,7 @@
 				CODE_SIGN_ENTITLEMENTS = Widget/JarvisWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = "4WC77BAC8N";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
@@ -535,7 +519,7 @@
 				CODE_SIGN_ENTITLEMENTS = Widget/JarvisWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = "4WC77BAC8N";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;

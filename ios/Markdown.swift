@@ -17,6 +17,12 @@ enum Block: Identifiable {
     case quote([String])
     case table([[String]])
     case rule
+    /// 一张体征趋势图。`kind` 是体征名（「体重」），`label` 是链接上的字。
+    ///
+    /// 它是**块**而不是行内链接：图要占一整行，挂在那句话下面。做成可点的
+    /// 行内链接的话，看趋势得先点一下——而「最近是往上还是往下」恰恰是
+    /// 一眼就该看到的东西，值不上一次点击。点开是更细的（VitalDetail）。
+    case chart(kind: String, label: String)
 
     struct Item {
         var marker: String     // 「•」或「1.」，勾选项是「☐」「☑」
@@ -33,6 +39,7 @@ enum Block: Identifiable {
         case .quote(let l): return "q:\(l.joined(separator: "\u{1}"))"
         case .table(let r): return "t:\(r.flatMap { $0 }.joined(separator: "\u{1}"))"
         case .rule: return "hr:\(UUID().uuidString)"
+        case .chart(let k, let l): return "ch:\(k):\(l)"
         }
     }
 }
@@ -70,6 +77,16 @@ enum Markdown {
 
             if trimmed == "---" || trimmed == "***" || trimmed == "___" {
                 out.append(.rule); i += 1; continue
+            }
+
+            // 独占一行的图表链接：[体重趋势](jarvis://chart/体重)。
+            //
+            // **必须整行只有它**。夹在句子中间的话那句话就得拆成三块，
+            // 而图是横着占满一行的东西，塞在半句话里排不出来。
+            // 桌面端没有图，那边照常渲染成一个下划线的「体重趋势」，
+            // 读起来也通——所以提示两端可以共用一份。
+            if let c = chartLink(trimmed) {
+                out.append(.chart(kind: c.kind, label: c.label)); i += 1; continue
             }
 
             // 表格：本行和下一行都得是管道行，且下一行是 |---|---| 那种分隔行。
@@ -181,6 +198,22 @@ enum Markdown {
     /// 行内语法交给系统：粗体、斜体、`代码`、链接。
     /// `.inlineOnlyPreservingWhitespace` 是关键——默认那档会把块级结构也吃掉，
     /// 我们已经自己切过块了，再让它插手会把空格和换行揉没。
+    /// 认「整行只有一个图表链接」。
+    ///
+    /// 故意不用正则：这一行的形状很死（`[`…`](jarvis://chart/`…`)`），
+    /// 按下标切比正则好读，也不用担心标题里带方括号那类边界。
+    static func chartLink(_ line: String) -> (kind: String, label: String)? {
+        let mark = "](jarvis://chart/"
+        guard line.hasPrefix("["), line.hasSuffix(")"),
+              let m = line.range(of: mark) else { return nil }
+        let label = String(line[line.index(after: line.startIndex)..<m.lowerBound])
+        let kind = String(line[m.upperBound..<line.index(before: line.endIndex)])
+        guard !label.isEmpty, !kind.isEmpty else { return nil }
+        // 体征名里不会有这些；出现了说明这行不是我们认的那种形状。
+        guard !kind.contains("/"), !kind.contains("(") else { return nil }
+        return (kind, label)
+    }
+
     static func inline(_ s: String) -> AttributedString {
         (try? AttributedString(markdown: s, options: .init(
             allowsExtendedAttributes: true,
@@ -215,6 +248,9 @@ struct MarkdownText: View {
 
         case .paragraph(let t):
             Text(Markdown.inline(t))
+
+        case .chart(let kind, let label):
+            ChartCard(kind: kind, label: label)
 
         case .list(let items):
             VStack(alignment: .leading, spacing: 4) {

@@ -109,853 +109,22 @@ struct WelcomeView: View {
 
 // MARK: - 主界面
 
-/// 根视图：**一整屏对话**。
+/// 根视图：**一整屏对话，只有对话**。
 ///
-/// 原来是四个并排的标签页，Jarvis 占第一个。标签栏最多五格，功能只会
-/// 越来越多；更要紧的是，它把「说一句」和「翻一翻」摆成了平级的五选一，
-/// 可这个 app 的主交互从来只有一个。
+/// 三轮下来是这样的：先是四个并排的标签页（Jarvis 占第一个），然后标签栏
+/// 换成输入框上面一排四个胶囊，点开盖一张卡片；现在连那一排也没了。
 ///
-/// 现在对话就是底座，日程、健康、邮件、财务浮在输入框上面那一排，
-/// 点开是盖上来的一张卡片。见 Tool。
+/// 每一轮砍掉的都是同一件东西——**一个「去翻一翻」的地方**。而它们回答的
+/// 问题（今天什么安排、还剩多少钱、有什么要紧的信、体重多少）问一句话就有
+/// 答案，而且答案是挑过的、说人话的，比一屏列表有用。留着那一排的代价不只是
+/// 屏幕，是它一直在暗示「真东西在里面，聊天只是个入口」。
+///
+/// 该看细节的时候照样看：聊天里提到的条目和邮件是可以点的，点开还是原来
+/// 那几张卡片（ItemDetail、MailDetail）——**从话里点进去**，不是先进一个
+/// 列表再找。桌面端早走完了这一步，见 CLAUDE.md 里删掉五视图那一段。
 struct MainShell: View {
     var body: some View {
         NavigationStack { ChatView() }
-    }
-}
-
-// MARK: - 日程
-
-/// 日程只有一个入口，里面两种看法。
-///
-/// 原来是并排两个 tab，而实际数据里它们是同一批东西：用户的 11 条未完成
-/// 全都排了期，「没排期」一条都没有，于是待办就是日程摊平的样子，
-/// 今天那组跟日程的今天 100% 重合。
-///
-/// 滴答清单、Todoist、Notion Calendar 都是「一个入口 + 视图切换」，
-/// 并排两个清单展示同一批数据才是特例。合并之后标签也从四个减到三个。
-struct PlannerView: View {
-    @EnvironmentObject var store: Store
-    @AppStorage("jarvis.planner.mode") private var raw = Mode.days.rawValue
-
-    enum Mode: String, CaseIterable {
-        case days = "按天"
-        case list = "清单"
-    }
-
-    private var mode: Binding<Mode> {
-        Binding(get: { Mode(rawValue: raw) ?? .days }, set: { raw = $0.rawValue })
-    }
-
-    var body: some View {
-        Group {
-            if mode.wrappedValue == .days {
-                AgendaView()
-            } else {
-                TodosView()
-            }
-        }
-        .navigationTitle("日程")
-        .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await store.reload() }
-        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("", selection: mode) {
-                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 160)
-            }
-            QuickAddButton()
-        }
-    }
-}
-
-struct AgendaView: View {
-    @EnvironmentObject var store: Store
-    @State private var selected: Item?
-
-    var body: some View {
-        List {
-            ForEach(store.snapshot.days) { day in
-                Section {
-                    if day.items.isEmpty {
-                        Text("空着").foregroundStyle(.tertiary).font(.footnote)
-                    }
-                    ForEach(Array(day.items.enumerated()), id: \.offset) { _, item in
-                        Button { selected = item } label: { ItemRow(item: item) }
-                            .buttonStyle(.plain)
-                            .itemSwipeActions(item)
-                    }
-                } header: {
-                    HStack {
-                        Text("\(day.date.suffix(5)) \(day.weekday)")
-                        if day.today {
-                            Text("今天")
-                                .font(.caption2.bold())
-                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Brand.sheen, in: Capsule())
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-            }
-        }
-        // 标题、刷新、工具栏、错误条都归 PlannerView 管——两边都写一遍的话
-        // 工具栏会出现两个 + 和两个齿轮。
-        .overlay { EmptyHint(show: store.snapshot.days.isEmpty && !store.loading,
-                                 text: "这几天没有安排", icon: "calendar") }
-        .overlay { LoadingHint(isEmpty: store.snapshot.days.isEmpty) }
-        // 整个列表共用一个详情页。挂在每一行上的话，有多少行就建多少套
-        // 呈现状态，滚起来明显发涩。
-        .sheet(item: $selected) { ItemDetail(item: $0) }
-    }
-}
-
-// MARK: - 待办
-
-/// 待办按「什么时候要做」分组。
-///
-/// 原来是一长条，今天该干的和下个月才到期的混在一起——名义上按优先级排过，
-/// 但一条 C 级的今天要交，排在一条 A 级的下月任务后面，等于没排。
-enum TodoBucket: Int, CaseIterable {
-    // done 排在最后：做完的事该往下沉，不能跟还没办的抢位置。
-    case overdue, today, tomorrow, week, later, someday, done
-
-    var title: String {
-        switch self {
-        case .overdue:  return "逾期"
-        case .today:    return "今天"
-        case .tomorrow: return "明天"
-        case .week:     return "这周内"
-        case .later:    return "以后"
-        case .someday:  return "没排期"
-        case .done:     return "最近完成"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .overdue:  return .red
-        case .today:    return .orange
-        case .tomorrow: return .blue
-        case .done:     return .green
-        default:        return .secondary
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .overdue:  return "exclamationmark.triangle.fill"
-        case .today:    return "sun.max.fill"
-        case .tomorrow: return "sunrise.fill"
-        case .week:     return "calendar"
-        case .later:    return "calendar.badge.clock"
-        case .someday:  return "tray"
-        case .done:     return "checkmark.circle.fill"
-        }
-    }
-
-    static func of(_ item: Item) -> TodoBucket {
-        // 先看做完没有。做完的按到期日归组没有意义——早就不用管了。
-        if item.isDone { return .done }
-        // 逾期用 Go 给的那面旗，不在这边按 dueIn 自己推——
-        // 同一个概念两个定义，迟早不一致（Go 那边的规则还带着截止日当天）。
-        if item.overdue { return .overdue }
-        guard !item.due.isEmpty else { return .someday }
-        switch item.dueIn {
-        case ..<0:  return .overdue
-        case 0:     return .today
-        case 1:     return .tomorrow
-        case 2...6: return .week
-        default:    return .later
-        }
-    }
-}
-
-struct TodosView: View {
-    @EnvironmentObject var store: Store
-    @State private var keyword = ""
-    @State private var groups: [(bucket: TodoBucket, items: [Item])] = []
-    @State private var selected: Item?
-    @AppStorage("jarvis.todos.showDone") private var showDone = false
-
-    private func header(_ group: (bucket: TodoBucket, items: [Item])) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: group.bucket.icon).font(.caption2)
-            Text(group.bucket.title)
-            Text("\(group.items.count)")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
-        }
-        .foregroundStyle(group.bucket.tint)
-    }
-
-    var body: some View {
-        List {
-            ForEach(groups, id: \.bucket) { group in
-                Section {
-                    if group.bucket != .done || showDone {
-                        ForEach(Array(group.items.enumerated()), id: \.offset) { _, item in
-                            Button { selected = item } label: { ItemRow(item: item) }
-                                .buttonStyle(.plain)
-                                .itemSwipeActions(item)
-                        }
-                    }
-                } header: {
-                    // 「最近完成」默认收起：这一组只是让人确认没白干，
-                    // 展开着会把还没办的挤到看不见的地方。
-                    if group.bucket == .done {
-                        Button {
-                            withAnimation { showDone.toggle() }
-                        } label: {
-                            HStack(spacing: 6) {
-                                header(group)
-                                Spacer(minLength: 0)
-                                Image(systemName: showDone ? "chevron.down" : "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        header(group)
-                    }
-                }
-            }
-        }
-        .searchable(text: $keyword, prompt: "找点什么")
-        .safeAreaInset(edge: .top, spacing: 0) { OverdueBar() }
-        .overlay { EmptyHint(show: groups.isEmpty && !store.loading,
-                                 text: "没有待办", icon: "checklist") }
-        .overlay { LoadingHint(isEmpty: groups.isEmpty) }
-        .safeAreaInset(edge: .bottom) { truncatedHint }
-        .sheet(item: $selected) { ItemDetail(item: $0) }
-        // 过滤和分组放进 task：写成计算属性的话，每次 body 重算都要把整份
-        // 待办再过一遍。id 变了旧任务会被取消，顺带就是输入防抖。
-        .task(id: FilterKey(keyword: keyword, count: store.snapshot.todos.count)) {
-            await regroup()
-        }
-    }
-
-    private struct FilterKey: Equatable {
-        var keyword: String
-        var count: Int
-    }
-
-    private func regroup() async {
-        let k = keyword.trimmingCharacters(in: .whitespaces)
-        if !k.isEmpty {
-            // 打字没停就别急着过滤；被取消了就什么都不做。
-            try? await Task.sleep(for: .milliseconds(180))
-            if Task.isCancelled { return }
-        }
-        var shown = store.snapshot.todos
-        if !k.isEmpty {
-            shown = shown.filter {
-                $0.title.localizedCaseInsensitiveContains(k)
-                    || $0.tags.contains { $0.localizedCaseInsensitiveContains(k) }
-                    || $0.category.localizedCaseInsensitiveContains(k)
-            }
-        }
-        var byBucket: [TodoBucket: [Item]] = [:]
-        for item in shown {
-            byBucket[TodoBucket.of(item), default: []].append(item)
-        }
-        groups = TodoBucket.allCases.compactMap { b in
-            guard let items = byBucket[b], !items.isEmpty else { return nil }
-            // 组内先按优先级，同级按日期近的在前。Go 那边已经按优先级排过，
-            // 这里只需在同级里把日期理顺。
-            return (b, items.sorted { a, c in
-                let pa = priorityRank(a.priority), pc = priorityRank(c.priority)
-                if pa != pc { return pa < pc }
-                if a.due.isEmpty != c.due.isEmpty { return !a.due.isEmpty }
-                return a.due < c.due
-            })
-        }
-    }
-
-    /// A 最急，没标的排最后。
-    private func priorityRank(_ p: String) -> Int {
-        p.isEmpty ? 99 : Int(p.unicodeScalars.first!.value)
-    }
-
-    /// 待办被截断时说清楚，否则找不到某一条会以为是丢了。
-    @ViewBuilder
-    private var truncatedHint: some View {
-        let s = store.snapshot
-        if s.todosTotal > s.todos.count {
-            HintPill(text: "共 \(s.todosTotal) 条，只显示前 \(s.todos.count) 条")
-        }
-    }
-}
-
-// MARK: - 财务
-
-struct LedgerTab: View {
-    @EnvironmentObject var store: Store
-    /// Siri 带来的金额：有的话一进来就把记账表单摆开，金额先填上。
-    var spendAmount: Double?
-    @State private var showTxns = false
-    @State private var adding = false
-
-    var body: some View {
-        Group {
-            if let l = store.snapshot.ledger {
-                List {
-                    Section {
-                        // 三个并排在手机上每个只有一百多点宽，数字一到七八位
-                        // 就得缩到看不清。净资产是最该一眼看到的，单独占一行
-                        // 给足宽度；另外两个并排够用。
-                        VStack(spacing: 10) {
-                            Stat(name: "净资产", value: l.net, emphasize: true)
-                            HStack(spacing: 10) {
-                                Stat(name: "资产", value: l.assets)
-                                Stat(name: "负债", value: -l.debts)
-                            }
-                            // 净资产回答的是「还剩多少」，回答不了「花得凶
-                            // 不凶」——而打开记账 app 最先想知道的是后者。
-                            MonthCard(flow: l.month)
-                        }
-                        .listRowInsets(EdgeInsets(top: 8, leading: 8,
-                                                  bottom: 8, trailing: 8))
-                        .listRowBackground(Color.clear)
-                    }
-                    // 按科目分组。原来把 Income:Salary 跟银行卡并排列在「账户」
-                    // 里，看着像是有这么个账户——那是记账科目，不是钱放在哪儿。
-                    ForEach(accountGroups(l.accounts)) { group in
-                        Section {
-                            ForEach(Array(group.items.enumerated()), id: \.offset) {
-                                AccountRow(account: $1, tint: group.kind.tint)
-                            }
-                        } header: {
-                            GroupHeader(text: group.title, icon: group.kind.icon,
-                                        tint: group.kind.tint)
-                        }
-                    }
-                    // 流水点进去看。打开财务页多半是想看「还剩多少」，
-                    // 而流水能有几十上百条，摊在同一页里既把净资产挤走，
-                    // 又让这一页每重画一次就得把整份流水按天归拢一遍。
-                    if !l.recent.isEmpty {
-                        Section {
-                            Button { showTxns = true } label: {
-                                HStack {
-                                    GroupHeader(text: "最近流水",
-                                                icon: "list.bullet.rectangle", tint: .blue)
-                                    Spacer()
-                                    Text("\(l.recent.count) 笔")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption).foregroundStyle(.tertiary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            } else {
-                EmptyHint(show: !store.loading, text: "没有账本", icon: "book.closed")
-            }
-        }
-        .navigationTitle("财务")
-        .refreshable { await store.reload() }
-        .overlay { LoadingHint(isEmpty: store.snapshot.ledger == nil) }
-        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
-        .sheet(isPresented: $showTxns) { TxnListView() }
-        // 这一页一直只能看。余额、账户、流水都摆出来了，可「刚花了 35 块」
-        // 只能开口跟秘书说一句——一个记账 app 在手机上记不了账。
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { adding = true } label: { Image(systemName: "plus") }
-                    .accessibilityLabel("记一笔")
-                    .disabled(store.snapshot.ledger == nil)
-            }
-        }
-        .sheet(isPresented: $adding) {
-            SpendView(accounts: store.snapshot.ledger?.accounts ?? [],
-                      preset: spendAmount)
-        }
-        // Siri 说了金额就直接摆开表单——人已经开口说过「记一笔 35」，
-        // 再让他自己点一下「+」等于白说。
-        .task {
-            if spendAmount != nil { adding = true }
-        }
-    }
-}
-
-/// 账户按科目归类。顺序是「钱在哪儿 → 欠多少 → 花在哪儿 → 挣多少」，
-/// 最常看的排前面；权益和认不出来的放最后。
-func accountGroups(_ accounts: [Account]) -> [AccountGroup] {
-    AccountKind.order.compactMap { k in
-        let items = accounts.filter { $0.kind == k.rawValue }
-        return items.isEmpty ? nil : AccountGroup(kind: k, items: items)
-    }
-}
-
-struct AccountGroup: Identifiable {
-    let kind: AccountKind
-    let items: [Account]
-    var id: String { kind.rawValue }
-    var title: String { kind.title }
-}
-
-/// 科目的样子：叫什么、什么颜色、什么图标。
-///
-/// 跟健康那边 HealthGroup 一个路子——颜色和图标是界面的事，收在一处，
-/// 别散在各个 switch 里。顺序就是「钱在哪儿 → 欠多少 → 花在哪儿 →
-/// 挣多少」，最常看的排前面；权益和认不出来的放最后。
-enum AccountKind: String, CaseIterable {
-    case asset, debt, expense, income, equity, other
-
-    static let order: [AccountKind] = [.asset, .debt, .expense, .income, .equity, .other]
-
-    var title: String {
-        switch self {
-        case .asset:   return "账户"
-        case .debt:    return "负债"
-        case .expense: return "支出"
-        case .income:  return "收入"
-        case .equity:  return "权益"
-        case .other:   return "其他"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .asset:   return .green
-        case .debt:    return .red
-        case .expense: return .orange
-        case .income:  return .mint
-        case .equity:  return .indigo
-        case .other:   return .secondary
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .asset:   return "banknote"
-        case .debt:    return "creditcard"
-        case .expense: return "cart"
-        case .income:  return "arrow.down.circle"
-        case .equity:  return "scalemass"
-        case .other:   return "square.grid.2x2"
-        }
-    }
-}
-
-/// 最近流水单独一页。
-///
-/// 从财务页里搬出来的。财务页要回答的是「还剩多少」——净资产、各个账户
-/// 的余额；流水是「钱去哪儿了」，是另一个问题，也是另一屏东西。搬走之后
-/// 财务页的 body 只碰一个 count，按天归拢、日期换算、几十行的行视图
-/// 都只在点开之后才发生。
-///
-/// **盖一张卡片，不 push。** 这个 app 里翻详情只有这一种手势：邮件点开
-/// 一封、健康点开一项指标、日程点开一条，都是盖上来、往下一划回去。
-/// 只有这儿 push 的话，返回得去左上角找按钮，划一下反而回到了对话。
-///
-/// 数据仍从 store 读，不在打开那一刻定格——切回前台或者下拉都会重读，
-/// 「跟电脑上是同一份」得在这一页也成立。
-struct TxnListView: View {
-    @EnvironmentObject var store: Store
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var asking: TxnBrief?
-    @State private var keyword = ""
-
-    /// 搜的是收款方和分类——「上个月星巴克花了多少」这种问题，翻是翻不
-    /// 出来的，六十笔流水摊开有好几屏。
-    private var txns: [TxnBrief] {
-        let all = store.snapshot.ledger?.recent ?? []
-        let k = keyword.trimmingCharacters(in: .whitespaces)
-        guard !k.isEmpty else { return all }
-        return all.filter {
-            $0.payee.localizedCaseInsensitiveContains(k)
-                || $0.category.localizedCaseInsensitiveContains(k)
-        }
-    }
-
-    private var askingBinding: Binding<Bool> {
-        Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })
-    }
-
-    private func reverse(_ txn: TxnBrief) {
-        asking = nil
-        Task {
-            let ok = await store.reverse(txn)
-            ok ? Haptics.warning() : Haptics.failure()
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            list
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button { dismiss() } label: { Image(systemName: "xmark") }
-                            .accessibilityLabel("关掉")
-                    }
-                }
-        }
-    }
-
-    private var list: some View {
-        List {
-            // 按天分组。一条一条平铺的话，日期在每行重复一遍，
-            // 而「今天花了多少」这个最常问的问题反而得自己加。
-            ForEach(dayGroups(txns), id: \.date) { day in
-                Section {
-                    ForEach(Array(day.items.enumerated()), id: \.offset) { _, txn in
-                        TxnRow(txn: txn)
-                            // 记错了不能删，只能冲——账本是流水账，
-                            // 回头改历史的账没法对。
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                if !txn.isReversal {
-                                    Button { asking = txn } label: {
-                                        Label("冲账", systemImage: "arrow.uturn.backward")
-                                    }
-                                    .tint(.orange)
-                                }
-                            }
-                    }
-                } header: {
-                    HStack {
-                        Text(dayTitle(day.date))
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .textCase(nil)
-                        Spacer()
-                        if day.spent > 0 {
-                            Text("支出 " + moneyRound(day.spent))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("最近流水")
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $keyword, prompt: "找收款方或分类")
-        .refreshable { await store.reload() }
-        .confirmationDialog(asking.map { "冲掉「\($0.payee)」？" } ?? "",
-                            isPresented: askingBinding, titleVisibility: .visible) {
-            if let txn = asking {
-                Button("记一笔冲账", role: .destructive) { reverse(txn) }
-            }
-            Button("算了", role: .cancel) {}
-        } message: {
-            Text("原来那笔会留在账上，另记一笔方向相反的把它抵掉——"
-                 + "账本是流水账，改不得历史。")
-        }
-        .overlay {
-            // 搜不到和一笔都没有是两回事。都说「还没有流水」的话，
-            // 人会以为账本空了。
-            EmptyHint(show: txns.isEmpty && !store.loading,
-                      text: keyword.isEmpty ? "还没有流水" : "没有对得上的",
-                      icon: keyword.isEmpty ? "list.bullet.rectangle" : "magnifyingglass")
-        }
-        .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
-    }
-}
-
-/// 把流水按天归拢，顺带算出当天花了多少。
-///
-/// 转账不计入支出——钱从招行挪到余额宝不是花掉了，混进去会把当天的账
-/// 撑得莫名其妙。
-func dayGroups(_ txns: [TxnBrief]) -> [(date: String, items: [TxnBrief], spent: Double)] {
-    var order: [String] = []
-    var byDay: [String: [TxnBrief]] = [:]
-    for t in txns {
-        if byDay[t.date] == nil { order.append(t.date) }
-        byDay[t.date, default: []].append(t)
-    }
-    return order.map { d in
-        let items = byDay[d] ?? []
-        let spent = items.filter { !$0.isTransfer && $0.amount < 0 }
-            .reduce(0) { $0 - $1.amount }
-        return (d, items, spent)
-    }
-}
-
-/// 日期写成人话。今天昨天用字，再往前用月日——「2026-09-12」要在脑子里
-/// 算一下才知道是几天前。
-func dayTitle(_ date: String) -> String {
-    let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.dateFormat = "yyyy-MM-dd"
-    guard let d = f.date(from: date) else { return date }
-    let cal = Calendar.current
-    if cal.isDateInToday(d) { return "今天" }
-    if cal.isDateInYesterday(d) { return "昨天" }
-    let days = cal.dateComponents([.day], from: d, to: Date()).day ?? 0
-    if days < 7 {
-        let names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
-        return names[cal.component(.weekday, from: d) - 1]
-    }
-    return String(date.suffix(5).replacingOccurrences(of: "-", with: "/"))
-}
-
-struct TxnRow: View {
-    let txn: TxnBrief
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.footnote)
-                .foregroundStyle(tint)
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(txn.payee).font(.callout).lineLimit(1)
-                if !txn.category.isEmpty {
-                    Text(txn.category)
-                        .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            // 收入带正号，支出带负号——光看数字分不出方向。
-            Text(signed)
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(tint)
-                .lineLimit(1).minimumScaleFactor(0.7)
-        }
-        // 一笔账是一条信息。不合并的话 VoiceOver 念成「收款方」「分类」
-        // 「金额」三下，还得自己在脑子里拼回去。
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(spoken)
-    }
-
-    /// 念出来的说法。符号和箭头图标对眼睛管用，对耳朵得换成词。
-    private var spoken: String {
-        let what = txn.category.isEmpty ? txn.payee : "\(txn.payee)，\(txn.category)"
-        if txn.isTransfer { return "转账，\(what)，\(money(abs(txn.amount)))" }
-        return "\(txn.isIncome ? "收入" : "支出")，\(what)，\(money(abs(txn.amount)))"
-    }
-
-    private var signed: String {
-        txn.isTransfer ? money(abs(txn.amount))
-                       : (txn.amount > 0 ? "+" : "") + money(txn.amount)
-    }
-
-    private var icon: String {
-        // 冲账那笔单独一个图标：它跟普通收支不是一回事，是用来抵掉
-        // 另一笔的。不标出来的话，账上会凭空多出一笔「收入」。
-        if txn.isReversal { return "arrow.uturn.backward.circle.fill" }
-        if txn.isTransfer { return "arrow.left.arrow.right" }
-        return txn.isIncome ? "arrow.down.circle.fill" : "arrow.up.circle.fill"
-    }
-
-    private var tint: Color {
-        if txn.isReversal { return .orange }
-        if txn.isTransfer { return .secondary }
-        return txn.isIncome ? .green : Brand.onSoft
-    }
-}
-
-struct AccountRow: View {
-    let account: Account
-    var tint: Color = .secondary
-
-    var body: some View {
-        HStack(spacing: 10) {
-            // 一个小色点。整行都染色太吵，但完全没有的话，滑到中间就分不清
-            // 现在看的是哪一组了——分区标题早滚出屏幕了。
-            Circle().fill(tint).frame(width: 7, height: 7)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(account.leaf).font(.callout).lineLimit(1)
-                if !account.parentPath.isEmpty {
-                    Text(account.parentPath)
-                        .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                }
-            }
-            Spacer(minLength: 8)
-            Text(money(account.balance))
-                .font(.callout.monospacedDigit())
-                .lineLimit(1).minimumScaleFactor(0.7)
-                .foregroundStyle(account.balance < 0 ? Color.red : Color.primary)
-        }
-        // 色点是分组用的，念不出来；账户全名要连着父级一起念，
-        // 光一个「储蓄」不知道是哪家的。
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(account.name)，\(money(account.balance))")
-    }
-}
-
-struct Stat: View {
-    let name: String
-    let value: Double
-    var emphasize = false
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(name).font(.caption).foregroundStyle(.secondary)
-            // 数字排大号、单位排小号。同一个字号的话，一眼扫过去分不出
-            // 「231891」和「元」哪个是重点——健康页那几张卡也是这么排的。
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(moneyRound(value))
-                    .font(.system(emphasize ? .largeTitle : .title3,
-                                  design: .rounded).weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(emphasize ? AnyShapeStyle(Brand.sheen)
-                                               : AnyShapeStyle(Color.primary))
-                Text("元").font(.caption).foregroundStyle(.secondary)
-            }
-            .lineLimit(1)
-            .minimumScaleFactor(0.4)
-        }
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity)
-        // 净资产是这页最该先看到的，给它一点色，另外两个保持素净。
-        .background(emphasize ? AnyShapeStyle(Brand.soft)
-                              : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
-                    in: .rect(cornerRadius: Brand.radius))
-    }
-}
-
-/// 逾期堆起来的时候，给一条「都挪到今天」。
-///
-/// **这是最该自动化的重复劳动**：逾期的事会一直堆着，而清理它们的动作
-/// 完全一样——左滑、推迟、下一条。十条就是三十个动作，而人想做的只是
-/// 「这些今天再说」。
-///
-/// 不自动挪：什么该挪、什么该干脆放弃，只有人知道。这里只把那一下从
-/// 三十个动作压成两个（点一下、点头）。
-struct OverdueBar: View {
-    @EnvironmentObject var store: Store
-    @State private var asking = false
-    @State private var working = false
-
-    private var overdue: [Item] {
-        store.snapshot.todos.filter { $0.overdue && !$0.isDone }
-    }
-
-    var body: some View {
-        if !overdue.isEmpty {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.arrow.circlepath")
-                    .foregroundStyle(.orange)
-                    .accessibilityHidden(true)
-                Text("\(overdue.count) 件逾期")
-                    .font(.footnote.weight(.medium))
-                Spacer(minLength: 0)
-                Button {
-                    asking = true
-                } label: {
-                    if working {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Text("都挪到今天").font(.footnote.weight(.semibold))
-                    }
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Brand.primary)
-                .disabled(working || store.thinking)
-            }
-            .padding(.horizontal, 14).padding(.vertical, 9)
-            .background(Color.orange.opacity(0.12), in: .capsule)
-            .padding(.horizontal, 12).padding(.bottom, 6)
-            .confirmationDialog("把 \(overdue.count) 件逾期的挪到今天？",
-                                isPresented: $asking, titleVisibility: .visible) {
-                Button("都挪过来") { move() }
-                Button("算了", role: .cancel) {}
-            } message: {
-                Text("只改它们的计划时间，内容不动。"
-                     + "不想做的那几件，挪之前先标成「不做了」。")
-            }
-        }
-    }
-
-    private func move() {
-        let refs = overdue.map(\.ref)
-        working = true
-        Task {
-            // 用 today 而不是 postpone：postpone 的 days 零值按 1 天算
-            //（「推迟」默认推一天），表达不出「挪到今天」。
-            let ok = await store.act("today", on: "", refs: refs)
-            working = false
-            ok ? Haptics.done() : Haptics.failure()
-        }
-    }
-}
-
-/// 这个月花了多少。
-///
-/// 摆在净资产下面，因为它回答的是另一个问题：净资产是「还剩多少」，
-/// 这张卡是「花得凶不凶」。记了一个月的账，最先想知道的就是这个。
-///
-/// **跟上月同期比，不跟上月全月比**：每个月初都会显得「比上月少花很多」，
-/// 到月底又追平——那不是花钱习惯变了，只是天数不一样。
-struct MonthCard: View {
-    let flow: MonthFlow
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("这个月花了")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(moneyRound(flow.expense))
-                        .font(.system(.title2, design: .rounded).weight(.semibold))
-                        .monospacedDigit()
-                    Text("元").font(.caption).foregroundStyle(.secondary)
-                }
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-            }
-
-            Spacer(minLength: 0)
-
-            VStack(alignment: .trailing, spacing: 3) {
-                if flow.income > 0 {
-                    Text("进账 " + moneyRound(flow.income))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.green)
-                }
-                compare
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity)
-        .background(Color(.secondarySystemGroupedBackground),
-                    in: .rect(cornerRadius: Brand.radius))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(spoken)
-    }
-
-    /// 跟上月同期比。差得不到一块钱就不说了——那是噪声，不是趋势。
-    @ViewBuilder
-    private var compare: some View {
-        if let d = flow.delta, abs(d) >= 1 {
-            Label {
-                Text("比上月同期" + (d > 0 ? "多 " : "少 ") + moneyRound(abs(d)))
-            } icon: {
-                Image(systemName: d > 0 ? "arrow.up.right" : "arrow.down.right")
-            }
-            .font(.caption2.monospacedDigit())
-            // 多花是橙的不是红的：花钱不是错，红色留给真出问题的地方。
-            .foregroundStyle(d > 0 ? Color.orange : Color.green)
-        } else if flow.days <= 3 {
-            // 月初还没几天，比出来的数没意义，直说就是了。
-            Text("这个月才过了 \(flow.days) 天")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    private var spoken: String {
-        var s = "这个月花了 \(moneyRound(flow.expense)) 元"
-        if flow.income > 0 { s += "，进账 \(moneyRound(flow.income)) 元" }
-        if let d = flow.delta, abs(d) >= 1 {
-            s += "，比上月同期" + (d > 0 ? "多" : "少") + " \(moneyRound(abs(d))) 元"
-        }
-        return s
     }
 }
 
@@ -965,23 +134,6 @@ func money(_ v: Double) -> String {
     let n = v == 0 ? 0 : v
     return Formatter.money2.string(from: NSNumber(value: n))
         ?? String(format: "%.2f", n)
-}
-
-/// 概览上那三个数字用这个：千分位分组、不要小数。
-///
-/// 分组是为了一眼数得清位数——231891 和 23189 不分组扫一眼分不出差一个零。
-/// 小数在概览里没意义，还白占宽度，精确到分的数字在下面账户列表里。
-/// 概览那几个数字用这个：大了自动换成万、亿。
-///
-/// 12,504,569 得一位一位数着看才知道量级；写成 1250.46万 扫一眼就清楚。
-/// 概览要的正是量级，精确到分的数字在下面账户列表里。
-func moneyRound(_ v: Double) -> String {
-    let n = v == 0 ? 0 : v
-    let a = abs(n)
-    if a >= 1e8 { return trimZeros(n / 1e8) + "亿" }
-    if a >= 1e4 { return trimZeros(n / 1e4) + "万" }
-    return Formatter.moneyGrouping.string(from: NSNumber(value: n.rounded()))
-        ?? String(format: "%.0f", n)
 }
 
 /// 两位小数，末尾的零去掉：1250.46 / 3.5 / 12（而不是 12.00）。
@@ -995,7 +147,6 @@ func trimZeros(_ v: Double) -> String {
 }
 
 extension Formatter {
-    static let moneyGrouping = decimal(fraction: 0)
     static let money2 = decimal(fraction: 2)
 
     private static func decimal(fraction: Int) -> NumberFormatter {
@@ -1014,40 +165,69 @@ struct ChatView: View {
     @EnvironmentObject var store: Store
     @State private var draft = ""
     @State private var openSettings = false
-    @State private var tool: Tool?
-    @State private var askClear = false
-    /// Siri 说「记一笔账」时带来的金额，交给财务页把表单摆好。
+    /// 记一笔账的表单。Siri 说「记一笔 35」时直接摆开它。
+    @State private var spending = false
+    @State private var askNew = false
+    /// Siri 说「记一笔账」时带来的金额，直接摆开记账表单。
     @State private var spendAmount: Double?
     /// 这一轮要一起发出去的图。
     @State private var shots: [Data] = []
-    /// 点通知点开的那一条。
+    /// 点开的那条日程：通知点进来的，或者从话里点链接点进来的。
     @State private var notified: Item?
+    /// 从话里点链接点开的那封邮件。
+    @State private var openMail: MailItem?
+    /// 点了链接但那条已经找不到了，说一句——比默默没反应好。
+    @State private var linkMiss: String?
     /// 听写。摆在这一层是为了让发送那一下够得着它。
     @StateObject private var dictation = Dictation()
     @State private var entered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var phase
     @FocusState private var focused: Bool
-    /// 发送键跟着字号长。写死 38 的话，输入框在无障碍档位下长高了，
-    /// 旁边这颗还是原样，看着像掉在坑里。
-    @ScaledMetric(relativeTo: .headline) private var send: CGFloat = 44
 
     var body: some View {
         // 输入区用 safeAreaInset 浮在内容之上，不是拿 VStack 摞在下面。
         // 摞着的话玻璃背后什么都没有，只能是一块白板——跟别的页面里
-        // 内容从标签栏底下穿过去的样子对不上，看着很突兀。
+        // 内容从底部穿过去的样子对不上，看着很突兀。
         transcript
             .safeAreaInset(edge: .bottom, spacing: 0) { inputBar }
-            .navigationTitle("Jarvis")
+            // **读失败得说出来。** 这两条原来挂在日程/财务那几页上，页删掉
+            // 之后就没了家——而聊天现在是唯一的屏。
+            //
+            // 发消息那条路出错会在对话里留一句「没办成」，但 lastError 还有
+            // 别的来源：读 iCloud 超时、写回时跟电脑那头撞车、点邮件链接
+            // 找不到那封。那些原来靠这条横幅显示，不接回来就是**静默失败**
+            // ——界面上什么都不变，人以为点坏了。
+            .safeAreaInset(edge: .top, spacing: 0) { ErrorBar() }
+            // 第一次进来要读 iCloud、下载占位符，可能要等几秒。不给指示的话
+            // 就是一屏例句，看着像「本来就没数据」。
+            .overlay { LoadingHint(isEmpty: shownMessages.isEmpty) }
+            // 标题由 ChatTitle 画在左上角（头像 + 字标 + 状态），
+            // 所以这儿不能再给 navigationTitle——inline 标题会居中再画
+            // 一遍「Jarvis」，一个标题栏上两个名字。
             .navigationBarTitleDisplayMode(.inline)
             // 秘书要做收不回来的事（比如发信）会停在这儿等。
             .sheet(item: $store.pending) { ConfirmSheet(ask: $0) }
-            .sheet(item: $tool) { ToolSheet(tool: $0, spendAmount: spendAmount) }
-            // 点了「该收信了」那条通知：直接开邮件页，那边看到标记会自己
-            // 收一次。通知里说的是「点一下，我这就去收」，那就得真去收，
-            // 不能把人扔在对话页自己找。
+            .sheet(isPresented: $spending) {
+                SpendView(accounts: store.snapshot.ledger?.accounts ?? [],
+                          preset: spendAmount)
+            }
+            // 点了「该收信了」那条通知：交给秘书去收。
+            //
+            // 早先是开邮件页、界面自己拉一遍，拿到的是一列标题——而这条通知
+            // 问的是「有什么要紧的吗」。秘书收完会分拣、会挑出该回的那几封
+            // 说人话，这才是点它的理由。要看某一封的原文，简报里那个主题
+            // 点得开（见 openMailByKey）。
             .onChange(of: store.wantsMailCheck) { _, want in
-                if want { tool = .mail }
+                guard want else { return }
+                store.wantsMailCheck = false
+                if store.settings.mail.isEmpty {
+                    // 原来是开邮件页，那一页的空状态会说「去设置里加一个」。
+                    // 页没了就直接开设置——少绕一道。
+                    openSettings = true
+                    return
+                }
+                Task { await store.send(Store.mailCheckPrompt) }
             }
             // 点了到点提醒：直接把那一条打开。
             .onChange(of: store.wantsItem) { _, ref in
@@ -1056,53 +236,105 @@ struct ChatView: View {
                 notified = item
             }
             // 点了早上那条简报：打开日程。
+            // 点了早上那条简报：**问它一句**，不是打开一个列表。
+            //
+            // 原来这儿开日程页。而那条通知问的是「今天要干什么」——秘书会
+            // 挑出该先做的、说清哪几件撞了钟点，这比一屏按日期排好的条目
+            // 有用。想看全的，话里那些条目点得开。
             .onChange(of: store.wantsPlanner) { _, want in
                 guard want else { return }
                 store.wantsPlanner = false
-                tool = .planner
+                Task { await store.send(Store.plannerPrompt) }
             }
             .sheet(item: $notified) { ItemDetail(item: $0) }
+            .sheet(item: $openMail) { MailDetail(mail: $0) }
+            // **话里的链接自己接，不交给系统。** 秘书提到某条日程或某封邮件
+            // 时会写成 [标题](jarvis://item/work.org:12)，点一下就在这儿展开
+            // 原来那几张卡片。不拦的话系统会去找 jarvis:// 的处理程序，
+            // 找不到——点下去毫无反应。
+            //
+            // 别的链接（http 之类）照旧交给系统：秘书引一个网址，人当然
+            // 是想在浏览器里打开。
+            .environment(\.openURL, OpenURLAction { url in
+                guard url.scheme == "jarvis" else { return .systemAction }
+                open(url)
+                return .handled
+            })
+            .alert("找不到了", isPresented: .constant(linkMiss != nil)) {
+                Button("好") { linkMiss = nil }
+            } message: {
+                Text(linkMiss ?? "")
+            }
             // Siri / 快捷指令带进来的那一件事。起来时取一次；切回前台也
             // 取一次——app 已经开着的时候喊 Siri，走的是后面那条。
             .task { await takeIntent() }
-            // 别的 app 分享进来的图：落进输入框，等人补一句话再发。
+            // 别的 app 分享进来的图：直接交给秘书看，它自己判断该干什么。
             //
-            // 不直接发出去——分享一张图过来多半是要问点什么（「这张小票
-            // 记一下」），替他发了反而得重来一轮。
+            // 从相册或别的 app 特地分享一张图过来，多半已经想好了要拿它
+            // 做什么（小票记账、会议截图排期）。原先落进输入框等人再补一
+            // 句话，那句话十有八九也就是「记一下」——不如让它先看一眼，
+            // 判断错了再说也来得及。
+            //
+            // **模型看不见图片就别发**：那一轮除了「我看不到图片」什么都
+            // 拿不到，钱照花。退回老路子，图留在输入框里，人还能改用别的
+            // 说法（比如自己念一遍金额）。
             .onChange(of: store.sharedShots) { _, incoming in
                 guard !incoming.isEmpty else { return }
-                for data in incoming where shots.count < PhotoButton.maxShots {
-                    shots.append(data)
-                }
                 store.sharedShots = []
-                focused = true
+                guard store.modelSeesImages else {
+                    for data in incoming where shots.count < PhotoButton.maxShots {
+                        shots.append(data)
+                    }
+                    focused = true
+                    Haptics.done()
+                    return
+                }
                 Haptics.done()
+                Task { await store.send(Store.sharedImagePrompt, images: incoming) }
             }
             .onChange(of: phase) { _, now in
                 if now == .active { Task { await takeIntent() } }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { askClear = true } label: {
-                        Image(systemName: "trash")
+                ToolbarItem(placement: .topBarLeading) { ChatTitle() }
+                    // 标题不是按钮。不撤掉这层玻璃底的话，头像自己那个圆
+                    // 外面再套一个圆形按钮，两层同心圆，而且内圈看着偏心。
+                    .sharedBackgroundVisibility(.hidden)
+                // 「新建」跟设置排一起靠右。左上角让给标题——那儿是聊天软件
+                // 放「跟谁在聊」的位置。
+                //
+                // 图标从垃圾桶换成笔：**做的是同一件事，说的不是同一件事**。
+                // 这个 app 里只有一段对话，开新的一段就等于把旧的清掉；但
+                // 「清空」让人盯着自己要损失什么，「新建」说的是他真正想干的
+                // 那件事——换个话题重新开始。iMessage、微信的「发起新对话」
+                // 都是这支笔。
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { askNew = true } label: {
+                        Image(systemName: "square.and.pencil")
                     }
                     .disabled(store.messages.isEmpty)
-                    .accessibilityLabel("清空对话")
+                    .accessibilityLabel("新建对话")
+                    // **确认框挂在这颗按钮上，不是挂在整屏对话上。**
+                    // iPad 上（以及 iPhone 横屏那几种布局）它是个 popover，
+                    // 箭头指向挂载的那个视图——挂在 transcript 上就指向屏幕
+                    // 正中，看着像凭空冒出来的，人得自己找是哪个按钮弹的。
+                    .confirmationDialog("开始新对话？", isPresented: $askNew,
+                                        titleVisibility: .visible) {
+                        // 仍然是 destructive：换个说法不改变后果，
+                        // 这一段真的没了。
+                        Button("新建", role: .destructive) {
+                            store.clearChat()
+                            Haptics.warning()
+                        }
+                        Button("算了", role: .cancel) {}
+                    } message: {
+                        Text("现在这段对话会从这台设备上删掉，日程和账本不受影响。")
+                    }
                 }
                 SettingsLink()
             }
             // 一下点掉整段对话，之前是碰到就没了。别的收不回来的事
             // （发信、删邮件）都要点头，自己这一处不该例外。
-            .confirmationDialog("清空这段对话？", isPresented: $askClear,
-                                titleVisibility: .visible) {
-                Button("清空", role: .destructive) {
-                    store.clearChat()
-                    Haptics.warning()
-                }
-                Button("算了", role: .cancel) {}
-            } message: {
-                Text("说过的话会从这台设备上删掉，日程和账本不受影响。")
-            }
     }
 
     // MARK: - 对话记录
@@ -1113,7 +345,13 @@ struct ChatView: View {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     if shownMessages.isEmpty && !store.thinking {
                         VStack(alignment: .leading, spacing: 16) {
-                            BrandHeader(size: 44)
+                            // **这儿不再摆 BrandHeader。** 标题栏上就挂着同一张
+                            // 脸、同一个名字，隔两厘米再来一份，第一眼会被当成
+                            // 一条消息。招牌话留着——它不重复，标题栏那行写的是
+                            // 状态（「随时待命」），而这一句是告诉人这东西怎么用。
+                            Text(Brand.slogan)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
                             Starters(pick: startWith)
                                 // 例句是**可以点的样例**，不是要逐字读的正文。
                                 // 一路放大的话四句话就占满两屏，人得先滚过
@@ -1121,8 +359,9 @@ struct ChatView: View {
                                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                         }
                         .padding(.top, 20)
-                        // 头像刚从启动屏那儿过来，这一屏接着往上浮一点。
-                        // 硬糊上去的话，启动屏那一下就白铺垫了。
+                        // 接着启动屏往上浮一点。头像现在停在标题栏上不动，
+                        // 浮的是这段招牌话和例句——硬糊上去的话，启动屏
+                        // 那一下就白铺垫了。
                         .opacity(entered || reduceMotion ? 1 : 0)
                         .offset(y: entered || reduceMotion ? 0 : 10)
                         .onAppear {
@@ -1185,16 +424,6 @@ struct ChatView: View {
                 .overlay(Capsule().strokeBorder(Brand.primary.opacity(0.15)))
                 .padding(.horizontal, 12).padding(.bottom, 6)
             }
-            // 打字的时候把这排收起来。小屏上键盘一弹，光输入框就占掉半屏，
-            // 再压着一排胶囊，能看见的对话只剩两行。
-            if !focused {
-                ToolStrip { tool = $0 }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    // 这排是**控件**，不是正文。跟着无障碍字号一路放大的话，
-                    // 一个「日程」就占掉半屏宽，还把输入框挤下去——
-                    // 而这一屏真正要保的是能打字。HIG 允许控件类元素封顶。
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-            }
             // 输入区浮在内容之上，不再用一条实心底栏压着——下面的话能透出来，
             // 屏幕显得高一些。GlassEffectContainer 让挨着的两块玻璃算作一体，
             // 各自算各自的会在缝隙处叠出一道亮边。
@@ -1235,25 +464,26 @@ struct ChatView: View {
                             .lineLimit(1...6)
                             .padding(.vertical, 11)
                             .focused($focused)
-                        MicButton(draft: $draft, dictation: dictation)
-                            .padding(.bottom, 5)
+                        // 输入框右边那一格：**麦克风和发送轮着占**，不同时出现。
+                        //
+                        // 这是 iOS 消息的做法，也正好躲开原来那个取舍：原先
+                        // 发送是框外单独一颗，注释里写着「相机在左、麦克风在右
+                        // 分开站，三颗堆右边会误点」。挪进框里就又挤到一起了，
+                        // 除非——让它们轮流上。没话可发时那一格是麦克风（要说
+                        // 就说），一有字就换成蓝箭头（要发就发）。**同一时刻
+                        // 那个位置只有一个意思**，误点从根上没了。
+                        if canSend {
+                            SendButton(action: submit)
+                        } else {
+                            MicButton(draft: $draft, dictation: dictation)
+                                .padding(.bottom, 5)
+                        }
                     }
                     .padding(.horizontal, 6)
                     .glassEffect(.regular, in: .capsule)
-
-                    Button(action: submit) {
-                        Image(systemName: store.thinking ? "ellipsis" : "arrow.up")
-                            .font(.system(.headline, weight: .bold))
-                            .foregroundStyle(canSend ? Color.white : Color.secondary)
-                            .frame(width: send, height: send)
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .glassEffect(canSend ? .regular.tint(Brand.primary).interactive()
-                                         : .regular,
-                                 in: .circle)
-                    .disabled(!canSend)
+                    // 这一下换的是「那一格是什么」，不是位置，所以只淡入淡出，
+                    // 不要滑动——滑动会让输入框在打第一个字时抖一下。
                     .animation(.easeInOut(duration: 0.18), value: canSend)
-                    .accessibilityLabel(store.thinking ? "正在办" : "发送")
                 }
             }
             .padding(.horizontal, 12)
@@ -1296,6 +526,49 @@ struct ChatView: View {
     /// 日程和待办两摊都要找：到点提醒排的是有钟点的事（在 days 里），
     /// 而人从别处点进来的可能是任何一条。找不到就不开——文件在电脑上
     /// 被改过之后，行号可能已经指向别处了，宁可不开也别开错一条。
+    /// 点了话里的一个 jarvis:// 链接。
+    ///
+    /// `jarvis://item/work.org:12` → host 是 item，path 是 /work.org:12。
+    /// 邮件的 key 在 Go 那边转义过（账号名可能是中文），`url.path` 拿到的
+    /// 已经是解码后的原样，不用自己再解一遍。
+    private func open(_ url: URL) {
+        let id = String(url.path.dropFirst())   // 去掉开头那个 /
+        guard !id.isEmpty else { return }
+        switch url.host {
+        case "item":
+            // 找不到多半是这条已经改过（行号变了）或者做完删掉了。
+            // 说一句，别让人以为点坏了。
+            if let it = findItem(id) {
+                Haptics.tap()
+                notified = it
+            } else {
+                linkMiss = "这条日程已经变了或者不在了。再问一句「今天什么安排」就能拿到最新的。"
+            }
+        case "mail":
+            Haptics.tap()
+            Task { await openMailByKey(id) }
+        default:
+            break
+        }
+    }
+
+    /// 按 key 取那封邮件。
+    ///
+    /// 清单从本地索引读（不连服务器）——点一下要立刻有反应，而这一封
+    /// 刚才收信时就已经存进索引了。
+    private func openMailByKey(_ key: String) async {
+        let r = await store.mailAsync(op: "list")
+        if let err = r.error, !err.isEmpty {
+            store.lastError = err
+            return
+        }
+        if let m = r.items.first(where: { $0.key == key }) {
+            openMail = m
+        } else {
+            linkMiss = "这封邮件在本地找不到了，可能已经清理掉。"
+        }
+    }
+
     private func findItem(_ ref: String) -> Item? {
         store.snapshot.days.flatMap(\.items).first { $0.ref == ref }
             ?? store.snapshot.todos.first { $0.ref == ref }
@@ -1314,8 +587,9 @@ struct ChatView: View {
             guard !q.isEmpty else { return }
             await store.send(q)
         case .spend(let amount):
+            // 人已经开口说过「记一笔 35」，再让他自己点一下「+」等于白说。
             spendAmount = amount
-            tool = .ledger
+            spending = true
         }
     }
 
@@ -1359,6 +633,60 @@ struct Starters: View {
     }
 }
 
+/// 标题栏上的「跟谁在聊」：头像 + 字标 + 状态。
+///
+/// 头像原来挂在每条回复前面。一屏下来同一张脸出现四五次，而它每次只说
+/// 同一句话——「这条是 Jarvis 说的」，而这件事气泡的颜色和靠哪边已经
+/// 讲清楚了。挪到标题栏只出现一次，正文那栏还宽出 34 点（26 的头像
+/// 加 8 的间距）。微信、WhatsApp 的单聊都是这么摆的。
+///
+/// 忙不忙也归它讲：状态那行在「正在输入…」和 slogan 之间换，两种情况
+/// 都占一行，忙起来不会把字标顶上去半行。
+struct ChatTitle: View {
+    @EnvironmentObject var store: Store
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // 38 加玻璃那圈 2pt 是 42，inline 标题栏 44pt 高，上下各留 1pt。
+            // 再往上加就顶边了——标题栏不会为它长高，只会把它切掉。
+            // 它不动；忙不忙看下面那行字。
+            GlassAvatar(size: 38)
+            VStack(alignment: .leading, spacing: 1) {
+                Wordmark(font: .subheadline)
+                // **这行必须短。** 原来闲着时摆的是 Brand.slogan（「说一句，
+                // 剩下的交给我」），十个字——leading 那一格的宽度还要跟右边
+                // 两颗按钮分，那句话一定被切掉后半截。招牌话留在设置页顶上
+                // 的 BrandHeader，标题栏只报状态。
+                Text(status)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            // 两行字在 44pt 里没有富余。不锁住的话 SwiftUI 会压缩行高，
+            // 表现就是下面那行被切掉一半——横竖都按自己该有的尺寸排。
+            .fixedSize()
+        }
+        // 头像是装饰，VoiceOver 念一遍名字和这行状态就够。
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Jarvis，" + status)
+    }
+
+    /// 状态行。
+    ///
+    /// **未读数和逾期数原来是输入框上面那排胶囊的角标。** 那排删掉之后它们
+    /// 没地方去了，而这两个数恰恰是「要不要现在开口问一句」的依据——摆在
+    /// 名字底下比挂在一个要去点的按钮上更早被看到。
+    ///
+    /// 都是 0 就不写 0：常年挂着「0 封未读」等于让人从此不看这一行。
+    private var status: String {
+        if store.thinking { return "正在输入…" }
+        var parts: [String] = []
+        if store.mailUnread > 0 { parts.append("\(store.mailUnread) 封未读") }
+        if store.overdueCount > 0 { parts.append("\(store.overdueCount) 条逾期") }
+        return parts.isEmpty ? "随时待命" : parts.joined(separator: " · ")
+    }
+}
+
 struct Bubble: View {
     @EnvironmentObject var store: Store
     let message: ChatMessage
@@ -1379,23 +707,31 @@ struct Bubble: View {
     /// 四角同圆的话，一串气泡看着像并排的卡片，得靠颜色和左右位置才分得出
     /// 谁在说；收一个角，形状本身就指向说话的人——头像在左，左下角就尖，
     /// 话是从那儿出来的。iMessage、微信都是这个道理。
+    static let bigRadius: CGFloat = 16
+    static let tightRadius: CGFloat = 5
+
+    /// 回答那一侧的气泡形状。**「正在输入」那颗点气泡用的是同一个**
+    /// （见 ThinkingRow）——它们本来就是同一颗气泡的两个时刻，各写一遍
+    /// 的话圆角一改就接不上，点变成字的那一下会跳一下形状。
+    static let replyShape = UnevenRoundedRectangle(
+        topLeadingRadius: Bubble.bigRadius,
+        bottomLeadingRadius: Bubble.tightRadius,
+        bottomTrailingRadius: Bubble.bigRadius,
+        topTrailingRadius: Bubble.bigRadius)
+
     private var shape: UnevenRoundedRectangle {
-        let round: CGFloat = 16
-        let tight: CGFloat = 5
+        guard isUser else { return Bubble.replyShape }
         return UnevenRoundedRectangle(
-            topLeadingRadius: round,
-            bottomLeadingRadius: isUser ? round : tight,
-            bottomTrailingRadius: isUser ? tight : round,
-            topTrailingRadius: round)
+            topLeadingRadius: Bubble.bigRadius,
+            bottomLeadingRadius: Bubble.bigRadius,
+            bottomTrailingRadius: Bubble.tightRadius,
+            topTrailingRadius: Bubble.bigRadius)
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            if isUser {
-                Spacer(minLength: 40)
-            } else {
-                Avatar(size: 26).padding(.top, 2)
-            }
+            // 回答这一侧不再挂头像——它挪到标题栏了，见 ChatTitle。
+            if isUser { Spacer(minLength: 40) }
             Group {
                 if isUser {
                     VStack(alignment: .trailing, spacing: 6) {
@@ -1471,20 +807,34 @@ struct ThinkingRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            BusyAvatar(size: 26)
-
             VStack(alignment: .leading, spacing: 6) {
+                // **这颗气泡就是待会儿装回答的那颗**：同一个 replyShape、
+                // 同一个底色、同样贴着左边。回答到了就是点换成字，气泡
+                // 本身不动——WhatsApp 的「对方正在输入」就是这么接上的。
+                // 原先这儿是头像加转圈，回答出来时那一行整块消失、
+                // 气泡在下面另起一行，等于告诉人「刚才那个不算」。
                 Button { expanded.toggle() } label: {
+                    TypingDots()
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 13)
+                        .background(Brand.soft, in: Bubble.replyShape)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("正在办：" + headline)
+
+                // **点在跳就不再写一遍「想想…」**：那句话跟动画说的是同一件事，
+                // 占一行只为了重复一遍。真拿到了步骤名（「正在查日程」）才值得
+                // 显示——那是动画说不出来的信息。
+                if let step = stepLabel {
                     HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text(headline).font(.caption).foregroundStyle(.secondary)
+                        Text(step).font(.caption).foregroundStyle(.secondary)
                         if steps.count > 1 {
                             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                                 .font(.caption2).foregroundStyle(.tertiary)
                         }
                     }
+                    .accessibilityHidden(true)
                 }
-                .buttonStyle(.plain)
 
                 if expanded {
                     VStack(alignment: .leading, spacing: 4) {
@@ -1513,10 +863,17 @@ struct ThinkingRow: View {
         }
     }
 
-    private var headline: String {
-        guard let last = steps.last else { return "想想…" }
+    /// 显示用：没有步骤就不显示。返回 nil 那一路交给跳动的点去说。
+    private var stepLabel: String? {
+        guard let last = steps.last else { return nil }
         let n = steps.count > 1 ? "（第 \(steps.count) 步）" : ""
         return label(for: last) + n
+    }
+
+    /// 念给 VoiceOver 听的。这儿反倒需要那句兜底——屏幕上是三个跳动的点，
+    /// 读屏软件什么也读不到，「想想…」是它唯一能听见的状态。
+    private var headline: String {
+        stepLabel ?? "想想…"
     }
 
     func label(for step: Step) -> String {
@@ -1635,44 +992,9 @@ struct ConfirmSheet: View {
     }
 }
 
-/// 空状态。
-///
-/// 原先四个页面统一是系统那个灰托盘——日程空了给你看一个托盘，
-/// 既不贴切也不像自家东西。图标改成各页自己的，底色用品牌浅蓝。
-/// 分区标题：彩色图标 + 黑色粗体。
-///
-/// 比 List 默认那种灰色小字重得多，是**故意的**：一屏十来张卡片摞下来，
-/// 灰色小字分不出段落。系统「健康」和「设置」里的分组标题也是这个分量。
-struct GroupHeader: View {
-    let text: String
-    var icon: String?
-    var tint: Color = .secondary
-
-    var body: some View {
-        HStack(spacing: 7) {
-            if let icon {
-                Image(systemName: icon)
-                    // 语义字号而不是定死 15pt：标题用 .title3，图标不跟着
-                    // 缩放的话，字放大到无障碍档位就成了大字配小图标。
-                    .font(.system(.subheadline, weight: .semibold))
-                    .foregroundStyle(tint)
-            }
-            Text(text).font(.title3.weight(.bold))
-                .foregroundStyle(.primary)
-        }
-        // List 的 section header 默认全大写、全灰；这两下把它收回来。
-        .textCase(nil)
-        .padding(.vertical, 2)
-        // 让 VoiceOver 的「按标题浏览」能停在这儿——一屏十来张卡片，
-        // 不能只有从头听到尾一条路。
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
-    }
-}
-
 /// 小标题。健康那几块在用；别的页面走 List 的原生 Section。
 ///
-/// 放这儿是因为 EmptyHint / LoadingHint / ErrorBar 这些共享组件都在这个
+/// 放这儿是因为 LoadingHint / ErrorBar 这些共享组件都在这个
 /// 文件里——收在某个功能页里的话，下一个要用的人找不到，就又写一个。
 struct SectionLabel: View {
     let text: String
@@ -1687,31 +1009,6 @@ struct SectionLabel: View {
         }
         .foregroundStyle(.secondary)
         .padding(.horizontal, 4)
-    }
-}
-
-struct EmptyHint: View {
-    let show: Bool
-    let text: String
-    var icon = "tray"
-    /// 圆底跟着字号长。写死 72 的话，字调大之后图标会顶破这个圈。
-    @ScaledMetric(relativeTo: .title) private var badge: CGFloat = 72
-
-    var body: some View {
-        if show {
-            VStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(.title, weight: .medium))
-                    .foregroundStyle(Brand.sheen)
-                    .frame(width: badge, height: badge)
-                    .background(Brand.soft, in: Circle())
-                Text(text)
-                    .font(.callout)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 32)
-        }
     }
 }
 
@@ -1765,49 +1062,22 @@ struct ErrorBar: View {
 struct LoadingHint: View {
     @EnvironmentObject var store: Store
     let isEmpty: Bool
-    /// 不传就看 store.loading（读 iCloud 那条路）；邮件页有自己的忙碌状态。
-    var busy: Bool?
     var text = "正在读 iCloud…"
 
     var body: some View {
-        if (busy ?? store.loading) && isEmpty {
+        // 原来还有个 busy 参数，让邮件页传自己的「正在收信」进来。那一页
+        // 没了之后只剩读 iCloud 这一条路，参数也就跟着去掉了。
+        if store.loading && isEmpty {
             VStack(spacing: 12) {
-                BusyAvatar()
+                // 静的。旁边那行「正在读 iCloud…」已经说清在等什么了，
+                // 头像不必再动一遍。
+                Avatar(size: 56)
                 Text(text).font(.footnote).foregroundStyle(.secondary)
             }
             // 「正在读」要念出来，不然屏幕上什么都没有，读屏的人不知道
             // 是在等还是空了。
             .accessibilityElement(children: .combine)
             .accessibilityLabel(text)
-        }
-    }
-}
-
-/// 底部那颗说明用的玻璃胶囊。待办的「还有多少没显示」和邮件的动作附注
-/// 长得一模一样，各写一遍只会让下次调样式时漏掉一处。
-struct HintPill: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .glassEffect(.regular, in: .capsule)
-            .padding(.bottom, 8)
-    }
-}
-
-/// 「记一条」。放在工具栏而不是右下角悬浮按钮——右下角会跟标签栏挤在一起，
-/// 而且这几页本来就有工具栏。
-struct QuickAddButton: ToolbarContent {
-    @State private var open = false
-
-    var body: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button { open = true } label: { Image(systemName: "plus") }
-                .accessibilityLabel("记一条")
-                .sheet(isPresented: $open) { QuickAddView() }
         }
     }
 }
@@ -1827,5 +1097,39 @@ struct SettingsLink: ToolbarContent {
                 .accessibilityLabel("设置")
                 .sheet(isPresented: $open) { SettingsView() }
         }
+    }
+}
+
+/// 发送键：实心圆加一支白箭头，照 iOS 消息那颗。
+///
+/// **实心，不是玻璃。** 它现在坐在输入框（本身就是一块玻璃胶囊）里面，
+/// 玻璃套玻璃会在边缘叠出一道亮边，而且透过去的是输入框的底不是页面的底，
+/// 蓝色出不来。跟标题栏那个「头像的圆套在玻璃圆里」是同一类毛病。
+///
+/// 尺寸跟着字号走：写死的话，输入框在无障碍档位下长高了，这颗还是原样，
+/// 看着像掉在坑里。
+struct SendButton: View {
+    let action: () -> Void
+
+    /// **占位必须跟 MicButton 一模一样（34 + 5pt 底距）。**
+    ///
+    /// 这两颗是轮着占同一格的。占位不一样的话，打第一个字那一下输入框会
+    /// 跟着长高或矮一截——手指还在键盘上，整条输入区先抖一下。
+    @ScaledMetric(relativeTo: .headline) private var box: CGFloat = 34
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: box * 0.44, weight: .bold))
+                .foregroundStyle(.white)
+                // 蓝圆比方格小一圈，留出呼吸；能按到的是整个 34 的方格。
+                .frame(width: box * 0.88, height: box * 0.88)
+                .background(Brand.primary, in: .circle)
+                .frame(width: box, height: box)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 5)
+        .accessibilityLabel("发送")
     }
 }
