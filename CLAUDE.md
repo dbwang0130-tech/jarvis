@@ -18,6 +18,27 @@ target，是因为 Catalyst 下 UIKit 整套都在——相机、Dictation、Ima
 make mac-build     # 编 Mac 版并打开（不签名，开发时看一眼用）
 ```
 
+`ios/run-mac.sh` 里**先 quit 再 open**：`open` 对已经在跑的 app 只是把它切到
+前台，不会换成刚编出来的二进制——表现是「改了代码、重新编了、界面一点没变」，
+而这恰恰会让人去怀疑自己的改动，最难查（踩过）。要指定金库目录看某个状态，
+直接跑二进制并带上环境变量：`JARVIS_UI_VAULT=... Jarvis.app/Contents/MacOS/Jarvis`
+（`open` 不传环境变量）。
+
+**宽屏两栏，窄屏一栏**（`MainShell`）。判据是 `horizontalSizeClass == .regular`
+而不是 `#if targetEnvironment(macCatalyst)`——这条规矩讲的是「屏幕宽不宽」，
+不是「跑在哪个平台」；按平台写死的话 iPad 横屏白空半屏，Mac 上窗口拖窄了又挤成
+一团。左栏是 `SessionSidebar`：**只放会话，不放别的**。早先那四个标签页
+（日程/待办/邮件/财务）不会因为有空地就回来——它们跟「问一句」重叠，而会话
+列表是导航，回答的是「我刚才那段聊到哪了」，问一句问不出来。
+
+配套两条：正文走 `readableColumn()`（上限 760pt 居中）——**窗口再宽，一行字也
+不该横跨整屏**，而 iPhone 上屏幕本来就比它窄，等于这条限制不存在；`restrainWindow()`
+给 Mac 窗口定下限 480×560，再窄输入框里那三颗按钮就开始互相挤。
+
+宽屏上工具栏要少一颗「新建对话」——侧栏顶上已经有一颗，两颗并排摆着人会去想
+「这两个有什么不同」。侧栏也不设 `navigationTitle`：窗口标题栏已经写着 Jarvis，
+右栏顶上还有一张同样的脸，再来一遍就是一屏三个 Jarvis。
+
 合并时撞上的三处，都记在这儿免得再踩：
 
 - **`gomobile bind` 要带 `-iosversion=14.0`**。默认是 13.0，而 Catalyst 最低

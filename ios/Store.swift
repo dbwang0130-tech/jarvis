@@ -102,7 +102,24 @@ final class Store: ObservableObject, AskEvents {
 
     /// 这一段在金库 `sessions/` 里对应的文件名。同一段始终写同一个文件，
     /// 开新对话时清掉。见 `Session.archiveName`。
-    private var archiveName: String?
+    ///
+    /// 侧栏要拿它标出「正在聊的是哪一条」，所以对外只读。
+    @Published private(set) var archiveName: String?
+
+    /// 存档清单，侧栏显示的就是它。
+    ///
+    /// **是 @Published 而不是每次现扫**：侧栏一直挂在屏幕上，现扫的话每次
+    /// 重绘都要把 sessions/ 下的文件读一遍。归档、切换、删除之后各刷一次就够。
+    @Published private(set) var archives: [SessionArchive.Entry] = []
+
+    /// 重扫存档清单。读文件，别占主线程。
+    func refreshArchives() {
+        let vault = self.vault
+        Task.detached(priority: .utility) {
+            let list = SessionArchive.list(from: vault)
+            await MainActor.run { self.archives = list }
+        }
+    }
 
     init() {
         // 打开就接着上次那段对话。
@@ -390,6 +407,7 @@ final class Store: ObservableObject, AskEvents {
         }
         // 上一段就此定稿，下一段自然拿到一个新文件名。
         archiveName = nil
+        refreshArchives()
         messages = []
         engineHistory = []
         steps = []
@@ -432,6 +450,7 @@ final class Store: ObservableObject, AskEvents {
         // 历史里会多出一条只差几句话的重复对话。
         archiveName = id
         persist()
+        refreshArchives()
         return true
     }
 
@@ -456,6 +475,18 @@ final class Store: ObservableObject, AskEvents {
             archiveName = name
             persist()   // 把文件名记进本机那份，下次启动还认得这一段
         }
+        refreshArchives()
+    }
+
+    /// 删掉一段存档。删的如果正是手头这段，它就变回「还没存过」的状态——
+    /// 对话本身不动，人还在聊，只是历史里没有它了。
+    func deleteArchive(_ id: String) {
+        SessionArchive.delete(id, from: vault)
+        if archiveName == id {
+            archiveName = nil
+            persist()
+        }
+        refreshArchives()
     }
 
     // MARK: - 从「健康」App 导入

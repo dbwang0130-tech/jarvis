@@ -23,12 +23,31 @@ struct JarvisApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // Mac 上给窗口定个下限。**拉到比这还窄，输入框里的三颗按钮
+                // 就开始互相挤**——而窄成那样在 Mac 上没有任何意义，
+                // 手机上那个宽度是屏幕逼出来的，桌面上是人手滑拉出来的。
+                .onAppear(perform: Self.restrainWindow)
                 // 别的 app 分享图片过来：系统把文件拷进本 app 的 Inbox，
                 // 再把 URL 投给这儿。
                 .onOpenURL { url in
                     SharedImages.take(url)
                 }
         }
+    }
+}
+
+extension JarvisApp {
+    /// 给 Mac 窗口设一个最小尺寸，顺手记下最舒服的初始大小。
+    ///
+    /// iPhone / iPad 上这个方法什么都不做——`sizeRestrictions` 只在
+    /// Catalyst 下有值，别处是 nil。
+    static func restrainWindow() {
+#if targetEnvironment(macCatalyst)
+        for scene in UIApplication.shared.connectedScenes {
+            guard let window = scene as? UIWindowScene else { continue }
+            window.sizeRestrictions?.minimumSize = CGSize(width: 480, height: 560)
+        }
+#endif
     }
 }
 

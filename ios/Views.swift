@@ -4,6 +4,24 @@ import UniformTypeIdentifiers
 // 界面分四块：日程、待办、财务、对话。
 // 手机屏幕小，每块只放最要紧的东西，详情靠点进去看。
 
+/// 正文的可读宽度上限。
+///
+/// **窗口再宽，一行字也不该横跨整个屏幕**——读到行末还得把视线甩回行首，
+/// 几行下来就累了。报纸分栏、Safari 阅读器、各家桌面版聊天工具都是这个道理。
+///
+/// iPhone 上屏幕本来就比它窄，这条限制等于不存在；**iPad 横屏和 Mac 上才生效**。
+/// 所以它不是「给 Mac 打的补丁」，是一条本来就该有的排版规矩，只是窄屏上看不出来。
+private let readableWidth: CGFloat = 760
+
+extension View {
+    /// 限宽并在可用空间里居中。两层 frame 是必须的：里层收住内容宽度，
+    /// 外层把这块内容推到中间——只写里层的话它会顶在左边，右边空一大片。
+    func readableColumn() -> some View {
+        frame(maxWidth: readableWidth)
+            .frame(maxWidth: .infinity)
+    }
+}
+
 /// 模拟器里查界面时别弹系统权限框。
 ///
 /// **那个框是点不掉的**：simctl 没法点屏幕，也没有给通知权限的 privacy 子命令，
@@ -146,8 +164,28 @@ struct WelcomeView: View {
 /// 那几张卡片（ItemDetail、MailDetail）——**从话里点进去**，不是先进一个
 /// 列表再找。桌面端早走完了这一步，见 CLAUDE.md 里删掉五视图那一段。
 struct MainShell: View {
+    /// 屏够不够宽。iPhone 竖屏是 compact，iPad 横屏和 Mac 是 regular。
+    ///
+    /// **用 sizeClass 而不是 `#if targetEnvironment(macCatalyst)`**：这条规矩
+    /// 讲的是「屏幕宽不宽」，不是「跑在哪个平台」。按平台写死的话，iPad 横屏
+    /// 白白空着半屏，而 Mac 上把窗口拖到很窄又会挤成一团。
+    @Environment(\.horizontalSizeClass) private var width
+
     var body: some View {
-        NavigationStack { ChatView() }
+        if width == .regular {
+            // 宽屏：左边常驻会话列表。**只放会话，不放别的**——早先那四个
+            // 标签页（日程/待办/邮件/财务）不会因为有空地就回来，它们跟
+            // 「问一句」重叠，而会话列表是导航，不重叠。
+            NavigationSplitView {
+                SessionSidebar()
+                    .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 360)
+            } detail: {
+                NavigationStack { ChatView() }
+            }
+            .navigationSplitViewStyle(.balanced)
+        } else {
+            NavigationStack { ChatView() }
+        }
     }
 }
 
@@ -186,6 +224,8 @@ extension Formatter {
 
 struct ChatView: View {
     @EnvironmentObject var store: Store
+    /// 宽屏（Mac、iPad 横屏）上左边有侧栏，工具栏因此要少一颗按钮。
+    @Environment(\.horizontalSizeClass) private var width
     @State private var draft = ""
     @State private var openSettings = false
     /// 记一笔账的表单。Siri 说「记一笔 35」时直接摆开它。
@@ -342,22 +382,26 @@ struct ChatView: View {
                 // 「清空」让人盯着自己要损失什么，「新建」说的是他真正想干的
                 // 那件事——换个话题重新开始。iMessage、微信的「发起新对话」
                 // 都是这支笔。
-                ToolbarItem(placement: .topBarTrailing) {
-                    // **不问了。** 原先这儿挂着确认框，因为按下去这一段就
-                    // 真的没了。现在 clearChat 会先把它归档进金库的
-                    // sessions/，「设置 → 历史对话」里随时读得回来——后果
-                    // 变轻了，那一问也就没必要。
-                    //
-                    // 注意这是靠**让动作可撤销**来省掉确认，不是靠把一个
-                    // 危险动作做得更顺手。收不回来的事（发信、删邮件）照旧要问。
-                    Button {
-                        store.clearChat()
-                        Haptics.tap()
-                    } label: {
-                        Image(systemName: "square.and.pencil")
+                // **宽屏上这颗不出现**：左边侧栏顶上已经有一颗一模一样的。
+                // 两颗新建按钮并排摆着，人第一反应是去想「这两个有什么不同」。
+                if width != .regular {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        // **不问了。** 原先这儿挂着确认框，因为按下去这一段就
+                        // 真的没了。现在 clearChat 会先把它归档进金库的
+                        // sessions/，历史对话里随时读得回来——后果变轻了，
+                        // 那一问也就没必要。
+                        //
+                        // 注意这是靠**让动作可撤销**来省掉确认，不是靠把一个
+                        // 危险动作做得更顺手。收不回来的事（发信、删邮件）照旧要问。
+                        Button {
+                            store.clearChat()
+                            Haptics.tap()
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                        .disabled(store.messages.isEmpty)
+                        .accessibilityLabel("新建对话")
                     }
-                    .disabled(store.messages.isEmpty)
-                    .accessibilityLabel("新建对话")
                 }
                 SettingsLink()
             }
@@ -404,6 +448,7 @@ struct ChatView: View {
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding()
+                .readableColumn()
             }
             // 一开始滚就收键盘。.interactively 要手指往下拖着才收，
             // 而这里想要的是「去看上面说了什么」，滚动本身就是意思。
@@ -514,6 +559,10 @@ struct ChatView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
+        // 输入区跟对话正文对齐同一条可读宽度。不限的话，宽窗口上是一个
+        // 横跨整屏的输入框，光标孤零零钉在最左边——而它接的那些话就显示在
+        // 上面那一栏里，两者错开看着像两个界面。
+        .readableColumn()
         .animation(.easeOut(duration: 0.2), value: focused)
         .sheet(isPresented: $openSettings) { SettingsView() }
     }

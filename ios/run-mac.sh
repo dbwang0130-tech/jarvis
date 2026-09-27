@@ -11,5 +11,13 @@ APP=$(find "$HOME/Library/Developer/Xcode/DerivedData" -maxdepth 4 \
 [ -n "$APP" ] || { echo "没找到 Mac 版产物，先 make mac-build"; exit 1; }
 
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1
+
+# **先杀掉正在跑的那个。** `open` 对已经在运行的 app 只是把它切到前台，
+# 不会换成刚编出来的二进制——表现是「改了代码、重新编了、界面一点没变」，
+# 而这恰恰会让人去怀疑自己的改动，最难查（踩过）。
+osascript -e 'tell application "Jarvis" to quit' >/dev/null 2>&1 || true
+pkill -x Jarvis >/dev/null 2>&1 || true
+sleep 1
+
 open "$APP"
 echo "Mac 版已打开：$APP"
