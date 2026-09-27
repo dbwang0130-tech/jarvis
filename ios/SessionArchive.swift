@@ -56,10 +56,12 @@ enum SessionArchive {
 
     // MARK: - 写
 
-    /// 把一段会话归档成一个新文件，返回文件名。
+    /// 把一段会话写进存档，返回文件名。
     ///
-    /// 文件名用开始时间：`20260926-2233.jsonl`。**排序即时序**，列表不必
-    /// 逐个打开文件读元信息就能按时间排好。
+    /// `session.archiveName` 有值就**覆盖那个文件**——同一段对话反复落盘
+    /// （每次退到后台写一次）不该在历史里堆出几十条快照。没有就按开始时间
+    /// 起一个新的：`20260926-223300.jsonl`。**排序即时序**，列表不必逐个
+    /// 打开文件读元信息就能按时间排好。
     @discardableResult
     static func archive(_ session: Session, to vault: SessionFiles,
                         at when: Date = Date()) throws -> String? {
@@ -68,17 +70,24 @@ enum SessionArchive {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd-HHmmss"
-        let name = f.string(from: when) + ".jsonl"
+        let name = session.archiveName ?? (f.string(from: when) + ".jsonl")
 
         var lines: [String] = []
         let iso = ISO8601DateFormatter()
+        // 覆盖已有文件时，开始时间取文件名里那个——**不是「现在」**。
+        // 取现在的话，一段下午开始的对话每次落盘都往列表顶上跳一次。
         lines.append(encode([
             "type": "meta",
-            "started": iso.string(from: when),
+            "started": iso.string(from: startedAt(name) ?? when),
             "title": title(of: session),
         ]))
         for m in session.chat {
-            lines.append(encode(["type": "chat", "role": m.role, "text": m.text]))
+            var row: [String: Any] = ["type": "chat", "role": m.role, "text": m.text]
+            // 图本身不进存档（几百 KB 一张，见 ImageStore 那段），但**编号要存**
+            // ——图躺在本机，同一台设备上把这段读回来照样显示得出来。漏了它，
+            // 读回来的历史里图就凭空少了，而文件里根本没记过这回事。
+            if !m.imageRefs.isEmpty { row["images"] = m.imageRefs }
+            lines.append(encode(row))
         }
         for m in session.engine {
             // name / toolCallID 是 Optional：**「没有」和「空串」是两回事**，
@@ -99,6 +108,16 @@ enum SessionArchive {
         }
         try vault.writeSession(name, lines.joined(separator: "\n") + "\n")
         return name
+    }
+
+    /// 从文件名解出开始时间（`20260926-223300.jsonl`）。
+    /// 解不出来返回 nil，调用方退回用当下——旧的、手写的文件名也得能用。
+    static func startedAt(_ name: String) -> Date? {
+        let stem = name.replacingOccurrences(of: ".jsonl", with: "")
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        return f.date(from: stem)
     }
 
     /// 标题取第一句用户说的话。没有就退回第一条。
@@ -154,8 +173,10 @@ enum SessionArchive {
             guard let row = row(String(line)) else { continue }
             switch row["type"] as? String {
             case "chat":
-                session.chat.append(ChatMessage(role: row["role"] as? String ?? "",
-                                                text: row["text"] as? String ?? ""))
+                session.chat.append(ChatMessage(
+                    role: row["role"] as? String ?? "",
+                    text: row["text"] as? String ?? "",
+                    imageRefs: row["images"] as? [String] ?? []))
             case "engine":
                 var m = Message(role: row["role"] as? String ?? "",
                                 content: row["content"] as? String ?? "")
@@ -171,6 +192,24 @@ enum SessionArchive {
             }
         }
         return session.chat.isEmpty && session.engine.isEmpty ? nil : session
+    }
+
+    /// 所有存档里引用到的图片编号。
+    ///
+    /// 清图片时要拿它当「留着别删」的名单：**归档不是删除**，同一台设备上
+    /// 把那段对话读回来，图该还在。少了这一步，每开一次新对话就把之前所有
+    /// 历史里的图清一遍，翻回去看到的是一片占位。
+    static func allImageRefs(from vault: SessionFiles) -> Set<String> {
+        var refs: Set<String> = []
+        for name in (try? vault.sessionFiles()) ?? [] {
+            guard let text = try? vault.readSession(name) else { continue }
+            for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                guard let r = row(String(line)), r["type"] as? String == "chat",
+                      let list = r["images"] as? [String] else { continue }
+                refs.formUnion(list)
+            }
+        }
+        return refs
     }
 
     static func delete(_ id: String, from vault: SessionFiles) {

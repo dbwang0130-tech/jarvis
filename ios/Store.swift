@@ -100,11 +100,16 @@ final class Store: ObservableObject, AskEvents {
 
     var isConfigured: Bool { vault.isConfigured }
 
+    /// 这一段在金库 `sessions/` 里对应的文件名。同一段始终写同一个文件，
+    /// 开新对话时清掉。见 `Session.archiveName`。
+    private var archiveName: String?
+
     init() {
         // 打开就接着上次那段对话。
         let saved = SessionStore.load()
         messages = saved.chat
         engineHistory = saved.engine
+        archiveName = saved.archiveName
     }
 
     // 手上这份文件内容。对话要用它做入参，也用来判断哪些真的变了。
@@ -310,9 +315,12 @@ final class Store: ObservableObject, AskEvents {
         if (out.files?.isEmpty == false) || (out.ledger?.isEmpty == false)
             || (out.memory?.isEmpty == false) || (out.health?.isEmpty == false)
             || out.persona != nil {
-            await writeBack(org: out.files ?? [:], ledger: out.ledger,
-                            memory: out.memory, health: out.health,
-                            persona: out.persona)
+            // 返回值这儿不看：writeBack 失败时自己已经把原因填进 lastError
+            // （或者走 fail），界面照样显示得出来。**别把 `_ =` 去掉**——
+            // 留着编译警告，下一个人只会学会无视它。
+            _ = await writeBack(org: out.files ?? [:], ledger: out.ledger,
+                                memory: out.memory, health: out.health,
+                                persona: out.persona)
         }
 
         await refreshIfMissed()
@@ -371,7 +379,7 @@ final class Store: ObservableObject, AskEvents {
     /// 归档失败（没选金库、iCloud 不可用）**也照样清空**：人按这个键是
     /// 想开始新的一段，不能因为存档没写成就卡在旧对话里。但要说一声。
     func clearChat() {
-        let old = Session(chat: messages, engine: engineHistory)
+        let old = Session(chat: messages, engine: engineHistory, archiveName: archiveName)
         let vault = self.vault
         if !old.chat.isEmpty {
             do {
@@ -380,13 +388,21 @@ final class Store: ObservableObject, AskEvents {
                 lastError = "这段对话没能存进历史：\(error.localizedDescription)"
             }
         }
+        // 上一段就此定稿，下一段自然拿到一个新文件名。
+        archiveName = nil
         messages = []
         engineHistory = []
         steps = []
         persist()
-        // 图片是按「还有哪条消息引着」清的。归档留的是文字，图不跟着走——
-        // 否则金库里会越积越多，而历史对话里的图也没有地方显示。
-        ImageStore.sweep(keep: [])
+        // 图按「还有哪段存档引着」留。**归档不是删除**——同一台设备上把那段
+        // 对话读回来，图该还在。原先这儿是 `keep: []`，每开一次新对话就把
+        // 之前所有历史里的图清一遍，翻回去看到的是一片占位。
+        //
+        // 要读一遍全部存档，所以挪到后台：新建对话该是一按就清爽，
+        // 不能卡在扫文件上。
+        Task.detached(priority: .utility) { [vault] in
+            ImageStore.sweep(keep: SessionArchive.allImageRefs(from: vault))
+        }
     }
 
     /// 把一段存档读回来当成当前对话。
@@ -398,21 +414,48 @@ final class Store: ObservableObject, AskEvents {
             lastError = "这段对话读不出来了"
             return false
         }
-        let current = Session(chat: messages, engine: engineHistory)
+        let current = Session(chat: messages, engine: engineHistory, archiveName: archiveName)
         if !current.chat.isEmpty {
-            try? SessionArchive.archive(current, to: vault)
+            // 手头这段先存起来，否则点一下历史就把它冲掉了。
+            // **失败要说一声**——静默吞掉的话，人翻回来才发现刚才那段没了，
+            // 而那会儿已经无从补救。clearChat 里是同一个规矩。
+            do {
+                try SessionArchive.archive(current, to: vault)
+            } catch {
+                lastError = "手头这段没能存进历史：\(error.localizedDescription)"
+            }
         }
         messages = restored.chat
         engineHistory = restored.engine
         steps = []
+        // 接着这一段聊，落盘就该写回它自己那个文件——另起一个的话，
+        // 历史里会多出一条只差几句话的重复对话。
+        archiveName = id
         persist()
         return true
     }
 
     /// 存档可能有几百 KB，别占着主线程。
     private func persist() {
-        let now = Session(chat: messages, engine: engineHistory)
+        let now = Session(chat: messages, engine: engineHistory, archiveName: archiveName)
         Task.detached(priority: .utility) { SessionStore.save(now) }
+    }
+
+    /// 把手头这段写进金库的存档。
+    ///
+    /// **对话放 iCloud 是用户要的，不能只在他点「新建」时才生效**——很久不
+    /// 开新对话，那一段就一直只在本机，换设备看不到，删 app 就没了。所以退到
+    /// 后台时落一次（见 RootView 的 scenePhase）：低频，而且正是该落盘的时刻。
+    ///
+    /// 同一段始终写同一个文件，反复落盘不会在历史里堆出几十条快照。
+    func archiveCurrent() {
+        guard !messages.isEmpty else { return }
+        let now = Session(chat: messages, engine: engineHistory, archiveName: archiveName)
+        guard let name = try? SessionArchive.archive(now, to: vault) else { return }
+        if archiveName != name {
+            archiveName = name
+            persist()   // 把文件名记进本机那份，下次启动还认得这一段
+        }
     }
 
     // MARK: - 从「健康」App 导入

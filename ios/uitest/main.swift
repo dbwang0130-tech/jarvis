@@ -193,6 +193,27 @@ check("存档往返") {
     return "chat \(back.chat.count) 条 / engine \(back.engine.count) 条，工具调用配对完整"
 }
 
+// 图本身不进存档（几百 KB 一张），但**编号要跟着走**——图躺在本机，
+// 同一台设备上把这段读回来照样显示得出来。漏了它，读回来的历史里图就凭空
+// 少了，而文件里根本没记过这回事，事后想补都无从补起。
+check("存档带图片编号") {
+    let files = FakeFiles()
+    var s = Session()
+    s.chat = [ChatMessage(role: "user", text: "这张小票记一下", imageRefs: ["a1", "b2"]),
+              ChatMessage(role: "assistant", text: "记好了。")]
+    let name = try SessionArchive.archive(s, to: files)!
+    guard let back = SessionArchive.load(name, from: files) else { throw Err("读不回来") }
+    guard back.chat[0].imageRefs == ["a1", "b2"] else {
+        throw Err("图片编号丢了：\(back.chat[0].imageRefs)")
+    }
+    guard back.chat[1].imageRefs.isEmpty else { throw Err("凭空多出图片编号") }
+
+    // 清图片时要拿这份名单当「留着别删」——归档不是删除，翻回去图该还在。
+    let refs = SessionArchive.allImageRefs(from: files)
+    guard refs == ["a1", "b2"] else { throw Err("收集不全：\(refs)") }
+    return "编号往返完整，名单 \(refs.count) 个"
+}
+
 // 列表只读头几行就要给出标题和条数——engine 那份一轮几十 KB，
 // 翻一次列表全读进来再丢掉是几 MB 的无用功。
 check("存档列表") {
@@ -211,6 +232,33 @@ check("存档列表") {
     guard list[0].count == 2 else { throw Err("条数不对：\(list[0].count)") }
     guard list[0].started != nil else { throw Err("时间没解出来") }
     return "2 条，最近的在前"
+}
+
+// 同一段对话反复落盘（每次退到后台写一次）**只能有一个文件**。
+// 没有这条，聊一下午就在历史里堆出几十条同一段对话的快照。
+check("反复落盘不堆快照") {
+    let files = FakeFiles()
+    var s = Session()
+    s.chat = [ChatMessage(role: "user", text: "今天什么安排")]
+    let name = try SessionArchive.archive(s, to: files)!
+
+    // 接着聊两句，带着文件名再存——该盖回同一个文件。
+    s.archiveName = name
+    s.chat.append(ChatMessage(role: "assistant", text: "三件事。"))
+    s.chat.append(ChatMessage(role: "user", text: "第二件推到明天"))
+    let again = try SessionArchive.archive(s, to: files, at: Date())!
+    guard again == name else { throw Err("换了个文件：\(name) → \(again)") }
+
+    let list = SessionArchive.list(from: files)
+    guard list.count == 1 else { throw Err("堆出了 \(list.count) 条") }
+    guard list[0].count == 3 else { throw Err("内容没更新：\(list[0].count) 条") }
+    // 开始时间取文件名里那个，不是「现在」——否则一段下午开始的对话
+    // 每次落盘都往列表顶上跳一次。
+    guard let started = list[0].started,
+          abs(started.timeIntervalSince(SessionArchive.startedAt(name)!)) < 1 else {
+        throw Err("开始时间被改成了现在")
+    }
+    return "一个文件，\(list[0].count) 条，开始时间没动"
 }
 
 // 空对话不该留下一个空文件——那会在列表里堆出一串「（没有标题）」。

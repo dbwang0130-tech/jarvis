@@ -433,7 +433,7 @@ struct ModelEditor: View {
                     // 里面标着哪个支持图像输入。
                     NavigationLink {
                         ModelPicker(config: configForQuery, preset: info?.model ?? "",
-                                    picked: $model, onPick: {})
+                                    picked: $model)
                     } label: {
                         HStack {
                             Text("模型名")
@@ -546,7 +546,6 @@ struct ModelPicker: View {
     /// 这家服务商的预设模型名，用来说清「用预设」到底是哪个。
     let preset: String
     @Binding var picked: String
-    let onPick: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var list: [ModelEntry] = []
@@ -663,7 +662,6 @@ struct ModelPicker: View {
 
     private func choose(_ id: String) {
         picked = id
-        onPick()
         Haptics.success()
         dismiss()
     }

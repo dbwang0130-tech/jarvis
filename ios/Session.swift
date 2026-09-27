@@ -9,10 +9,17 @@ import Foundation
 struct Session: Codable {
     var chat: [ChatMessage] = []
     var engine: [Message] = []
+    /// 这一段在金库 `sessions/` 里对应的文件名。
+    ///
+    /// **同一段对话始终写同一个文件。** 没有它的话，每次落盘都会新建一个
+    /// 存档，聊一下午就在历史里堆出几十条同一段对话的快照。开新对话时清掉，
+    /// 下一段自然拿到新名字。
+    var archiveName: String?
 
-    init(chat: [ChatMessage] = [], engine: [Message] = []) {
+    init(chat: [ChatMessage] = [], engine: [Message] = [], archiveName: String? = nil) {
         self.chat = chat
         self.engine = engine
+        self.archiveName = archiveName
     }
 
     /// 老存档是一个光秃秃的 [Message] 数组。读得出来就当成引擎那份，
@@ -22,6 +29,7 @@ struct Session: Codable {
            c.contains(.chat) || c.contains(.engine) {
             chat = try c.decodeIfPresent([ChatMessage].self, forKey: .chat) ?? []
             engine = try c.decodeIfPresent([Message].self, forKey: .engine) ?? []
+            archiveName = try c.decodeIfPresent(String.self, forKey: .archiveName)
             return
         }
         let old = try decoder.singleValueContainer().decode([Message].self)

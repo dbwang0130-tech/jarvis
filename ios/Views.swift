@@ -56,8 +56,18 @@ struct RootView: View {
         // 在 Mac 上改完、拿起手机看到的还是旧的，那就不算同一份。
         // reload 内部会合并并发请求，跟首次进来那次撞上也不会读两遍。
         .onChange(of: phase) { _, now in
-            guard now == .active, store.isConfigured else { return }
-            Task { await store.reload() }
+            guard store.isConfigured else { return }
+            switch now {
+            case .active:
+                Task { await store.reload() }
+            case .background:
+                // 退到后台时把手头这段落进金库。**对话放 iCloud 是用户要的，
+                // 不能只在他点「新建」时才生效**——很久不开新对话，那一段就
+                // 一直只在本机。这里是低频时刻，也正是该落盘的时候。
+                store.archiveCurrent()
+            default:
+                break
+            }
         }
     }
 }

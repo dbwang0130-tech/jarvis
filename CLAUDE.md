@@ -250,6 +250,17 @@ export GOPROXY=https://goproxy.cn,direct GOSUMDB=off
 那类收不回来的照旧要问。归档失败也照样清空（人按那个键是想开始新的一段），
 但要在 `lastError` 里说一声。
 
+**同一段对话始终写同一个文件**（`Session.archiveName`）。退到后台时落一次盘
+（`RootView` 的 `scenePhase`）——对话放 iCloud 是用户要的，不能只在他点「新建」
+时才生效，很久不开新对话那一段就一直只在本机。而每次落盘都新建文件的话，聊一
+下午就在历史里堆出几十条同一段的快照；覆盖时 `started` 要取文件名里那个而不是
+「现在」，否则那段对话每次落盘都往列表顶上跳一次。
+
+**归档不是删除**：`clearChat` 清图片时按「还有哪段存档引着」留
+（`SessionArchive.allImageRefs`），`imageRefs` 也要跟着存进 jsonl。图本身不进
+存档也不进 iCloud（见 `ImageStore`），但同一台设备上把那段读回来该还看得见。
+原先这儿是 `sweep(keep: [])`，每开一次新对话就把之前所有历史里的图清一遍。
+
 `SessionArchive` 对文件系统的依赖抽成了 `SessionFiles` 协议，**为的是能测**：
 jsonl 拼错、字段漏映射，表现是「历史读不出来」或者读回来少了半段，而 `Vault`
 背后那堆安全作用域书签、iCloud 占位符、写协调在测试里起不来。`make ios-ui` 拿
