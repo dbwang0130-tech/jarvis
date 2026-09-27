@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/dabao/jarvis/internal/agent"
-	"github.com/dabao/jarvis/internal/browser"
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/health"
 	"github.com/dabao/jarvis/internal/ledger"
@@ -60,11 +59,10 @@ type Session struct {
 	// extra 是启动时扫到的扩展技能，reloadAgent 也要用，所以留着。
 	// 扫出来的警告不留字段——下一行就并进 startupWarn 了，留一份永远同步的
 	// 副本只会让看的人先去确认它俩没有第二个写入点。
-	extra        []agent.ExtraSkill
-	browserSkill *browser.Skill
-	skills       []agent.Skill
-	ag           *agent.Agent
-	agentErr     error
+	extra    []agent.ExtraSkill
+	skills   []agent.Skill
+	ag       *agent.Agent
+	agentErr error
 
 	store     *session.Store
 	sessionID string
@@ -174,7 +172,6 @@ func (s *Session) setup() error {
 	extra, warns := extskills.Load(s.cfg.SkillsPath())
 	s.extra = extra
 	s.startupWarn = append(s.startupWarn, warns...)
-	s.browserSkill = browser.New(s.cfg)
 
 	s.skills = s.buildSkills()
 	s.ag, s.agentErr = s.buildAgent()
@@ -206,12 +203,11 @@ func (s *Session) buildAgent() (*agent.Agent, error) {
 // 这是桌面端独有的）。
 func (s *Session) buildSkills() []agent.Skill {
 	return skillset.Build(skillset.Deps{
-		Org:     s.orgWS,
-		Mail:    s.mailS,
-		Ledger:  s.ledgerSkill,
-		Health:  s.healthSkill,
-		Browser: s.browserSkill,
-		Memory:  s.memSkill,
+		Org:    s.orgWS,
+		Mail:   s.mailS,
+		Ledger: s.ledgerSkill,
+		Health: s.healthSkill,
+		Memory: s.memSkill,
 	})
 }
 

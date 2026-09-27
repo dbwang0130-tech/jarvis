@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dabao/jarvis/internal/browser"
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/health"
 	"github.com/dabao/jarvis/internal/ledger"
@@ -17,21 +16,23 @@ import (
 // 全都给齐时的样子，也就是桌面端。
 func full(cfg config.Config) Deps {
 	return Deps{
-		Org:     orgtools.NewWorkspace(&org.Collection{}, cfg),
-		Mail:    mail.NewSession(cfg),
-		Ledger:  ledger.NewSkill(""),
-		Health:  health.New(""),
-		Browser: browser.New(cfg),
-		Memory:  memory.New(""),
+		Org:    orgtools.NewWorkspace(&org.Collection{}, cfg),
+		Mail:   mail.NewSession(cfg),
+		Ledger: ledger.NewSkill(""),
+		Health: health.New(""),
+		Memory: memory.New(""),
 	}
 }
 
 // 两端各带哪几项，钉在这儿。
 //
-// **不是为了防「顺序变了」，是为了让差异在 diff 里看得见。** 手机上不带浏览器
-// 是有意的，可这件事以前只体现为「另一份清单里恰好没写」——于是 CLAUDE.md 里
-// 那句「iOS 端只带日程和记账两项技能」错了整整两项，而要发现它得把两个包里
-// 两份分散的清单并排比一遍。以后改任何一端的能力集，这儿会把变化摆出来。
+// **不是为了防「顺序变了」，是为了让差异在 diff 里看得见。** 早先两端各写一份
+// 清单，差异只体现为「另一份里恰好没写」——于是 CLAUDE.md 里那句「iOS 端只带
+// 日程和记账两项技能」错了整整两项，而要发现它得把两个包里两份分散的清单并排
+// 比一遍。以后改能力集，这儿会把变化摆出来。
+//
+// 浏览器那一项在合并成一个 app 时删掉了：它靠 chromedp fork/exec 起一个
+// Chrome，而 App Sandbox 里不许这么做。
 func TestBothEnds(t *testing.T) {
 	cfg := config.Default()
 
@@ -41,22 +42,13 @@ func TestBothEnds(t *testing.T) {
 		want []string
 	}{
 		{
-			// 桌面端：全都有，浏览器也有（CDP 连本机 Chrome）。
-			"桌面端", full(cfg),
-			[]string{"日程", "邮件", "记账", "健康", "浏览器", "记忆"},
-		},
-		{
-			// 手机端配了邮箱：只少浏览器。
-			"手机端（配了邮箱）", func() Deps { d := full(cfg); d.Browser = nil; return d }(),
+			// 配了邮箱：全都有。
+			"配了邮箱", full(cfg),
 			[]string{"日程", "邮件", "记账", "健康", "记忆"},
 		},
 		{
-			// 手机端没配邮箱：邮件那项也不在场。
-			"手机端（没配邮箱）", func() Deps {
-				d := full(cfg)
-				d.Browser, d.Mail = nil, nil
-				return d
-			}(),
+			// 没配邮箱：邮件那项不在场，别的照旧。
+			"没配邮箱", func() Deps { d := full(cfg); d.Mail = nil; return d }(),
 			[]string{"日程", "记账", "健康", "记忆"},
 		},
 	}

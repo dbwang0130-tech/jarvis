@@ -6,6 +6,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 jarvis 是一个终端个人助理（Go，无框架），把日程（org-mode）、邮件（IMAP/SMTP）、记账（ledger-cli）、浏览器（CDP）合并到一个由大模型驱动的工具调用循环里。代码注释、提交信息、面向用户的文案一律中文。
 
+## 一个 app，两个平台
+
+iPhone 和 Mac 是**同一个 target、同一份代码、同一个 App Store 条目**，Mac 那边
+走 Mac Catalyst（`SUPPORTS_MACCATALYST = YES`）。选它而不是另写一个 macOS
+target，是因为 Catalyst 下 UIKit 整套都在——相机、Dictation、ImageStore 那几个
+带 UIKit 的文件不用拆，`Vault` 那套安全作用域书签也原样能用（沙箱本来就是 iOS
+的模式）。一万行 SwiftUI 零修改就编出了能跑的 Mac 版。
+
+```sh
+make mac-build     # 编 Mac 版并打开（不签名，开发时看一眼用）
+```
+
+合并时撞上的三处，都记在这儿免得再踩：
+
+- **`gomobile bind` 要带 `-iosversion=14.0`**。默认是 13.0，而 Catalyst 最低
+  13.1，拿默认值去编会撞上 `invalid version number in -target ...-macabi`。
+  一个 xcframework 里同时装三种切片：`ios,iossimulator,maccatalyst`。
+- **`LSSupportsOpeningDocumentsInPlace` 不能声明**。语义上该填 `NO`（别的 app
+  分享图片过来是拷副本，不是就地编辑），可 Catalyst 上「= NO」是**硬错误**
+  （`not supported on macOS`），填 YES 又是句假话。只能不声明，代价是 iOS 那边
+  多一条建议性警告。
+- **小组件的嵌入阶段要加 `platformFilter = ios`**。它是 iOS-only 的 target，
+  不过滤的话 Mac 版会去嵌一个 iOS 的 `.appex`，报 `contains embedded content
+  built for iOS`。macOS 的桌面小组件是另一套，真要做得单开 target。
+
+**浏览器技能（chromedp）因此删掉了**：它靠 `chromedp.NewExecAllocator` fork/exec
+起一个 Chrome，而 App Sandbox 里不许这么做；就算改成只连已经开着的 Chrome，
+一个能任意操作用户浏览器、读取页面内容的 app 也过不了审。连带去掉了 chromedp
+这个直接依赖，工具声明少 3566 字节、系统提示少 1108 字节，**每轮都省**。
+
 ## iOS 端
 
 `mobile/` 是给 iOS 用的桥接层，`ios/` 是 Swift 源码（见 `ios/README.md`）。

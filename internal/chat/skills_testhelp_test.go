@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/dabao/jarvis/internal/agent"
-	"github.com/dabao/jarvis/internal/browser"
 	"github.com/dabao/jarvis/internal/config"
 	"github.com/dabao/jarvis/internal/health"
 	"github.com/dabao/jarvis/internal/ledger"
@@ -40,7 +39,6 @@ func testSkills() []agent.Skill {
 	s.mailS = mail.NewSession(cfg)
 	s.ledgerSkill = ledger.NewSkill("")
 	s.healthSkill = health.New("")
-	s.browserSkill = browser.New(cfg)
 	s.memSkill = memory.New("")
 	return s.buildSkills()
 }

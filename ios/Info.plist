@@ -12,11 +12,13 @@
 
 	     其余的键交给 GENERATE_INFOPLIST_FILE 去补，这儿只写它生成不出来
 	     的这一项（INFOPLIST_KEY_ 那套加不了数组结构）。 -->
-	<!-- 别的 app 分享图片过来时，系统是把**副本**拷进本 app 的 Inbox，
-	     不是让我们就地编辑人家那个文件。明确声明 false：留着不说的话
-	     Xcode 每次构建都警告一句，而警告攒多了就没人看了。 -->
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<false/>
+	<!-- **这儿不能声明 LSSupportsOpeningDocumentsInPlace。**
+	     别的 app 分享图片过来时，系统是把副本拷进本 app 的 Inbox，不是让
+	     我们就地编辑人家那个文件，所以语义上该填 false。可 Catalyst 上
+	     「= NO」是**硬错误**（`not supported on macOS`），整个 Mac 版编不出来；
+	     填 YES 又是句假话，苹果那条错误信息还专门叮嘱「确保 app 真的就地
+	     打开文档」。两害相权，干脆不声明——代价是 iOS 那边每次构建多一条
+	     建议性警告，比 Mac 版编不过轻得多。 -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

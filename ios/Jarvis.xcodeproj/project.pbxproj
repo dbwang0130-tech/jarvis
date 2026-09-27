@@ -46,7 +46,7 @@
 		E1DECFB0FEAD7A7704BA0B8B /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A069981AD14109903A0DF231 /* LaunchScreen.storyboard */; };
 		527DBBB620101CD45838B4C5 /* Mobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F72C3D408040F7EF956AD77D /* Mobile.xcframework */; };
 		5141E406C9BDE2AAC9E6F7A1 /* Mobile.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = F72C3D408040F7EF956AD77D /* Mobile.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		A685F671024E2172DB079053 /* JarvisWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8CDBC5FD28E68D931F13F74B /* JarvisWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A685F671024E2172DB079053 /* JarvisWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8CDBC5FD28E68D931F13F74B /* JarvisWidget.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		33B4058954FE74A618F6CB62 /* JarvisWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93D423FD27CF714CC9561E8D /* JarvisWidget.swift */; };
 		972DF6569D60B316C1632E63 /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0F86B84455EAED7A993462 /* Brand.swift */; };
 		F54838263F024D2769DA7F6E /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 998532162849BDD8C4ED0133 /* WidgetShared.swift */; };
@@ -454,9 +454,12 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dabao.jarvis;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SUPPORTS_MACCATALYST = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 			};
 			name = Debug;
 		};
@@ -494,9 +497,12 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.dabao.jarvis;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SUPPORTS_MACCATALYST = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 			};
 			name = Release;
 		};

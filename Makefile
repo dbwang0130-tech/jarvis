@@ -2,7 +2,7 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: build install uninstall install-remind uninstall-remind test lint eval fmt clean ios-framework ios-contract ios-check ios-ui ios-install ios-project ios-assets
+.PHONY: mac-build build install uninstall install-remind uninstall-remind test lint eval fmt clean ios-framework ios-contract ios-check ios-ui ios-install ios-project ios-assets
 
 build:
 	go build -ldflags="-s -w" -o $(BIN) .
@@ -51,6 +51,10 @@ fmt:
 
 # Go 源码变了就重新生成 framework。做成文件依赖而不是一个手动目标——
 # 忘了跑的表现是「改了 Go 代码，装到手机上还是老样子」，一点提示都没有。
+#
+# 一个 xcframework 里同时装着三种切片：真机、模拟器、**Catalyst**（Mac 版用）。
+# `-iosversion=14.0` 不能省——gomobile 默认给 13.0，而 Catalyst 最低是 13.1，
+# 拿默认值去编会撞上 `invalid version number in -target ...-macabi`。
 GO_SRC := $(shell find . -name '*.go' -not -path './ios/*' -not -name '*_test.go')
 GOBIN  := $(shell go env GOPATH)/bin
 
@@ -60,10 +64,22 @@ ios/Mobile.xcframework: $(GO_SRC) go.mod
 		echo "  go install golang.org/x/mobile/cmd/gomobile@latest"; \
 		echo "  gomobile init"; \
 		exit 1; }
-	PATH="$(GOBIN):$$PATH" gomobile bind -target=ios -o ios/Mobile.xcframework ./mobile
+	PATH="$(GOBIN):$$PATH" gomobile bind -target=ios,iossimulator,maccatalyst \
+		-iosversion=14.0 -o ios/Mobile.xcframework ./mobile
 	@echo "framework 已更新"
 
 ios-framework: ios/Mobile.xcframework
+
+# 编一个 Mac 版（Catalyst）。**跟 iOS 是同一个 target、同一份代码**——
+# 这儿只是换个 destination，不是另一套工程。
+#
+# 不签名：Catalyst 要一份单独的 provisioning profile，而这个目标是给开发时
+# 「编出来跑一眼」用的。要装到别人机器上得配好签名再走 Xcode。
+mac-build: ios/Mobile.xcframework
+	xcodebuild -project ios/Jarvis.xcodeproj -scheme Jarvis \
+		-destination 'platform=macOS,variant=Mac Catalyst' -configuration Debug \
+		CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+	@sh ios/run-mac.sh
 
 # 从 ios/brand 下的原图重新生成图标和头像。换图之后跑一下。
 ios-assets:

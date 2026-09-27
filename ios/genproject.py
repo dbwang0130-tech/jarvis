@@ -84,6 +84,14 @@ def find_team() -> str:
 # 也会被冲掉，装的时候报「父 bundle 和子 bundle 同名」。
 BUNDLE_ID = os.environ.get("BUNDLE_ID", "com.dabao.jarvis")
 DEPLOY_TARGET = "26.0"  # Liquid Glass 那套要 26 起；设备是 iPhone 17 Pro，本来就跑 26+
+# Mac 上走 Catalyst：**同一个 target、同一份代码、同一个 App Store 条目**。
+# 选它而不是另写一个 macOS target，是因为 Catalyst 下 UIKit 整套都在——
+# 相机、Dictation、ImageStore 那几个带 UIKit 的文件不用拆，Vault 那套安全
+# 作用域书签也原样能用（沙箱本来就是 iOS 的模式）。
+#
+# TARGETED_DEVICE_FAMILY 也从 1（只 iPhone）放开成 "1,2"：Catalyst 按 iPad
+# 那套布局跑，不支持 iPad 就编不出 Mac 版。
+MAC_DEPLOY_TARGET = "26.0"
 
 
 def uid(seed: str) -> str:
@@ -239,8 +247,15 @@ def main() -> None:
         w_children.append(f'\t\t\t\t{w["entRef"]} /* {WIDGET_NAME}.entitlements */,')
 
         # .appex 要塞进主 app 的 PlugIns 里，所以主 app 那边也多一条 build file。
+        #
+        # **platformFilter = ios 不能少。** 主 app 现在也编 Mac（Catalyst），
+        # 而小组件这个 target 是 iOS-only——不过滤的话 Mac 版会去嵌一个 iOS
+        # 的 .appex，报 `contains embedded content built for iOS, which is not
+        # allowed`，整个 Mac 版编不出来。macOS 的桌面小组件是另一套东西，
+        # 真要做得单开一个 target。
         builds.append(f'\t\t{w["embedFile"]} /* {WIDGET_NAME}.appex in Embed Foundation Extensions */ = '
                       f'{{isa = PBXBuildFile; fileRef = {w["product"]} /* {WIDGET_NAME}.appex */; '
+                      f'platformFilter = ios; '
                       f'settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, ); }}; }};')
 
     common = f'''				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -284,9 +299,12 @@ def main() -> None:
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = {BUNDLE_ID};
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = 1;'''
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SUPPORTS_MACCATALYST = YES;
+				MACOSX_DEPLOYMENT_TARGET = {MAC_DEPLOY_TARGET};
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;'''
 
     nl = "\n"
 

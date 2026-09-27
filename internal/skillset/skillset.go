@@ -6,9 +6,9 @@
 // 「iOS 端只带日程和记账两项技能」错了整整两项，而要发现它得把两个包里两份
 // 分散的清单并排比一遍。
 //
-// 现在只有一份 `Build`。**两端的差异变成调用处的一句声明**（`Browser: nil` 并
-// 说明为什么），而不是一处遗漏。顺序也归这儿——它决定系统提示里各技能的出场
-// 次序，而那是每轮都要重发的内容，不该由两个包各自决定。
+// 现在只有一份 `Build`。**两端的差异变成调用处的一句声明**（比如邮箱没配
+// 就不带邮件能力），而不是一处遗漏。顺序也归这儿——它决定系统提示里各技能
+// 的出场次序，而那是每轮都要重发的内容，不该由两个包各自决定。
 //
 // 这个包**不碰任何文件**：各端自己把 Workspace、Session 这些准备好（桌面从
 // iCloud，手机从临时目录，见 mobile 包的说明），它只管谁该在场。
@@ -16,7 +16,6 @@ package skillset
 
 import (
 	"github.com/dabao/jarvis/internal/agent"
-	"github.com/dabao/jarvis/internal/browser"
 	"github.com/dabao/jarvis/internal/health"
 	"github.com/dabao/jarvis/internal/ledger"
 	"github.com/dabao/jarvis/internal/mail"
@@ -37,10 +36,6 @@ type Deps struct {
 	Ledger *ledger.Skill
 	// Health 是体征和饮食。两端都有。
 	Health *health.Skill
-	// Browser 为 nil 表示这一端不带浏览器。
-	//
-	// 手机上就是 nil：CDP 要连一个本机的 Chrome，iOS 上没有这个东西。
-	Browser *browser.Skill
 	// Memory 是跨会话长期记忆。两端都有。
 	Memory *memory.Skill
 }
@@ -50,7 +45,7 @@ type Deps struct {
 // 顺序有意这么排：日程和邮件是每天真会问的，排前面；记忆放最后，它只贡献
 // 几行偏好，不贡献查询。这个顺序进的是系统提示，改它要想清楚。
 //
-// **别在这儿把 nil 直接塞进 []agent.Skill。** 一个 nil 的 *browser.Skill 装进
+// **别在这儿把 nil 直接塞进 []agent.Skill。** 一个 nil 的具体指针装进
 // 接口之后接口本身不是 nil，循环里一调 Name() 就 panic——而手机上 panic 一次
 // 就是整个 app 挂掉。
 func Build(d Deps) []agent.Skill {
@@ -64,7 +59,6 @@ func Build(d Deps) []agent.Skill {
 	add(mail.NewSkill(d.Mail), d.Mail != nil)
 	add(d.Ledger, d.Ledger != nil)
 	add(d.Health, d.Health != nil)
-	add(d.Browser, d.Browser != nil)
 	add(d.Memory, d.Memory != nil)
 	return out
 }

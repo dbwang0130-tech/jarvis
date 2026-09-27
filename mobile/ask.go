@@ -247,12 +247,11 @@ func askWith(inputJSON string, host Host) string {
 	// 记忆两端共用 iCloud 里那一份——电脑上记住的事手机上也该记得。
 	mailSess := mailSessionFor(in.Accounts)
 	skills := skillset.Build(skillset.Deps{
-		Org:     ws,
-		Mail:    mailSess,
-		Ledger:  ledger.NewSkill(ledgerPath),
-		Health:  health.New(healthPath),
-		Browser: nil,
-		Memory:  memory.New(memoryPath),
+		Org:    ws,
+		Mail:   mailSess,
+		Ledger: ledger.NewSkill(ledgerPath),
+		Health: health.New(healthPath),
+		Memory: memory.New(memoryPath),
 	})
 	ag, err := agent.Build(cfg, skills...)
 	if err != nil {
