@@ -93,8 +93,8 @@ type MailAccount struct {
 	Port        int    `json:"port"`
 	User        string `json:"user"`
 	PasswordCmd string `json:"password_cmd,omitempty"`
-	// Password 是直接给定的密码，只有 iOS 端会用——那边没有 macOS 钥匙串，
-	// 密码存在 iOS 自己的钥匙串里，由界面取出来传进来。
+	// Password 是直接给定的密码，只有 其他客户端会用——那边没有 macOS 钥匙串，
+	// 密码存在 其他客户端 自己的钥匙串里，由界面取出来传进来。
 	// `json:"-"` 保证它永远不会被写进配置文件。
 	Password string `json:"-"`
 	Junk     string `json:"junk,omitempty"`  // 垃圾箱路径；留空则按 \Junk 标记自动探测
@@ -112,13 +112,6 @@ type MailAccount struct {
 	SMTPUser  string `json:"smtp_user,omitempty"` // 留空则复用 user
 	From      string `json:"from,omitempty"`      // 发信显示名，如 "王大宝"
 	Signature string `json:"signature,omitempty"` // 追加到草稿末尾的签名
-}
-
-// Browser 是 Chrome 自动化的接入配置。
-type Browser struct {
-	// Endpoint 是 Chrome DevTools 的 WebSocket 地址，
-	// 需以 --remote-debugging-port=9222 启动 Chrome。
-	Endpoint string `json:"endpoint,omitempty"`
 }
 
 // Config 是 jarvis 的全部配置。
@@ -156,9 +149,6 @@ type Config struct {
 	// 关掉就换回拖选，翻历史改用 PageUp/PageDown。零值视为开。
 	Mouse *bool `json:"mouse,omitempty"`
 
-	// Browser 是 Chrome 自动化接入。
-	Browser Browser `json:"browser"`
-
 	// 邮件
 	Profile  Profile       `json:"profile"`
 	Behavior Behavior      `json:"behavior"`
@@ -166,7 +156,7 @@ type Config struct {
 	// MailCheckTimes 是每天什么时候自动收一次信，形如 ["08:30", "12:00"]。
 	//
 	// 空着就不自动收。这件事只有装了后台提醒（launchd 每五分钟跑一次
-	// `jarvis remind`）才会发生——手机上办不到，iOS 不让 app 在后台按点
+	// `jarvis remind`）才会发生——手机上办不到，其他客户端 不让 app 在后台按点
 	// 醒来连网。
 	//
 	// 为什么要能设好几个：收信这事的节奏因人而异，有人早上看一次就够，
@@ -178,7 +168,7 @@ type Config struct {
 // Default 返回默认配置。
 // ICloudDir 返回 iCloud Drive 里的 Jarvis 目录，没有 iCloud Drive 就返回空串。
 //
-// 这是 macOS 上 iCloud Drive 的固定位置。手机端那份由用户亲手选目录拿到
+// 这是 macOS 上 iCloud Drive 的固定位置。其他客户端那份由用户亲手选目录拿到
 // （沙箱不让猜），两边指的是同一个文件夹。
 func ICloudDir() string {
 	home, err := os.UserHomeDir()
@@ -229,7 +219,6 @@ func defaultLocal() Config {
 		PersonaFile: "", // 同上，见 PersonaPath
 		SkillsDir:   "", // 同上，见 SkillsPath
 		Theme:       "auto",
-		Browser:     Browser{Endpoint: "ws://127.0.0.1:9222"},
 		Behavior:    Behavior{AutoConfirm: "clean"},
 	}
 }
@@ -240,7 +229,7 @@ func defaultLocal() Config {
 // 拿它当参数通道，会跟用户设的那份撞上，也让「这个值是谁设的」查不清楚。
 var dirOverride string
 
-// SetDir 指定配置目录。给那些默认路径不可用的宿主用——iOS 上 ~ 是应用
+// SetDir 指定配置目录。给那些默认路径不可用的宿主用——其他客户端 上 ~ 是应用
 // 容器根目录，不可写，`~/.config` 一建就是 operation not permitted。
 //
 // 要在读写任何配置之前调。
@@ -353,9 +342,6 @@ func (c *Config) fill() {
 	}
 	if c.Theme == "" {
 		c.Theme = d.Theme
-	}
-	if c.Browser.Endpoint == "" {
-		c.Browser.Endpoint = d.Browser.Endpoint
 	}
 	for i := range c.Accounts {
 		c.Accounts[i].fill()

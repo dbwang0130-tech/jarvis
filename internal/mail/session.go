@@ -618,5 +618,5 @@ func (s *Session) RawUID(account string, uid imap.UID) ([]byte, error) {
 // 两个一起删了——正文只经过手机本地和邮件服务器，不经过模型，
 // 留着一个现成的「按编号取正文」摆在这儿，早晚有人把它接回工具表里。
 //
-// 界面要显示原文走的是另一条：mobile 的 Mail(read) → RawUID → 直接过桥
+// 界面要显示原文走的是另一条：邮件工具的 Mail(read) → RawUID
 // 给 Swift 渲染，全程不进模型的上下文。

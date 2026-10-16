@@ -2,10 +2,10 @@
 BIN    := jarvis
 PREFIX ?= $(HOME)/.local
 
-.PHONY: mac-build build install uninstall install-remind uninstall-remind test lint eval fmt clean ios-framework ios-contract ios-check ios-ui ios-install ios-project ios-assets
+.PHONY: build install uninstall install-remind uninstall-remind test lint eval fmt clean
 
 build:
-	go build -ldflags="-s -w" -o $(BIN) .
+	go build -ldflags="-s -w" -o $(BIN) ./cmd/jarvis
 
 install: build
 	install -d $(PREFIX)/bin
@@ -31,104 +31,15 @@ uninstall-remind:
 test:
 	go test ./...
 
-# 行为评测：**拿真模型跑固定场景，要钱要网**，所以不在 make test 里。
-#
-# 别的测试都给模型写好台词（假 RoundTripper 放脚本），于是提示词改一个字都不会
-# 有任何测试响——而这个 app 的行为几乎全长在提示里。这个目标是唯一能发现
-# 「提示改了、行为退了」的手段。场景和断言见 internal/eval。
-# 两组：internal/eval 验 agent 循环和提示（两端共用的部分），
-# mobile 验手机那条桥只有它才会坏的东西（技能装配、只回传变过的文件、
-# 人设出参的指针语义、扩展技能原文过桥、历史往返）。
+# 行为评测：拿真模型跑固定场景，要钱要网。
 eval:
-	@JARVIS_EVAL=1 go test ./internal/eval/ ./mobile/ -v -count=1 -timeout 25m
+	@JARVIS_EVAL=1 go test ./internal/eval/ -v -count=1 -timeout 25m
 
-# 代码质量：go vet + 死代码。死代码那步要先装 deadcode，没装就跳过并说明怎么装。
 lint:
 	@sh lint.sh
 
 fmt:
 	gofmt -l -w .
 
-# Go 源码变了就重新生成 framework。做成文件依赖而不是一个手动目标——
-# 忘了跑的表现是「改了 Go 代码，装到手机上还是老样子」，一点提示都没有。
-#
-# 一个 xcframework 里同时装着三种切片：真机、模拟器、**Catalyst**（Mac 版用）。
-# `-iosversion=14.0` 不能省——gomobile 默认给 13.0，而 Catalyst 最低是 13.1，
-# 拿默认值去编会撞上 `invalid version number in -target ...-macabi`。
-GO_SRC := $(shell find . -name '*.go' -not -path './ios/*' -not -name '*_test.go')
-GOBIN  := $(shell go env GOPATH)/bin
-
-ios/Mobile.xcframework: $(GO_SRC) go.mod
-	@command -v gomobile >/dev/null 2>&1 || test -x $(GOBIN)/gomobile || { \
-		echo "先装 gomobile："; \
-		echo "  go install golang.org/x/mobile/cmd/gomobile@latest"; \
-		echo "  gomobile init"; \
-		exit 1; }
-	PATH="$(GOBIN):$$PATH" gomobile bind -target=ios,iossimulator,maccatalyst \
-		-iosversion=14.0 -o ios/Mobile.xcframework ./mobile
-	@echo "framework 已更新"
-
-ios-framework: ios/Mobile.xcframework
-
-# 编一个 Mac 版（Catalyst）。**跟 iOS 是同一个 target、同一份代码**——
-# 这儿只是换个 destination，不是另一套工程。
-#
-# 不签名：Catalyst 要一份单独的 provisioning profile，而这个目标是给开发时
-# 「编出来跑一眼」用的。要装到别人机器上得配好签名再走 Xcode。
-mac-build: ios/Mobile.xcframework
-	xcodebuild -project ios/Jarvis.xcodeproj -scheme Jarvis \
-		-destination 'platform=macOS,variant=Mac Catalyst' -configuration Debug \
-		CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
-	@sh ios/run-mac.sh
-
-# 从 ios/brand 下的原图重新生成图标和头像。换图之后跑一下。
-ios-assets:
-	@sh ios/brand/make-assets.sh
-
-# 重新生成 Xcode 工程。加了 .swift 就跑一下——工程里的文件清单是生成的，
-# 忘了跑的表现是 cannot find 'X' in scope，看着像代码错其实是文件没进工程。
-ios-project:
-	@python3 ios/genproject.py
-
-# 装到插着的 iPhone 上。条件不齐会说明白差什么。
-# 装之前先验两端契约。这道检查抓的是「装上去一片空白」那一类，
-# 几秒钟的事，不值得为了省它去手机上调试。
-ios-install: ios/Mobile.xcframework ios-contract
-	@sh ios/install-device.sh
-
-# 界面那半纯逻辑的测试：链接怎么解、哪一行算一张图表、markdown 怎么切块。
-#
-# 用纯 swiftc 编 MarkdownParse.swift 加一份断言就能跑——不需要模拟器，也不需要
-# 在 Xcode 工程里挂一个测试目标。跟 ios-contract 同一个路子。
-#
-# 画那一半（MarkdownText / ChartCard / 输入框）不在这儿：那要真跑起来才看得出，
-# 靠装到手机上看。
-ios-ui:
-	@command -v swiftc >/dev/null || { echo "没有 swiftc，先 xcode-select --install"; exit 1; }
-	@tmp=$$(mktemp -d) && 	swiftc -swift-version 5 ios/MarkdownParse.swift ios/Models.swift ios/Keychain.swift ios/Session.swift ios/Paths.swift ios/SessionArchive.swift ios/uitest/main.swift -o $$tmp/uitest && 	$$tmp/uitest; rc=$$?; rm -rf $$tmp; exit $$rc
-
-# 拿真正的 iOS SDK 类型检查 Swift 代码。macOS 上编能过不代表 iOS 上能过——
-# 不少 SwiftUI 的初始化器只在 iOS 有，或者签名不一样。需要完整 Xcode。
-ios-check:
-	@xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1 || { \
-		echo "需要完整 Xcode："; \
-		echo "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"; \
-		exit 1; }
-	xcrun -sdk iphoneos swiftc -typecheck \
-		-sdk $$(xcrun --sdk iphoneos --show-sdk-path) \
-		-target arm64-apple-ios26.0 ios/*.swift
-	@echo "Swift 代码在 iOS SDK 下检查通过"
-
-# 验两端的 JSON 契约：Go 真实出参能不能被 iOS 真正在用的 Models.swift 解开。
-# 只要 swiftc（命令行工具就有），不需要完整 Xcode。
-ios-contract:
-	@command -v swiftc >/dev/null || { echo "没有 swiftc，先 xcode-select --install"; exit 1; }
-	@tmp=$$(mktemp -d) && \
-	go run ./ios/contract $$tmp && \
-	swiftc -swift-version 5 ios/Models.swift ios/Keychain.swift \
-	       ios/contract/main.swift -o $$tmp/check && \
-	$$tmp/check $$tmp; rc=$$?; rm -rf $$tmp; exit $$rc
-
 clean:
 	rm -f $(BIN)
-	rm -rf ios/Mobile.xcframework

@@ -2,13 +2,13 @@ package agent
 
 // 工具名翻成中文标签。
 //
-// **这张表只有一份。** 原先桌面端（internal/chat）和 iOS（ios/Views.swift）
-// 各写了一份，无人对账，结果 iOS 那份里还留着早就删掉的 read_mail、
+// **这张表只有一份。** 原先桌面端（终端界面
+// 各写了一份，无人对账，结果 其他客户端 那份里还留着早就删掉的 read_mail、
 // 挂着五个根本不存在的工具，而新加的健康那四个一个都没补——界面上直接
 // 显示 record_vital 这种英文。
 //
 // 放在 agent 包里是因为工具本来就定义在这儿（ToolSpec）。桌面端直接查，
-// 手机端由 mobile 查好了跟着 Step 一起过桥，Swift 拿现成的字符串显示。
+// 终端界面直接使用这份标签。
 var toolLabels = map[string]string{
 	// 内置
 	"persona": "调整人设", "skill": "展开技能",
@@ -26,7 +26,6 @@ var toolLabels = map[string]string{
 	// 健康
 	"record_vital": "记体征", "record_meal": "记饮食",
 	"set_health_profile": "填基础信息", "list_health": "查健康记录",
-	// 浏览器
 	// 记忆
 	"remember": "记住偏好",
 }

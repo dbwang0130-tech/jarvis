@@ -23,7 +23,7 @@ type Preset struct {
 	KeyEnv  string
 	// NoTools 表示该模型不支持 function calling。
 	NoTools bool
-	// Vision 表示这个默认模型认得图片。手机端能发图、能拍照记账，
+	// Vision 表示这个默认模型认得图片。其他客户端能发图、能拍照记账，
 	// 发给纯文本模型不是报错就是装作没看见——后者尤其难查，所以这件事
 	// 要在切模型的时候就说清楚，别等用户拍完小票才发现白拍。
 	Vision bool
@@ -44,7 +44,7 @@ type Preset struct {
 // 用户切过去只会得到一句看不懂的 400。所以默认模型一律挑**当前在产**
 // 的那个，宁可几个月更新一次，也别留个打不通的名字在这儿。
 //
-// 默认一律选**看得见图片**的那一档：手机端能发图、能拍照记账，而
+// 默认一律选**看得见图片**的那一档：其他客户端能发图、能拍照记账，而
 // 纯文本模型收到图片不是报错就是装作没看见，两种都难排查。
 var Presets = map[string]Preset{
 	"deepseek": {
@@ -146,7 +146,7 @@ type Message struct {
 	// 有图片时，**发给模型**的 content 要从一个字符串摊成「文本块 + 图片块」
 	// 的数组，这是 OpenAI 兼容接口对多模态的规定格式。那件事在 toWire 里做，
 	// 不做成 Message 的 MarshalJSON——方法是挂在类型上的，凡是序列化这个
-	// 类型的地方都会走它，而 History 还要原样交给 iOS 存档和回传。
+	// 类型的地方都会走它，而 History 还要原样交给 其他客户端 存档和回传。
 	// 早先就是这么写的，结果手机上发一张图必报「出参解不开」：Swift 那边
 	// content 声明的是 String，收到数组整个出参就解不动了。
 	Images []string `json:"-"`
@@ -168,7 +168,7 @@ type imageRef struct {
 // **MarshalJSON 挂在这个切片类型上，不是挂在 Message 上。** 「发给模型的
 // 样子」和「存档回传的样子」是两件事：带图片的消息，发出去时 content 要摊成
 // 「文本块 + 图片块」的数组（OpenAI 兼容接口对多模态的规定格式），而同一条
-// 消息留在 History 里还要原样交给 iOS——Swift 那边 content 声明的是 String，
+// 消息留在 History 里还要原样交给 其他客户端——Swift 那边 content 声明的是 String，
 // 收到数组整个出参就解不动了。
 //
 // 早先图省事写成了 Message.MarshalJSON，方法挂在类型上，凡是序列化这个类型

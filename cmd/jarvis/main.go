@@ -71,7 +71,7 @@ func runRemind() error {
 	}
 
 	// 到点收信。这是**桌面端独有**的：launchd 每五分钟给一次运行机会，
-	// 拿它真的连一趟 IMAP。手机上办不到——iOS 不让 app 在后台按点醒来连网。
+	// 拿它真的连一趟 IMAP。手机上办不到——其他客户端 不让 app 在后台按点醒来连网。
 	if slot, due := remind.MailDue(cfg.MailCheckTimes, now, reminded); due {
 		if text := checkMail(cfg, slot); text != "" {
 			if err := remind.Notify(text); err != nil {

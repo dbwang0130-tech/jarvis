@@ -1,7 +1,7 @@
 // Package persona 读写 Jarvis 的人设文件。
 //
 // 单独成一个包是因为**两端都要用同一份读写规则**：桌面端直接读 iCloud 里的
-// persona.md，手机端由 Swift 把全文送进 mobile.Ask 再把改动写回去。各写一遍
+// persona.md，所有文件读写统一由桌面端宿主负责
 // 的话，「空文件算不算清空」「要不要 TrimSpace」这类判据迟早在两边走散，
 // 而表现出来是「手机上改了人设，电脑上没生效」，看着像同步问题。
 package persona

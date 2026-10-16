@@ -180,8 +180,7 @@ func (s *Session) setup() error {
 
 // buildAgent 装配秘书，并把人设接上。
 //
-// 人设不在 agent.Build 里读，因为 mobile 也走那条路，而手机上 Go 一个文件
-// 都不许碰（见 mobile 包的说明）——读文件这件事只能留在各自这一端。
+// 人设文件由会话宿主读写，agent 内核只接收已加载的人设。
 func (s *Session) buildAgent() (*agent.Agent, error) {
 	ag, err := agent.Build(s.cfg, s.skills...)
 	if err != nil {
@@ -198,9 +197,8 @@ func (s *Session) buildAgent() (*agent.Agent, error) {
 
 // buildSkills 交出桌面端这一轮的技能清单。
 //
-// 清单本身归 internal/skillset——那儿只有一份，手机端走的是同一个 Build。
-// 这边只负责说清「桌面端手上有什么」：全都有，浏览器也有（CDP 连本机 Chrome，
-// 这是桌面端独有的）。
+// 清单本身归 internal/skillset——那儿只有一份，其他客户端走的是同一个 Build。
+// 这边只负责说清桌面端手上有什么。
 func (s *Session) buildSkills() []agent.Skill {
 	return skillset.Build(skillset.Deps{
 		Org:    s.orgWS,
@@ -247,7 +245,7 @@ func printBanner() {
 | |_| / ___ \|  _ < \ V /  | | ___) |
  \___/_/   \_\_| \_\ \_/  |___|____/` + reset)
 	// 欢迎块是块招牌，不是回执，所以不带 · 前缀。
-	outln(dim + "  个人助理 · 日程 / 邮件 / 记账 / 浏览器" + reset)
+	outln(dim + "  个人助理 · 日程 / 邮件 / 记账 / 健康" + reset)
 	outln(dim + "  滚轮翻历史 · /help 看命令" + reset)
 }
 

@@ -67,10 +67,10 @@ var cases = []Case{
 			//
 			// 模型偶尔会漏掉 host，写成 `jarvis://work.org:12`（这条场景就抓到过
 			// 一次，同一轮里另外三条写对了）。那种写法界面现在也认（见
-			// ios/Markdown.swift 的 JarvisLink，日程 ref 的形状认得出来），所以
+			// 终端链接解析器能认出日程 ref 的形状），所以
 			// 它是合格的；真不合格的是压根没写链接。
 			if !strings.Contains(r.Reply, "jarvis://") {
-				return "提到了条目但一个链接都没写——手机上就点不开（规则在 orgtools.Instructions）"
+				return "提到了条目但一个链接都没写——链接就点不开（规则在 orgtools.Instructions）"
 			}
 			if !strings.Contains(r.Reply, ".org:") {
 				return "链接里没有 ref，界面拿它找不到条目：" + r.Reply

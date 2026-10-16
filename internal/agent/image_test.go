@@ -41,10 +41,9 @@ func TestWireMessagesWithImages(t *testing.T) {
 
 // **同一条消息单独序列化时，content 必须还是个字符串。**
 //
-// 这条是手机上发图必报「出参解不开」的那个 bug：多模态格式化原先写成了
+// 这条曾经抓到过图片出参解不开的问题：多模态格式化原先写成了
 // Message.MarshalJSON，方法挂在类型上，凡是序列化 Message 的地方都会走它——
-// 包括 AskOutput.History 那条回传给 iOS 的路。Swift 那边 content 声明的是
-// String，收到数组整个出参就解不动了，界面只说一句「格式不正确」。
+// 包括历史存档；历史消息的 content 必须保持字符串。
 //
 // 现在格式化挂在 wireMessages 上，只有拼请求才经过。
 func TestMessageWithImagesStaysAStringWhenStored(t *testing.T) {
@@ -67,7 +66,7 @@ func TestMessageWithImagesStaysAStringWhenStored(t *testing.T) {
 }
 
 // 整份 History 里混着带图和不带图的消息，也得整体解得开——
-// iOS 收到的就是这个形状。
+// 存档读取方收到的就是这个形状。
 func TestHistoryWithImagesDecodesAsPlainMessages(t *testing.T) {
 	history := []Message{
 		{Role: "user", Content: "看看这个", Images: []string{"data:image/png;base64,BBBB"}},
