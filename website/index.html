@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Jarvis · 把杂事交给秘书</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style>
+    :root { color-scheme: dark; }
+    html { scroll-behavior: smooth; }
+    body { background: #07111f; }
+    .grid-bg { background-image: linear-gradient(rgba(148,163,184,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.07) 1px, transparent 1px); background-size: 32px 32px; }
+    .glow { box-shadow: 0 0 100px rgba(45,212,191,.14), 0 0 40px rgba(59,130,246,.12); }
+    .glass { background: rgba(15, 28, 47, .7); border: 1px solid rgba(148,163,184,.16); backdrop-filter: blur(18px); }
+    .gradient-text { background: linear-gradient(110deg,#e2e8f0 8%,#5eead4 48%,#60a5fa 92%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  </style>
+</head>
+<body class="min-h-dvh text-slate-100 antialiased">
+  <header class="mx-auto flex max-w-6xl items-center justify-between px-5 pt-[max(1rem,env(safe-area-inset-top))] sm:px-8">
+    <a href="#top" class="flex min-h-11 items-center gap-3" aria-label="Jarvis 首页">
+      <span class="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-teal-300 to-blue-500 text-lg font-black text-slate-950">J</span>
+      <span class="text-lg font-semibold tracking-tight">jarvis</span>
+    </a>
+    <nav class="hidden items-center gap-8 text-sm text-slate-300 sm:flex">
+      <a class="transition hover:text-white" href="#capabilities">能力</a>
+      <a class="transition hover:text-white" href="#workflow">怎么工作</a>
+      <a class="transition hover:text-white" href="#start">开始使用</a>
+    </nav>
+    <a href="#start" class="min-h-11 rounded-full border border-slate-600 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-teal-300 hover:text-teal-200">立即开始</a>
+  </header>
+
+  <main id="top">
+    <section class="relative isolate overflow-hidden px-5 pb-20 pt-16 sm:px-8 sm:pb-28 sm:pt-24">
+      <div class="grid-bg absolute inset-0 -z-20 opacity-60"></div>
+      <div class="absolute left-1/2 top-0 -z-10 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-teal-400/10 blur-3xl"></div>
+      <div class="mx-auto max-w-6xl">
+        <div class="max-w-3xl">
+          <div class="mb-7 inline-flex items-center gap-2 rounded-full border border-teal-300/20 bg-teal-300/10 px-3 py-1.5 text-sm text-teal-200"><span class="h-2 w-2 animate-pulse rounded-full bg-teal-300"></span>你的本地 AI 秘书</div>
+          <h1 class="text-5xl font-semibold leading-[1.04] tracking-tight sm:text-7xl">把杂事交给秘书，<span class="gradient-text">把时间还给自己。</span></h1>
+          <p class="mt-7 max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">Jarvis 在终端里替你查日程、整理邮件、记账和记录健康。它会先理解，再行动；需要确认的事，永远把决定权留给你。</p>
+          <div class="mt-9 flex flex-col gap-3 sm:flex-row">
+            <a href="#start" class="flex min-h-12 items-center justify-center rounded-xl bg-teal-300 px-6 font-semibold text-slate-950 transition hover:bg-teal-200">开始使用 Jarvis <span class="ml-2">↓</span></a>
+            <a href="#workflow" class="flex min-h-12 items-center justify-center rounded-xl border border-slate-600 px-6 font-medium text-slate-100 transition hover:border-slate-400">看看它怎么工作</a>
+          </div>
+        </div>
+        <div class="glow glass relative mt-14 overflow-hidden rounded-2xl p-1 sm:mt-20">
+          <div class="flex items-center gap-2 border-b border-slate-700/70 px-4 py-3"><span class="h-3 w-3 rounded-full bg-rose-400/80"></span><span class="h-3 w-3 rounded-full bg-amber-300/80"></span><span class="h-3 w-3 rounded-full bg-emerald-300/80"></span><span class="ml-3 text-xs text-slate-500">jarvis · assistant</span></div>
+          <div class="grid gap-8 p-5 sm:grid-cols-[1.1fr_.9fr] sm:p-8">
+            <div class="font-mono text-sm leading-7 text-slate-300"><div><span class="text-teal-300">›</span> 帮我安排今天下午的时间，顺便整理重要邮件</div><div class="mt-5 text-slate-500">● 查看日程 <span class="text-slate-600">{今天}</span></div><div class="text-slate-500">● 同步邮件 <span class="text-slate-600">{12 封新邮件}</span></div><div class="mt-5 text-teal-200">我找到了 2 个空档，也筛出 3 封需要你处理的邮件。</div><div class="text-teal-200">要我把会议安排在 15:00，并起草一封回信吗？</div><div class="mt-5 text-slate-500"><span class="text-amber-300">◆</span> 等待你的确认</div></div>
+            <div class="rounded-xl border border-slate-700/70 bg-slate-950/40 p-5"><div class="text-xs uppercase tracking-[.2em] text-slate-500">today / focus</div><div class="mt-6 text-4xl font-semibold">3<span class="ml-2 text-base font-normal text-slate-400">件要处理</span></div><div class="mt-6 space-y-4 text-sm"><div class="flex items-center justify-between border-b border-slate-800 pb-3"><span class="text-slate-300">下午空档</span><span class="text-teal-300">2 个</span></div><div class="flex items-center justify-between border-b border-slate-800 pb-3"><span class="text-slate-300">待看邮件</span><span class="text-blue-300">12 封</span></div><div class="flex items-center justify-between"><span class="text-slate-300">本月支出</span><span class="text-slate-100">¥ 4,280</span></div></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="capabilities" class="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-28"><div class="max-w-2xl"><p class="text-sm font-semibold uppercase tracking-[.2em] text-teal-300">One calm command center</p><h2 class="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl">每天要处理的事，放在同一个对话里。</h2><p class="mt-5 text-lg leading-8 text-slate-400">不用在日历、邮箱和账本之间来回切换。Jarvis 了解上下文，也知道什么时候该停下来问你。</p></div><div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><article class="glass rounded-2xl p-6"><div class="text-2xl">◷</div><h3 class="mt-8 text-lg font-semibold">日程与待办</h3><p class="mt-3 leading-7 text-slate-400">找到空档、安排任务、改状态和截止时间，重要的事不会沉下去。</p></article><article class="glass rounded-2xl p-6"><div class="text-2xl">✉</div><h3 class="mt-8 text-lg font-semibold">邮件整理</h3><p class="mt-3 leading-7 text-slate-400">增量同步、提炼重点、起草回复。清理和发信前，先把决定权交给你。</p></article><article class="glass rounded-2xl p-6"><div class="text-2xl">＋</div><h3 class="mt-8 text-lg font-semibold">记账与健康</h3><p class="mt-3 leading-7 text-slate-400">用一句话记下一笔支出、体重或饮食，让记录自然发生。</p></article><article class="glass rounded-2xl p-6"><div class="text-2xl">⌁</div><h3 class="mt-8 text-lg font-semibold">长期记忆</h3><p class="mt-3 leading-7 text-slate-400">记住你的偏好和工作方式，下一次对话从熟悉的地方开始。</p></article></div></section>
+
+    <section id="workflow" class="border-y border-slate-800/80 bg-slate-950/30 px-5 py-20 sm:px-8 sm:py-28"><div class="mx-auto max-w-6xl"><div class="grid gap-12 lg:grid-cols-2 lg:items-end"><div><p class="text-sm font-semibold uppercase tracking-[.2em] text-blue-300">Designed for trust</p><h2 class="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl">先看清楚，再替你动手。</h2><p class="mt-5 text-lg leading-8 text-slate-400">Jarvis 把每一步都说清楚。可逆的整理可以自动完成，发信、删除等不可逆动作会停下来等你确认。</p></div><div class="space-y-4"><div class="flex gap-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-5"><span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-teal-300/15 font-semibold text-teal-200">01</span><div><h3 class="font-semibold">理解你的话</h3><p class="mt-1 text-slate-400">不用记工具名，不用学复杂命令。</p></div></div><div class="flex gap-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-5"><span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-300/15 font-semibold text-blue-200">02</span><div><h3 class="font-semibold">调用正确的能力</h3><p class="mt-1 text-slate-400">日程、邮件、账本各司其职，结果回到同一段对话。</p></div></div><div class="flex gap-5 rounded-2xl border border-slate-800 bg-slate-900/60 p-5"><span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-300/15 font-semibold text-amber-200">03</span><div><h3 class="font-semibold">把选择留给你</h3><p class="mt-1 text-slate-400">高风险动作先确认，任何时候都可以打断。</p></div></div></div></div></div></section>
+
+    <section id="start" class="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-28"><div class="relative overflow-hidden rounded-3xl border border-teal-200/15 bg-gradient-to-br from-teal-300/15 via-blue-400/10 to-transparent p-7 sm:p-12"><div class="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-teal-300/10 blur-3xl"></div><div class="relative max-w-2xl"><h2 class="text-3xl font-semibold tracking-tight sm:text-5xl">从一句话开始。</h2><p class="mt-5 text-lg leading-8 text-slate-300">Jarvis 是一个本地优先的 Go 终端应用。把它装好，打开终端，剩下的交给对话。</p><div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center"><button id="copy" class="min-h-12 rounded-xl bg-white px-6 font-semibold text-slate-950 transition hover:bg-teal-100">复制安装命令</button><code class="rounded-xl border border-slate-600 bg-slate-950/50 px-4 py-3 text-sm text-teal-200">make install</code></div><p id="copied" class="mt-3 hidden text-sm text-teal-300">已复制到剪贴板</p></div></div></section>
+  </main>
+  <footer class="mx-auto flex max-w-6xl flex-col gap-3 px-5 pb-[max(2rem,env(safe-area-inset-bottom))] text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8"><span>jarvis · personal command center</span><span>本地优先 · 由你掌控</span></footer>
+  <script>document.getElementById('copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText('make install'); } catch (_) {} document.getElementById('copied').classList.remove('hidden'); setTimeout(() => document.getElementById('copied').classList.add('hidden'), 2200); });</script>
+</body>
+</html>
