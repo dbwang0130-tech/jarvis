@@ -181,29 +181,8 @@ func TestDeleteItemChecksTitle(t *testing.T) {
 	}
 }
 
-// 改完之后撤销要能整个退回去——这是秘书改坏东西时的兜底。
-func TestToolChangesAreUndoable(t *testing.T) {
-	ws, path := newWS(t)
-	before := readBack(t, path)
-
-	run(t, ws, "update_item", map[string]any{
-		"ref": refTo(t, ws, "每周组会"), "title": "每周组会", "state": "DONE",
-	})
-	run(t, ws, "create_item", map[string]any{"title": "临时加的", "file": "test.org"})
-
-	if readBack(t, path) == before {
-		t.Fatal("改动没落盘")
-	}
-	if err := ws.Undo(); err != nil {
-		t.Fatal(err)
-	}
-	if got := readBack(t, path); got != before {
-		t.Fatalf("撤销之后没回到原样：\n%s", got)
-	}
-}
-
-// 只读的查询工具不该声明自己改过文件，否则界面会白刷一遍。
-func TestReadOnlyToolsReportNoChange(t *testing.T) {
+// 查询工具要标成只读（才能和别的查询并发跑），也不该有风险等级。
+func TestQueryToolsAreReadOnly(t *testing.T) {
 	ws, _ := newWS(t)
 	for _, name := range []string{"list_agenda", "list_todos", "get_item", "find_free_slots"} {
 		tl := toolByName(t, ws, name)

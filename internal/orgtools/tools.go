@@ -445,7 +445,7 @@ func nodeBody(doc *org.Document, n *org.Node) string {
 // 改动顺序不能随便调：**状态放最后**。把循环任务标成 DONE 会顺手把计划推到
 // 下一个周期，得先让新的计划时间和循环规则就位，推出来的才是对的那一天。
 //
-// 全程只 snapshot 一次、save 一次。中间每改一步都要接住返回的新节点指针——
+// 全程只 save 一次。中间每改一步都要接住返回的新节点指针——
 // 写回会重新解析文档，之前那个指针就失效了。
 func (w *Workspace) updateItem(a args) (string, error) {
 	p := patchFrom(a)
@@ -456,7 +456,6 @@ func (w *Workspace) updateItem(a args) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	w.snapshot(doc)
 
 	var done []string
 
@@ -540,7 +539,6 @@ func (w *Workspace) updateItem(a args) (string, error) {
 		return "", err
 	}
 	summary := strings.Join(done, "、")
-	w.record(doc, "改「%s」：%s", n.Title, summary)
 	return fmt.Sprintf("已改「%s」：%s。（新引用 %s）",
 		n.Title, summary, refOf(doc, n)), nil
 }
@@ -572,7 +570,6 @@ func (w *Workspace) shiftLevel(ref, title string, delta int) (string, error) {
 	if n.Level+delta < 1 {
 		return "", fmt.Errorf("「%s」在第 %d 级，升不了 %d 级", n.Title, n.Level, -delta)
 	}
-	w.snapshot(doc)
 
 	step, dir, lv := doc.Demote, "降", delta
 	if delta < 0 {
@@ -584,7 +581,6 @@ func (w *Workspace) shiftLevel(ref, title string, delta int) (string, error) {
 	if err := w.save(doc); err != nil {
 		return "", err
 	}
-	w.record(doc, "把「%s」%s了 %d 级", n.Title, dir, lv)
 	return fmt.Sprintf("已把「%s」%s了 %d 级（新引用 %s）。",
 		n.Title, dir, lv, refOf(doc, n)), nil
 }
@@ -603,12 +599,10 @@ func (w *Workspace) deleteItem(ref, title string) (string, error) {
 	}
 
 	kids := n.DescendantCount()
-	w.snapshot(doc)
 	doc.DeleteNode(n)
 	if err := w.save(doc); err != nil {
 		return "", err
 	}
-	w.record(doc, "删除「%s」", title)
 
 	msg := fmt.Sprintf("已删除「%s」", title)
 	if kids > 0 {
@@ -693,7 +687,6 @@ func (w *Workspace) createItem(a args) (string, error) {
 		spec.Body = strings.Split(body, "\n")
 	}
 
-	w.snapshot(doc)
 	n := doc.AddNode(spec)
 	if n == nil {
 		return "", fmt.Errorf("创建条目失败")
@@ -701,7 +694,6 @@ func (w *Workspace) createItem(a args) (string, error) {
 	if err := w.save(doc); err != nil {
 		return "", err
 	}
-	w.record(doc, "新建「%s」", title)
 
 	var extra []string
 	if r := n.Repeater(); r != nil {
@@ -741,7 +733,6 @@ func (w *Workspace) clockIn(ref, title string) (string, error) {
 	// 先 clock_out 的代价是一份查不出来的错账。
 	closed := w.closeRunningClocks(n)
 
-	w.snapshot(doc)
 	n, err = doc.ClockIn(n, w.now())
 	if err != nil {
 		return "", err
@@ -749,7 +740,6 @@ func (w *Workspace) clockIn(ref, title string) (string, error) {
 	if err := w.save(doc); err != nil {
 		return "", err
 	}
-	w.record(doc, "开始为「%s」计时", n.Title)
 
 	msg := fmt.Sprintf("已开始为「%s」计时。", n.Title)
 	if len(closed) > 0 {
@@ -763,25 +753,19 @@ func (w *Workspace) closeRunningClocks(keep *org.Node) []string {
 	var closed []string
 	now := w.now()
 	for _, d := range w.Coll.Docs {
-		dirty := false
+		var titles []string
 		for _, n := range d.Nodes {
 			if n == keep || n.RunningClock() == nil {
 				continue
 			}
-			if !dirty {
-				w.snapshot(d)
-			}
 			if _, err := d.ClockOut(n, now); err != nil {
 				continue // 收不掉就算了，别为这个把 clock_in 整个搅黄
 			}
-			closed = append(closed, n.Title)
-			dirty = true
+			titles = append(titles, n.Title)
 		}
-		if dirty {
-			if err := d.Save(); err != nil {
-				// 同上：记一笔，但不挡着主要的事
-				w.record(d, "停掉旧计时时保存失败：%v", err)
-			}
+		// 存不下来同样不挡着主要的事，但也别说成已经停掉了。
+		if len(titles) > 0 && d.Save() == nil {
+			closed = append(closed, titles...)
 		}
 	}
 	return closed
@@ -792,7 +776,6 @@ func (w *Workspace) clockOut(ref, title string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	w.snapshot(doc)
 	n, err = doc.ClockOut(n, w.now())
 	if err != nil {
 		return "", err
@@ -800,7 +783,6 @@ func (w *Workspace) clockOut(ref, title string) (string, error) {
 	if err := w.save(doc); err != nil {
 		return "", err
 	}
-	w.record(doc, "结束「%s」计时", n.Title)
 	return fmt.Sprintf("已结束「%s」计时，累计 %s。", n.Title, humanDuration(n.ClockedTotal())), nil
 }
 
@@ -812,12 +794,10 @@ func (w *Workspace) addNote(ref, title, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	w.snapshot(doc)
 	doc.AddNote(n, strings.TrimSpace(text), w.now())
 	if err := w.save(doc); err != nil {
 		return "", err
 	}
-	w.record(doc, "为「%s」记了一条笔记", n.Title)
 	return fmt.Sprintf("已在「%s」的 LOGBOOK 里记下笔记。", n.Title), nil
 }
 
@@ -842,7 +822,6 @@ func (w *Workspace) toggleBox(ref, title string, index int) (string, error) {
 	}
 	// 先把要报的话攒下来：Toggle 之后 n 会被重新解析，Boxes 也跟着换了。
 	box := n.Boxes[index-1]
-	w.snapshot(doc)
 	n, err = doc.ToggleCheckbox(n, index-1)
 	if err != nil {
 		return "", err
@@ -855,7 +834,6 @@ func (w *Workspace) toggleBox(ref, title string, index int) (string, error) {
 		what = "取消了"
 	}
 	done, total := n.Progress()
-	w.record(doc, "%s「%s」的第 %d 项", what, n.Title, index)
 	return fmt.Sprintf("%s「%s」里的「%s」，现在 %d/%d。",
 		what, n.Title, strings.TrimSpace(box.Text), done, total), nil
 }
@@ -876,7 +854,6 @@ func (w *Workspace) moveItem(ref, title, parentRef string) (string, error) {
 		}
 		parent = pn
 	}
-	w.snapshot(doc)
 	n, err = doc.MoveNode(n, parent)
 	if err != nil {
 		return "", err
@@ -888,6 +865,5 @@ func (w *Workspace) moveItem(ref, title, parentRef string) (string, error) {
 	if parent != nil {
 		where = "「" + parent.Title + "」下"
 	}
-	w.record(doc, "把「%s」移动到%s", n.Title, where)
 	return fmt.Sprintf("已把「%s」移动到%s（新引用 %s）。", n.Title, where, refOf(doc, n)), nil
 }
