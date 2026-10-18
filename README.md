@@ -32,7 +32,7 @@ Jarvis 按风险级别执行操作。查询和本地可逆整理可以自动完�
 从源码编译并安装到 `~/.local/bin/jarvis`：
 
 ```sh
-git clone https://github.com/dabao/jarvis.git
+git clone https://github.com/dbwang0130-tech/jarvis.git
 cd jarvis
 make install
 ```
