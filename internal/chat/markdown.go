@@ -234,7 +234,7 @@ func fitWidths(widths []int, w int) {
 }
 
 // ansiRe 匹配颜色序列和 OSC 8 超链接，算宽度时它们都不占位置。
-var ansiRe = regexp.MustCompile("\\x1b\\[[0-9;]*m|\\x1b\\]8;;[^\\x1b\\x07]*(\\x1b\\\\|\\x07)")
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m|\x1b\]8;;[^\x1b\x07]*(\x1b\\|\x07)`)
 
 // visWidth 是去掉转义序列之后的显示宽度。
 //

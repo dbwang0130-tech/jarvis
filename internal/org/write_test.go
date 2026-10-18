@@ -92,7 +92,7 @@ func TestSetPlanning(t *testing.T) {
 	if n.Scheduled != nil || strings.Contains(d.Lines[1], "SCHEDULED") {
 		t.Errorf("SCHEDULED 未清除: %q", d.Lines[1])
 	}
-	n = d.SetPlanning(n, "DEADLINE", nil)
+	d.SetPlanning(n, "DEADLINE", nil)
 	if len(d.Lines) != 1 {
 		t.Errorf("planning 行应被删除: %v", d.Lines)
 	}
