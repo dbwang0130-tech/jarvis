@@ -147,10 +147,3 @@ func LookupMailProvider(address string) (MailProvider, bool) {
 		SMTPPort: 465,
 	}, false
 }
-
-// MailProviders 交出整张表，给界面列出来看。
-func MailProviders() []MailProvider {
-	out := make([]MailProvider, len(mailProviders))
-	copy(out, mailProviders)
-	return out
-}

@@ -66,7 +66,7 @@ func (t *sendTool) Risk() agent.Risk { return agent.RiskIrreversible }
 func (t *sendTool) Preview(string) (string, string, error) {
 	return "发信给张三", "主题：周报", nil
 }
-func (t *sendTool) Run(string) (string, bool, error) { t.runs++; return "已发出", true, nil }
+func (t *sendTool) Run(string) (string, error) { t.runs++; return "已发出", nil }
 
 type skill struct{ tools []agent.Tool }
 

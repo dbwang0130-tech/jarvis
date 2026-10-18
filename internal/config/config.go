@@ -32,8 +32,6 @@ type Agent struct {
 	Temperature float64 `json:"temperature,omitempty"`
 	// MaxSteps 限制一次对话中最多执行多少轮工具调用。
 	MaxSteps int `json:"max_steps,omitempty"`
-	// AutoApprove 为真时秘书对日程的修改直接落盘（邮件动作仍受 Behavior 约束）。
-	AutoApprove bool `json:"auto_approve"`
 	// AutoCompact 为真时上下文接近上限会自动压缩成摘要，默认开启。
 	AutoCompact bool `json:"auto_compact"`
 	// ContextLimit 是**一次请求**的估算 token 预算：系统提示 + 工具声明 +
@@ -93,13 +91,9 @@ type MailAccount struct {
 	Port        int    `json:"port"`
 	User        string `json:"user"`
 	PasswordCmd string `json:"password_cmd,omitempty"`
-	// Password 是直接给定的密码，只有 其他客户端会用——那边没有 macOS 钥匙串，
-	// 密码存在 其他客户端 自己的钥匙串里，由界面取出来传进来。
-	// `json:"-"` 保证它永远不会被写进配置文件。
-	Password string `json:"-"`
-	Junk     string `json:"junk,omitempty"`  // 垃圾箱路径；留空则按 \Junk 标记自动探测
-	Limit    int    `json:"limit,omitempty"` // 单次最多拉取多少封
-	Days     int    `json:"days,omitempty"`  // 只看最近几天
+	Junk        string `json:"junk,omitempty"`  // 垃圾箱路径；留空则按 \Junk 标记自动探测
+	Limit       int    `json:"limit,omitempty"` // 单次最多拉取多少封
+	Days        int    `json:"days,omitempty"`  // 只看最近几天
 	// FirstSyncLimit 是首次同步（没有进度记录时）最多拉多少封，0 表示不限。
 	FirstSyncLimit *int `json:"first_sync_limit,omitempty"`
 	Disabled       bool `json:"disabled,omitempty"`
@@ -156,8 +150,7 @@ type Config struct {
 	// MailCheckTimes 是每天什么时候自动收一次信，形如 ["08:30", "12:00"]。
 	//
 	// 空着就不自动收。这件事只有装了后台提醒（launchd 每五分钟跑一次
-	// `jarvis remind`）才会发生——手机上办不到，其他客户端 不让 app 在后台按点
-	// 醒来连网。
+	// `jarvis remind`）才会发生。
 	//
 	// 为什么要能设好几个：收信这事的节奏因人而异，有人早上看一次就够，
 	// 有人上午下午各一次。定成固定间隔（比如「每两小时」）的话，半夜
@@ -168,8 +161,7 @@ type Config struct {
 // Default 返回默认配置。
 // ICloudDir 返回 iCloud Drive 里的 Jarvis 目录，没有 iCloud Drive 就返回空串。
 //
-// 这是 macOS 上 iCloud Drive 的固定位置。其他客户端那份由用户亲手选目录拿到
-// （沙箱不让猜），两边指的是同一个文件夹。
+// 这是 macOS 上 iCloud Drive 的固定位置。
 func ICloudDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -184,7 +176,7 @@ func ICloudDir() string {
 
 // Default 是没有配置文件时的那份配置。
 //
-// 有 iCloud Drive 就默认放在里面——日程、账本、记忆都该跟手机上是同一份，
+// 有 iCloud Drive 就默认放在里面——日程、账本、记忆在几台电脑上都该是同一份，
 // 这是默认值该有的样子，不该逼人先去设置一遍。没有就退回本地目录。
 func Default() Config {
 	c := defaultLocal()
@@ -223,24 +215,8 @@ func defaultLocal() Config {
 	}
 }
 
-// dirOverride 是程序内部指定的配置目录。
-//
-// 不借 JARVIS_CONFIG 环境变量传这个值：那是留给用户覆盖的入口，程序自己
-// 拿它当参数通道，会跟用户设的那份撞上，也让「这个值是谁设的」查不清楚。
-var dirOverride string
-
-// SetDir 指定配置目录。给那些默认路径不可用的宿主用——其他客户端 上 ~ 是应用
-// 容器根目录，不可写，`~/.config` 一建就是 operation not permitted。
-//
-// 要在读写任何配置之前调。
-func SetDir(dir string) { dirOverride = dir }
-
-// Path 返回配置文件路径：SetDir 指定的目录 > $JARVIS_CONFIG >
-// ~/.config/jarvis/config.json。
+// Path 返回配置文件路径：$JARVIS_CONFIG > ~/.config/jarvis/config.json。
 func Path() string {
-	if dirOverride != "" {
-		return filepath.Join(dirOverride, "config.json")
-	}
 	if p := os.Getenv("JARVIS_CONFIG"); p != "" {
 		return Expand(p)
 	}
@@ -413,25 +389,25 @@ func (c Config) icloudOr(override, name string) string {
 
 // MemoryPath 返回长期记忆文件的路径。
 //
-// 没配就跟着日程走——日程在 iCloud 里，记忆也该在，否则手机上那位秘书
-// 记不得电脑上这位刚记住的事。日程也没配才退回配置目录。
+// 没配就跟着日程走——日程在 iCloud 里，记忆也该在，否则另一台电脑上的秘书
+// 记不得这边刚记住的事。日程也没配才退回配置目录。
 func (c Config) MemoryPath() string { return c.icloudOr(c.MemoryFile, "memory.md") }
 
 // PersonaPath 返回人设文件的路径。
 //
-// 跟记忆同一个道理，也放 iCloud：人设是「秘书是谁」，手机上那位和电脑上
-// 这位必须是同一个人——两边各存一份的话，用户在手机上说「以后别叫我先生」，
-// 回到电脑上它照旧叫，而这种不一致看起来像模型记性差，不像配置问题。
+// 跟记忆同一个道理，也放 iCloud：人设是「秘书是谁」，每台电脑上的必须是
+// 同一个人——各存一份的话，用户在这边说「以后别叫我先生」，换台电脑它照旧叫，
+// 而这种不一致看起来像模型记性差，不像配置问题。
 func (c Config) PersonaPath() string { return c.icloudOr(c.PersonaFile, "persona.md") }
 
 // SkillsPath 返回扩展技能目录。
 //
-// 跟人设、记忆同一个地方：用户在手机上放进去的技能，电脑上这位也该会。
+// 跟人设、记忆同一个地方：在一台电脑上放进去的技能，别处的秘书也该会。
 func (c Config) SkillsPath() string { return c.icloudOr(c.SkillsDir, "skills") }
 
 // MigrateMemory 把老位置（配置目录）的记忆挪到现在该在的地方。
 //
-// 记忆本来只在电脑上，放配置目录没问题；现在两端共用，得放 iCloud。
+// 记忆以前放配置目录，现在跟日程一起放 iCloud（见 MemoryPath）。
 // 老用户升上来时那份记忆还在旧地方，不搬的话秘书就把之前记住的全忘了。
 //
 // **复制，不删原件**：原件留着当备份，出岔子还能翻回去。
@@ -508,11 +484,8 @@ func (a MailAccount) FirstSync() int {
 	return *a.FirstSyncLimit
 }
 
-// Secret 按优先级取邮箱密码：直接给定 > password_cmd > macOS 钥匙串。
+// Secret 按优先级取邮箱密码：password_cmd > macOS 钥匙串。
 func (a MailAccount) Secret() (string, error) {
-	if a.Password != "" {
-		return a.Password, nil
-	}
 	if a.PasswordCmd != "" {
 		return RunCmd(a.PasswordCmd)
 	}

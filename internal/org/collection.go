@@ -109,15 +109,6 @@ func (c *Collection) SetLogStates(on bool) {
 	}
 }
 
-// Nodes 返回集合中全部节点，按文件与出现顺序排列。
-func (c *Collection) Nodes() []*Node {
-	var out []*Node
-	for _, d := range c.Docs {
-		out = append(out, d.Nodes...)
-	}
-	return out
-}
-
 // Doc 按路径返回文档。
 func (c *Collection) Doc(path string) *Document {
 	abs, _ := filepath.Abs(expandHome(path))
@@ -125,35 +116,6 @@ func (c *Collection) Doc(path string) *Document {
 		if d.Path == abs || d.Path == path || filepath.Base(d.Path) == path {
 			return d
 		}
-	}
-	return nil
-}
-
-// FindByID 按 :ID: 属性查找节点。
-func (c *Collection) FindByID(id string) (*Document, *Node) {
-	if id == "" {
-		return nil, nil
-	}
-	for _, d := range c.Docs {
-		for _, n := range d.Nodes {
-			if n.Props["ID"] == id {
-				return d, n
-			}
-		}
-	}
-	return nil, nil
-}
-
-// Save 保存全部有改动的文件。
-func (c *Collection) Save() error {
-	var errs []string
-	for _, d := range c.Docs {
-		if err := d.Save(); err != nil {
-			errs = append(errs, err.Error())
-		}
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
 }

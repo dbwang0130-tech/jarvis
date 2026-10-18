@@ -5,9 +5,10 @@ import (
 	"strings"
 )
 
-// Jarvis 的提示词让模型把提到的条目写成 [标题](jarvis://item/<ref>) 这类内部链接，
-// 那是给自家界面展开详情卡片用的。ACP 客户端没有这个 scheme，留着就是一个
-// 点了没反应的链接，所以只留标题——跟终端界面的处理一个意思（chat/markdown.go）。
+// 以前的提示词让模型把提到的条目写成 [标题](jarvis://item/<ref>) 这类内部链接，
+// 给已经删掉的手机界面展开详情卡片用。旧会话的历史里还有，模型也可能照着学。
+// ACP 客户端没有这个 scheme，留着就是一个点了没反应的链接，所以只留标题——
+// 跟终端界面的处理一个意思（chat/markdown.go）。
 
 var internalLink = regexp.MustCompile(`\[([^\[\]\n]*)\]\(jarvis://[^()\s]*\)`)
 

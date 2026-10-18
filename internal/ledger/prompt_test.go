@@ -99,7 +99,7 @@ func TestSecondTransactionSummarizesTouchedAccounts(t *testing.T) {
 			if tl.Spec().Name != "add_transaction" {
 				continue
 			}
-			got, _, err := tl.Run(strings.ReplaceAll(args, "\n", ""))
+			got, err := tl.Run(strings.ReplaceAll(args, "\n", ""))
 			if err != nil {
 				t.Fatalf("记账失败：%v", err)
 			}

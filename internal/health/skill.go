@@ -114,12 +114,6 @@ record_vital 会去查表填上 29463-7 和 kg。别自己往参数里塞编码�
   摆事实的话；不要下诊断、不要建议吃什么药、不要说「没事的」。
   真看着不对劲，就说清数值和它偏离了多少，建议去看医生。
 - 用户问「我最近怎么样」再去 list_health 拉数据看，别每次记完都主动分析。
-- **说到某项体征的变化时，另起一行单独写 [<体征>趋势](jarvis://chart/<体征>)**，
-  体征名照本段列出的那些写（体重、血压、步数…）。手机上这一行会变成一张
-  趋势图挂在回答底下——「最近在往上还是往下」是一句话说不清的东西，而它恰好
-  一眼就能看出来。
-  规矩三条：整行只写这一个链接，别夹在句子里；一次最多一张，别把四项都列出来；
-  没记录过的那项别写。
 
 基础信息（生日、性别、身高）用 set_health_profile。身高单独记成一次测量，
 因为它会变（小孩、老人），而生日不会。`
@@ -136,14 +130,14 @@ func (s *Skill) Tools() []agent.Tool {
 
 type tool struct {
 	spec     agent.ToolSpec
-	run      func(args string) (string, bool, error)
+	run      func(args string) (string, error)
 	readonly bool
 }
 
 func (t tool) Spec() agent.ToolSpec                   { return t.spec }
 func (t tool) Risk() agent.Risk                       { return agent.RiskNone }
 func (t tool) Preview(string) (string, string, error) { return "", "", nil }
-func (t tool) Run(args string) (string, bool, error)  { return t.run(args) }
+func (t tool) Run(args string) (string, error)        { return t.run(args) }
 func (t tool) ReadOnly() bool                         { return t.readonly }
 
 func (s *Skill) toolRecordVital() agent.Tool {
@@ -161,7 +155,7 @@ func (s *Skill) toolRecordVital() agent.Tool {
 				"note":      str("附注，如「空腹」「运动后」"),
 			}, "kind"),
 		},
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Kind      string   `json:"kind"`
 				Value     *float64 `json:"value"`
@@ -171,38 +165,38 @@ func (s *Skill) toolRecordVital() agent.Tool {
 				Note      string   `json:"note"`
 			}
 			if err := json.Unmarshal([]byte(raw), &a); err != nil {
-				return "", false, err
+				return "", err
 			}
 			kind := strings.TrimSpace(a.Kind)
 			v, ok := vitals[kind]
 			if !ok || v.Sub {
-				return "", false, fmt.Errorf("不认得「%s」，能记的是：%s",
+				return "", fmt.Errorf("不认得「%s」，能记的是：%s",
 					kind, strings.Join(vitalNames, "、"))
 			}
 			at, err := parseAt(a.At, s.now())
 			if err != nil {
-				return "", false, err
+				return "", err
 			}
 
 			v1, v2, err := valuesFor(v, a.Value, a.Systolic, a.Diastolic)
 			if err != nil {
-				return "", false, err
+				return "", err
 			}
 			r, err := NewVital(kind, v1, v2, at, a.Note)
 			if err != nil {
 				// 范围不对就多说一句「是不是点错了小数点」——手记这条路上
 				// 错误是给模型看的，它该回头跟用户确认，不是默默丢掉。
 				if errors.Is(err, ErrOutOfRange) {
-					return "", false, fmt.Errorf("%w——是不是点错了小数点？"+
+					return "", fmt.Errorf("%w——是不是点错了小数点？"+
 						"确实是这个数的话，跟用户确认一下再记", err)
 				}
-				return "", false, err
+				return "", err
 			}
-			msg, _, err := s.appendAndReport(kind, r)
+			msg, err := s.appendAndReport(kind, r)
 			if err != nil {
-				return "", false, err
+				return "", err
 			}
-			return msg + s.deriveBMI(kind, v1, at), false, nil
+			return msg + s.deriveBMI(kind, v1, at), nil
 		},
 	}
 }
@@ -246,10 +240,10 @@ func (s *Skill) deriveBMI(kind string, weightKg float64, at time.Time) string {
 //
 // 只报新值的话，模型手上另一个数是系统提示里那份快照，它会把两者之差
 // 当成异常——记账那边踩过这个坑。
-func (s *Skill) appendAndReport(kind string, r Resource) (string, bool, error) {
+func (s *Skill) appendAndReport(kind string, r Resource) (string, error) {
 	prev, hadPrev := s.Store.Latest(kind)
 	if err := s.Store.Append(r); err != nil {
-		return "", false, err
+		return "", err
 	}
 	msg := "已记录：" + r.label() + "（" + r.when().Format("2006-01-02 15:04") + "）"
 	if hadPrev {
@@ -257,7 +251,7 @@ func (s *Skill) appendAndReport(kind string, r Resource) (string, bool, error) {
 	} else {
 		msg += "\n这是第一次记这一项。"
 	}
-	return msg, false, nil
+	return msg, nil
 }
 
 func (s *Skill) toolRecordMeal() agent.Tool {
@@ -274,7 +268,7 @@ func (s *Skill) toolRecordMeal() agent.Tool {
 				"note": str("附注"),
 			}, "meal", "items"),
 		},
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Meal  string   `json:"meal"`
 				Items []string `json:"items"`
@@ -283,11 +277,11 @@ func (s *Skill) toolRecordMeal() agent.Tool {
 				Note  string   `json:"note"`
 			}
 			if err := json.Unmarshal([]byte(raw), &a); err != nil {
-				return "", false, err
+				return "", err
 			}
 			meal := strings.TrimSpace(a.Meal)
 			if meal == "" {
-				return "", false, fmt.Errorf("要说是哪一餐")
+				return "", fmt.Errorf("要说是哪一餐")
 			}
 			var items []string
 			for _, it := range a.Items {
@@ -296,17 +290,17 @@ func (s *Skill) toolRecordMeal() agent.Tool {
 				}
 			}
 			if len(items) == 0 {
-				return "", false, fmt.Errorf("要说吃了什么")
+				return "", fmt.Errorf("要说吃了什么")
 			}
 			at, err := parseAt(a.At, s.now())
 			if err != nil {
-				return "", false, err
+				return "", err
 			}
 			r := newMeal(meal, items, a.Kcal, at, a.Note)
 			if err := s.Store.Append(r); err != nil {
-				return "", false, err
+				return "", err
 			}
-			return "已记录：" + r.label() + "（" + at.Format("2006-01-02 15:04") + "）", false, nil
+			return "已记录：" + r.label() + "（" + at.Format("2006-01-02 15:04") + "）", nil
 		},
 	}
 }
@@ -321,13 +315,13 @@ func (s *Skill) toolSetProfile() agent.Tool {
 				"gender":     str("性别：男 / 女 / 其他"),
 			}),
 		},
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Birth  string `json:"birth_date"`
 				Gender string `json:"gender"`
 			}
 			if err := json.Unmarshal([]byte(raw), &a); err != nil {
-				return "", false, err
+				return "", err
 			}
 			// 没传的那项沿用上一版，别把已经填好的抹成空。
 			old, _ := s.Store.Patient()
@@ -335,16 +329,16 @@ func (s *Skill) toolSetProfile() agent.Tool {
 			if birth == "" {
 				birth = old.BirthDate
 			} else if _, err := time.Parse("2006-01-02", birth); err != nil {
-				return "", false, fmt.Errorf("生日要写成 2006-01-02 的样子")
+				return "", fmt.Errorf("生日要写成 2006-01-02 的样子")
 			}
 			if gender == "" {
 				gender = old.Gender
 			}
 			r := newPatient(birth, gender)
 			if err := s.Store.Append(r); err != nil {
-				return "", false, err
+				return "", err
 			}
-			return "已记录：" + r.label(), false, nil
+			return "已记录：" + r.label(), nil
 		},
 	}
 }
@@ -361,7 +355,7 @@ func (s *Skill) toolListHealth() agent.Tool {
 			}),
 		},
 		readonly: true,
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Kind  string `json:"kind"`
 				Days  int    `json:"days"`
@@ -378,20 +372,20 @@ func (s *Skill) toolListHealth() agent.Tool {
 			kind := strings.TrimSpace(a.Kind)
 			if kind != "" && kind != "饮食" {
 				if _, ok := vitals[kind]; !ok {
-					return "", false, fmt.Errorf("不认得「%s」，能查的是：%s 或 饮食",
+					return "", fmt.Errorf("不认得「%s」，能查的是：%s 或 饮食",
 						kind, strings.Join(vitalNames, "、"))
 				}
 			}
 			recs := s.Store.Recent(kind, s.now().AddDate(0, 0, -days), limit)
 			if len(recs) == 0 {
-				return fmt.Sprintf("最近 %d 天没有%s记录。\n", days, kind), false, nil
+				return fmt.Sprintf("最近 %d 天没有%s记录。\n", days, kind), nil
 			}
 			var b strings.Builder
 			fmt.Fprintf(&b, "最近 %d 天共 %d 条：\n", days, len(recs))
 			for _, r := range recs {
 				fmt.Fprintf(&b, "%s  %s\n", r.when().Format("01-02 15:04"), r.label())
 			}
-			return b.String(), false, nil
+			return b.String(), nil
 		},
 	}
 }

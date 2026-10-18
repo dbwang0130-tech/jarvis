@@ -67,28 +67,6 @@ func (c *Clock) Duration() time.Duration {
 	return 0
 }
 
-// OverlapWith 返回这条计时落在 [from, to) 区间内的时长。
-func (c *Clock) OverlapWith(from, to time.Time) time.Duration {
-	if c.Start == nil {
-		return 0
-	}
-	start := c.Start.Start
-	end := time.Now()
-	if c.End != nil {
-		end = c.End.Start
-	}
-	if start.Before(from) {
-		start = from
-	}
-	if end.After(to) {
-		end = to
-	}
-	if d := end.Sub(start); d > 0 {
-		return d
-	}
-	return 0
-}
-
 // Node 是一个 org 标题及其 subtree。
 type Node struct {
 	Doc      *Document
@@ -120,11 +98,6 @@ type Node struct {
 
 	Parent   *Node
 	Children []*Node
-}
-
-// IsTodo 报告节点是否处于未完成的 TODO 状态。
-func (n *Node) IsTodo() bool {
-	return n.TODO != "" && !n.IsDone()
 }
 
 // IsDone 报告节点是否处于完成态关键字。
@@ -232,72 +205,6 @@ func (n *Node) HasTag(tag string) bool {
 }
 
 // Breadcrumb 返回从顶层祖先到该节点的标题路径。
-// Notes 返回这个标题自己的正文：不含子标题、planning 行、抽屉和复选框行。
-// 复选框单独在 Boxes 里，留在正文里会重复显示一遍。首尾空行去掉。
-//
-// 解析阶段没把正文留下来（parseBody 只挑它关心的那几样），所以这里重走一遍。
-func (n *Node) Notes() []string {
-	if n.Doc == nil {
-		return nil
-	}
-	var out []string
-	inDrawer := false
-	inBlock := ""
-	for i := n.Line + 1; i < n.End && i < len(n.Doc.Lines); i++ {
-		line := n.Doc.Lines[i]
-		if strings.HasPrefix(line, "*") && headlineRe.MatchString(line) {
-			break // 子标题归它自己
-		}
-		// 块里的内容原样留着——里面可能有形似抽屉或复选框的文本。
-		if inBlock != "" {
-			out = append(out, line)
-			if m := blockEnd.FindStringSubmatch(line); m != nil &&
-				strings.EqualFold(m[1], inBlock) {
-				inBlock = ""
-			}
-			continue
-		}
-		if m := blockBegin.FindStringSubmatch(line); m != nil {
-			inBlock = m[1]
-			out = append(out, line)
-			continue
-		}
-		if inDrawer {
-			if drawerEnd.MatchString(line) {
-				inDrawer = false
-			}
-			continue
-		}
-		if drawerRe.MatchString(line) && !drawerEnd.MatchString(line) {
-			inDrawer = true
-			continue
-		}
-		if checkboxRe.MatchString(line) || clockRe.MatchString(line) || isPlanningLine(line) {
-			continue
-		}
-		out = append(out, line)
-	}
-	for len(out) > 0 && strings.TrimSpace(out[0]) == "" {
-		out = out[1:]
-	}
-	for len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
-		out = out[:len(out)-1]
-	}
-	return out
-}
-
-// isPlanningLine 判断整行是不是 planning。不能直接用 planningRe——它是
-// 不带锚点的，正文里提一句「DEADLINE: <2026-09-20 日>」也会被它命中。
-func isPlanningLine(line string) bool {
-	t := strings.TrimSpace(line)
-	for _, k := range []string{"SCHEDULED:", "DEADLINE:", "CLOSED:"} {
-		if strings.HasPrefix(t, k) {
-			return true
-		}
-	}
-	return false
-}
-
 func (n *Node) Breadcrumb() []string {
 	var parts []string
 	for cur := n; cur != nil; cur = cur.Parent {
@@ -311,15 +218,6 @@ func (n *Node) ClockedTotal() time.Duration {
 	var total time.Duration
 	for i := range n.Clocks {
 		total += n.Clocks[i].Duration()
-	}
-	return total
-}
-
-// ClockedBetween 返回该节点在 [from, to) 区间内的计时时长。
-func (n *Node) ClockedBetween(from, to time.Time) time.Duration {
-	var total time.Duration
-	for i := range n.Clocks {
-		total += n.Clocks[i].OverlapWith(from, to)
 	}
 	return total
 }

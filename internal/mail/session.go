@@ -27,9 +27,6 @@ const (
 	VerdictSpam      Verdict = "spam"      // 垃圾/诈骗，该清理
 )
 
-// ShouldClean 表示这类邮件适合移进垃圾箱。
-func (v Verdict) ShouldClean() bool { return v == VerdictPromo || v == VerdictSpam }
-
 // Label 是展示用的中文短标签。
 func (v Verdict) Label() string {
 	switch v {
@@ -63,12 +60,6 @@ type Item struct {
 // Session 持有一次运行期间的全部邮箱状态：连接、拉到的邮件、草稿。
 type Session struct {
 	cfg config.Config
-
-	// UnreadOnly 让 Sync 只拉未读的。
-	//
-	// 手机上开着它：已读的多半是在别处处理过了，再拉回来只会让清单变长、
-	// 分拣多花钱。桌面端默认关着——那边有完整的邮件视图，读过的也要能翻。
-	UnreadOnly bool
 
 	mu      sync.Mutex
 	clients map[string]*mailbox.Client
@@ -180,24 +171,6 @@ func (s *Session) collect(fetch func(*mailbox.Client, config.MailAccount) ([]*ma
 	return all, errs
 }
 
-// Fetch 并发拉取所有启用账号的收件箱，重建编号索引。
-func (s *Session) Fetch(unreadOnly bool) FetchResult {
-	all, errs := s.collect(func(c *mailbox.Client, a config.MailAccount) ([]*mailbox.Message, error) {
-		return c.Fetch(unreadOnly)
-	})
-
-	s.mu.Lock()
-	s.items = nil
-	s.byNo = map[int]*Item{}
-	s.seen = map[string]bool{}
-	s.nextNo = 0
-	added := s.appendLocked(all)
-	total := len(s.items)
-	s.mu.Unlock()
-
-	return FetchResult{Total: total, Errors: errs, New: added}
-}
-
 // Sync 只拉上次同步之后新到的邮件。
 // 没有同步记录的账号（首次运行，或服务器重建过索引）会全量拉一遍，
 // 由 first_sync_limit 兜住量。只有拉成功的账号才推进进度。
@@ -242,7 +215,7 @@ func (s *Session) Sync() FetchResult {
 				limit = acct.FirstSync()
 			}
 
-			msgs, info, err := c.FetchNew(lastUID, limit, s.UnreadOnly)
+			msgs, info, err := c.FetchNew(lastUID, limit)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -292,7 +265,7 @@ func (s *Session) Sync() FetchResult {
 }
 
 // LoadMore 往前再加载一批更早的邮件，追加到清单末尾。
-func (s *Session) LoadMore(unreadOnly bool) FetchResult {
+func (s *Session) LoadMore() FetchResult {
 	edge := map[string]time.Time{}
 	for _, it := range s.Items() {
 		acct := it.Msg.Account
@@ -306,7 +279,7 @@ func (s *Session) LoadMore(unreadOnly bool) FetchResult {
 		if !ok {
 			before = time.Now().AddDate(0, 0, -a.Days)
 		}
-		return c.FetchBefore(before, unreadOnly)
+		return c.FetchBefore(before)
 	})
 
 	s.mu.Lock()
@@ -437,17 +410,6 @@ func (s *Session) pickForMark(nos []int, seen, auto bool) map[string][]*Item {
 	return out
 }
 
-// Counts 按处置类别统计，用于简报头部。
-func (s *Session) Counts() map[Verdict]int {
-	out := map[Verdict]int{}
-	for _, it := range s.Items() {
-		if it.Verdict != "" {
-			out[it.Verdict]++
-		}
-	}
-	return out
-}
-
 // AddDraft 存一份草稿并返回它的引用 id。
 func (s *Session) AddDraft(d *mailbox.Draft) string {
 	s.mu.Lock()
@@ -553,27 +515,9 @@ func (s *Session) Clean(nos []int) (done int, fails []string) {
 	return done, fails
 }
 
-// MarkSeenUIDs 按账号和 UID 把邮件标成已读，不要求它们在当前清单里。
-//
-// 跟 CleanUIDs 同一个道理：MarkSeen 走的是清单编号，那套编号只对「这次
-// 拉下来的那批」有效；手机上用户看的是本地存的那份，里面的邮件多半早就
-// 不在当前会话里了。
-func (s *Session) MarkSeenUIDs(account string, uids []imap.UID, seen bool) error {
-	if len(uids) == 0 {
-		return nil
-	}
-	c, err := s.client(account)
-	if err != nil {
-		return err
-	}
-	return c.MarkSeen(uids, seen)
-}
-
 // CleanUIDs 按账号和 UID 直接把邮件移进垃圾箱，不要求它们在当前清单里。
 //
-// Clean 走的是清单编号，那套编号只对「这次拉下来的那批」有效。手机上
-// 邮件存在本地，用户看的是本地那份，里面的邮件多半早就不在当前会话里了——
-// 让他为了清一封信先去同步一次，是拿实现细节为难人。
+// Clean 把清单编号翻成账号和 UID 之后交给它。
 func (s *Session) CleanUIDs(account string, uids []imap.UID) error {
 	if len(uids) == 0 {
 		return nil
@@ -604,19 +548,3 @@ func (s *Session) CleanUIDs(account string, uids []imap.UID) error {
 	s.Remove(nos)
 	return nil
 }
-
-// RawUID 按账号和 UID 直接取原始邮件，同样不要求它在当前清单里。
-func (s *Session) RawUID(account string, uid imap.UID) ([]byte, error) {
-	c, err := s.client(account)
-	if err != nil {
-		return nil, err
-	}
-	return c.ReadRaw(uid)
-}
-
-// 这里原来有个 Body(no)：按清单编号拉整封正文，read_mail 靠它。
-// 两个一起删了——正文只经过手机本地和邮件服务器，不经过模型，
-// 留着一个现成的「按编号取正文」摆在这儿，早晚有人把它接回工具表里。
-//
-// 界面要显示原文走的是另一条：邮件工具的 Mail(read) → RawUID
-// 给 Swift 渲染，全程不进模型的上下文。

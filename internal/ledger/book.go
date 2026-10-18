@@ -35,8 +35,8 @@ type Transaction struct {
 	Postings []Posting
 	// Note 是挂在这笔账上的一行注释，写成 `; 小票: receipts/...`。
 	//
-	// **相对路径**：这份账本在电脑和手机上都会被读，而两边的容器路径
-	// 完全不同，存绝对路径等于只有存的那一端找得到。
+	// **相对路径**：账本常放在 iCloud 里给几台电脑共用，各自的绝对路径不一样，
+	// 存绝对路径等于只有存的那一台找得到。
 	//
 	// 走注释而不是另建一份索引：账本是纯文本、是用户自己的文件，
 	// 图片在哪儿这件事就该跟那笔账待在一起——哪天不用这个 app 了，
@@ -65,14 +65,6 @@ var (
 )
 
 // Load 读取账本；文件不存在时自动创建，返回空账本。
-// ParseBook 从文本解析账本，不碰文件系统。
-// 其他客户端 那边文件要经沙箱协调读写，Go 这头只当纯函数用。
-func ParseBook(text string) *Book {
-	b := &Book{}
-	b.parse(text)
-	return b
-}
-
 func Load(path string) (*Book, error) {
 	b := &Book{Path: path}
 	if path == "" {
@@ -265,64 +257,8 @@ func (t Transaction) Resolved() []Posting {
 // SortedAccounts 返回按字母序排列的账户名。
 func (b *Book) SortedAccounts() []string { return SortedFrom(b.Balances()) }
 
-// SumPrefix 把某一类账户的余额加起来。传算好的余额表进来，
-// 免得为每个前缀重扫一遍账本。前缀按账户层级卡边界：
-// "Assets" 只匹配 Assets 和 Assets:xxx，不会连上 AssetsFoo。
-func SumPrefix(bal map[string]float64, prefix string) float64 {
-	prefix = strings.TrimSuffix(prefix, ":") // "Assets" 和 "Assets:" 都当成同一类
-	var sum float64
-	for name, v := range bal {
-		if name == prefix || strings.HasPrefix(name, prefix+":") {
-			sum += v
-		}
-	}
-	return sum
-}
-
 // SortedFrom 把算好的余额表里的账户名排好序。
 func SortedFrom(bal map[string]float64) []string { return slices.Sorted(maps.Keys(bal)) }
-
-// SumByPrefix 汇总指定前缀账户的余额，每次都重算一遍余额表。
-// 一次要问好几个前缀的话，自己 Balances() 一次再调 SumPrefix 更划算。
-func (b *Book) SumByPrefix(prefix string) float64 { return SumPrefix(b.Balances(), prefix) }
-
-// IncomeExpense 返回自 since 以来的收入与支出（正数）。
-func (b *Book) IncomeExpense(since time.Time) (income, expense float64) {
-	for _, tx := range b.Transactions {
-		if tx.Date.Before(since) {
-			continue
-		}
-		for _, p := range b.effective(tx) {
-			switch {
-			case strings.HasPrefix(p.Account, "Income:"):
-				income += -p.Amount
-			case strings.HasPrefix(p.Account, "Expenses:"):
-				expense += p.Amount
-			}
-		}
-	}
-	return income, expense
-}
-
-// effective 返回把未指定金额的 posting 配平后的副本。
-func (b *Book) effective(tx Transaction) []Posting {
-	out := make([]Posting, len(tx.Postings))
-	copy(out, tx.Postings)
-	var net float64
-	nullIdx := -1
-	for i, p := range out {
-		if p.HasAmount {
-			net += p.Amount
-		} else if nullIdx == -1 {
-			nullIdx = i
-		}
-	}
-	if nullIdx >= 0 {
-		out[nullIdx].Amount = -net
-		out[nullIdx].HasAmount = true
-	}
-	return out
-}
 
 // Add 追加一笔交易：先给没有金额的 posting 配平，再落盘。
 func (b *Book) Add(tx Transaction) error {

@@ -46,75 +46,6 @@ func readBack(t *testing.T, path string) string {
 	return string(b)
 }
 
-// 撤销是秘书改坏东西之后的最后一道防线：改过的文件要整个回到动手之前。
-func TestUndoRestoresEverything(t *testing.T) {
-	ws, path := newWS(t)
-	before := readBack(t, path)
-
-	doc := ws.Coll.Doc(path)
-	if doc == nil {
-		t.Fatal("找不到文档")
-	}
-	ws.Snapshot(doc)
-	doc.Lines = append(doc.Lines, "* 秘书加的一行")
-	doc.Reparse()
-	if err := doc.Save(); err != nil {
-		t.Fatal(err)
-	}
-	ws.Record(doc, "加了一行")
-
-	if readBack(t, path) == before {
-		t.Fatal("改动没落盘，后面的撤销就没意义了")
-	}
-	if !ws.HasChanges() {
-		t.Fatal("改过之后该记着有改动")
-	}
-
-	if err := ws.Undo(); err != nil {
-		t.Fatal(err)
-	}
-	if got := readBack(t, path); got != before {
-		t.Fatalf("撤销之后文件没回到原样：\n%s", got)
-	}
-	if ws.HasChanges() {
-		t.Fatal("撤销之后改动记录该清掉")
-	}
-}
-
-// 同一个文件改很多次，撤销要回到最早那个版本，而不是上一步。
-func TestUndoGoesBackToTheStart(t *testing.T) {
-	ws, path := newWS(t)
-	before := readBack(t, path)
-	doc := ws.Coll.Doc(path)
-
-	for i := 0; i < 3; i++ {
-		ws.Snapshot(doc) // 只有头一次留底，后面几次不该覆盖它
-		doc.Lines = append(doc.Lines, "* 第", "* 二", "* 三")
-		doc.Reparse()
-		if err := doc.Save(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := ws.Undo(); err != nil {
-		t.Fatal(err)
-	}
-	if got := readBack(t, path); got != before {
-		t.Fatalf("撤销该回到动手之前，而不是上一步：\n%s", got)
-	}
-}
-
-// 没改过东西时撤销是空操作，不该报错也不该动文件。
-func TestUndoWithoutChanges(t *testing.T) {
-	ws, path := newWS(t)
-	before := readBack(t, path)
-	if err := ws.Undo(); err != nil {
-		t.Fatalf("没改过也不该报错：%v", err)
-	}
-	if readBack(t, path) != before {
-		t.Fatal("空撤销把文件动了")
-	}
-}
-
 // 条目引用是「文件名:行号」，错的格式要给出看得懂的提示。
 func TestResolveByRef(t *testing.T) {
 	ws, path := newWS(t)
@@ -163,32 +94,6 @@ func TestResolveByTitle(t *testing.T) {
 	}
 }
 
-// 改动记录要带上摘要和文件名，界面靠它告诉用户秘书动了什么。
-func TestRecordKeepsSummary(t *testing.T) {
-	ws, path := newWS(t)
-	doc := ws.Coll.Doc(path)
-
-	ws.Record(doc, "把 %s 排到了 %s", "写论文", "周三")
-	if len(ws.Changes) != 1 {
-		t.Fatalf("该记一笔，实际 %d 笔", len(ws.Changes))
-	}
-	c := ws.Changes[0]
-	if !strings.Contains(c.Summary, "写论文") || !strings.Contains(c.Summary, "周三") {
-		t.Fatalf("摘要没带上内容：%q", c.Summary)
-	}
-	if c.File == "" {
-		t.Fatal("该记下改的是哪个文件")
-	}
-	if c.Time.IsZero() {
-		t.Fatal("该记下什么时候改的")
-	}
-
-	ws.ResetChanges()
-	if ws.HasChanges() {
-		t.Fatal("清过之后不该还有改动")
-	}
-}
-
 // 撞上「文件被别人改过」之后要能接着用：重读一遍，让模型重新查引用再改。
 // 不重读的话手里这份永远是旧的，之后每一次保存都被拒，直到重启。
 func TestSaveReloadsAfterConflict(t *testing.T) {
@@ -208,7 +113,7 @@ func TestSaveReloadsAfterConflict(t *testing.T) {
 	}
 
 	// 这一次该被拒。
-	_, _, err := toolByName(t, ws, "update_item").
+	_, err := toolByName(t, ws, "update_item").
 		Run(`{"ref":"` + ref + `","state":"DONE"}`)
 	if err == nil {
 		t.Fatal("文件被改过了，不该直接覆盖")
@@ -223,7 +128,7 @@ func TestSaveReloadsAfterConflict(t *testing.T) {
 
 	// 重读之后重新查引用，这一次该成。
 	ref = refTo(t, ws, "补开题报告")
-	if _, _, err := toolByName(t, ws, "update_item").
+	if _, err := toolByName(t, ws, "update_item").
 		Run(`{"ref":"` + ref + `","state":"DONE"}`); err != nil {
 		t.Fatalf("重读之后该能改：%v", err)
 	}

@@ -16,23 +16,12 @@ import (
 	"github.com/dabao/jarvis/internal/org"
 )
 
-// Workspace 包装 org 文件集合，负责读写、撤销与修改记录。
+// Workspace 包装 org 文件集合，负责读写。
 type Workspace struct {
 	Coll *org.Collection
 	Cfg  config.Config
 	// Now 可注入以便测试，零值时使用 time.Now。
 	Now func() time.Time
-	// Changes 记录本次会话中秘书做过的修改，供界面展示与撤销。
-	Changes []Change
-	// snapshots 保存每个文件被首次修改前的内容，用于整体撤销。
-	snapshots map[string][]string
-}
-
-// Change 是秘书做出的一次修改记录。
-type Change struct {
-	Summary string
-	File    string
-	Time    time.Time
 }
 
 // NewWorkspace 构造工作区。
@@ -45,58 +34,6 @@ func (w *Workspace) now() time.Time {
 		return w.Now()
 	}
 	return time.Now()
-}
-
-func (w *Workspace) snapshot(d *org.Document) {
-	if w.snapshots == nil {
-		w.snapshots = map[string][]string{}
-	}
-	if _, ok := w.snapshots[d.Path]; !ok {
-		w.snapshots[d.Path] = append([]string(nil), d.Lines...)
-	}
-}
-
-// Snapshot 在改动文件之前留底，让这次改动可以被 Undo 撤销。
-func (w *Workspace) Snapshot(d *org.Document) { w.snapshot(d) }
-
-// Record 记一笔改动，摘要会显示在界面上。
-func (w *Workspace) Record(d *org.Document, format string, args ...any) {
-	w.record(d, format, args...)
-}
-
-// Undo 把本次会话修改过的文件恢复到秘书动手之前的状态。
-func (w *Workspace) Undo() error {
-	for path, lines := range w.snapshots {
-		d := w.Coll.Doc(path)
-		if d == nil {
-			continue
-		}
-		d.Lines = append([]string(nil), lines...)
-		d.Reparse()
-		if err := d.Save(); err != nil {
-			return err
-		}
-	}
-	w.snapshots = nil
-	w.Changes = nil
-	return nil
-}
-
-// HasChanges 报告本次会话是否产生过修改。
-func (w *Workspace) HasChanges() bool { return len(w.Changes) > 0 }
-
-// ResetChanges 清空修改记录（例如用户确认保留之后）。
-func (w *Workspace) ResetChanges() {
-	w.Changes = nil
-	w.snapshots = nil
-}
-
-func (w *Workspace) record(d *org.Document, format string, args ...any) {
-	w.Changes = append(w.Changes, Change{
-		Summary: fmt.Sprintf(format, args...),
-		File:    filepath.Base(d.Path),
-		Time:    w.now(),
-	})
 }
 
 // ref 形如 "work.org:12"，指向某个文件第 12 行（0 起）的标题。
@@ -258,10 +195,7 @@ func (p *Skill) Instructions() string {
    才回一句没找到。
 8. 同一时间只给一个条目计时。要开始新的，先把还在计时的那个 clock_out——两个一起计时，
    统计出来的工时就是假的。
-9. delete_item 会真的删掉内容，只有用户明确说"删掉""不要了"时才用；事情做完了应该标记完成，而不是删除。删之前先确认标题对得上。
-10. **回话里提到某一条时，把标题写成链接**：[标题](jarvis://item/<ref>)，ref 用查询结果里返回的那个。
-    界面上点一下就展开那条的全部细节（时间、笔记、工时、子项），所以你不必把细节抄进回话——
-    说清「哪几件、为什么」就够，想看的人自己点。ref 手上没有就正常写标题，别编一个。`
+9. delete_item 会真的删掉内容，只有用户明确说"删掉""不要了"时才用；事情做完了应该标记完成，而不是删除。删之前先确认标题对得上。`
 }
 
 // Tools 返回日程场景的全部工具。
@@ -271,7 +205,7 @@ func (p *Skill) Tools() []agent.Tool {
 	tools := make([]agent.Tool, 0, len(defs))
 	for _, d := range defs {
 		name := d.Name
-		tools = append(tools, orgTool{spec: d, readonly: orgReadOnly(name), exec: func(args string) (string, bool, error) {
+		tools = append(tools, orgTool{spec: d, readonly: orgReadOnly(name), exec: func(args string) (string, error) {
 			return ws.execOrg(name, args)
 		}})
 	}

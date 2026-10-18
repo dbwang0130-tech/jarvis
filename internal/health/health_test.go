@@ -23,7 +23,7 @@ func run(t *testing.T, s *Skill, name, args string) string {
 	t.Helper()
 	for _, tl := range s.Tools() {
 		if tl.Spec().Name == name {
-			out, _, err := tl.Run(args)
+			out, err := tl.Run(args)
 			if err != nil {
 				t.Fatalf("%s: %v", name, err)
 			}
@@ -38,7 +38,7 @@ func runErr(t *testing.T, s *Skill, name, args string) error {
 	t.Helper()
 	for _, tl := range s.Tools() {
 		if tl.Spec().Name == name {
-			_, _, err := tl.Run(args)
+			_, err := tl.Run(args)
 			return err
 		}
 	}

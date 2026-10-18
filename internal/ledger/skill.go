@@ -26,9 +26,8 @@ type Skill struct {
 
 	// touched 是**这次会话里**动过的账户，added 是记了几笔。
 	//
-	// 是会话而不是一轮：桌面端整个会话共用一个 Skill 实例（其他客户端每次 Ask 新建，
-	// 那边才正好等于一轮）。所以给模型的那句话写的是「这次会话」，不是「这一轮」
-	// ——说成一轮在桌面端就是假话。
+	// 是会话而不是一轮：终端和 ACP 都是一个会话共用一个 Skill 实例，所以给模型的
+	// 那句话写的是「这次会话」，不是「这一轮」——说成一轮就是假话。
 	//
 	// 为的是「一次记好几笔，报出来的余额要对得上」。原先这件事写成一条提示规则
 	// （「最后一步调 list_accounts 核一遍」），而模型不照做——它判断得对：
@@ -122,8 +121,8 @@ Liabilities:JD:Baitiao、有时进 Liabilities:Baitiao，两边各记一半，�
 - 货币默认 CNY，写在金额后面。
 - 负债账户余额是负数表示欠款，欠得越多越负。这是 ledger 的惯例，不是数据错了。
 - 日期留空就是今天；用户说「昨天」「上周三」，自己按【当下】给的今天换算成 2006/01/02。
-- 只追加，不改写历史。记错了就再记一笔冲销——账本文件电脑和手机两头都在写，
-  去改已经写进去的那笔，会把另一头的改动一起抹掉。
+- 只追加，不改写历史。记错了就再记一笔冲销——账本文件可能同时被别的地方写着
+  （另一台电脑、ledger 工具），去改已经写进去的那笔，会把那边的改动一起抹掉。
 - **一次记好几笔时，报余额只用最后那次返回里「这次会话里动过的账户」那一份。**
   同一个账户被动了两次，前一笔报的「后」就已经旧了；那一份是刚算的，永远是对的。
   不用再调 list_accounts 去核——工具已经把该核的都算好交给你了。
@@ -156,14 +155,14 @@ func (s *Skill) Tools() []agent.Tool {
 
 type tool struct {
 	spec     agent.ToolSpec
-	run      func(args string) (string, bool, error)
+	run      func(args string) (string, error)
 	readonly bool
 }
 
 func (t tool) Spec() agent.ToolSpec                   { return t.spec }
 func (t tool) Risk() agent.Risk                       { return agent.RiskNone }
 func (t tool) Preview(string) (string, string, error) { return "", "", nil }
-func (t tool) Run(args string) (string, bool, error)  { return t.run(args) }
+func (t tool) Run(args string) (string, error)        { return t.run(args) }
 func (t tool) ReadOnly() bool                         { return t.readonly }
 
 func (s *Skill) toolAddTransaction() agent.Tool {
@@ -182,7 +181,7 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 				}, "account"), "借贷条目，至少两条"),
 			}, "payee", "postings"),
 		},
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Date     string `json:"date"`
 				Payee    string `json:"payee"`
@@ -193,19 +192,19 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 				} `json:"postings"`
 			}
 			if err := json.Unmarshal([]byte(raw), &a); err != nil {
-				return "", false, err
+				return "", err
 			}
 			if strings.TrimSpace(a.Payee) == "" {
-				return "", false, fmt.Errorf("必须提供摘要 payee")
+				return "", fmt.Errorf("必须提供摘要 payee")
 			}
 			if len(a.Postings) < 2 {
-				return "", false, fmt.Errorf("复式记账至少需要两条 posting")
+				return "", fmt.Errorf("复式记账至少需要两条 posting")
 			}
 			date := s.now()
 			if strings.TrimSpace(a.Date) != "" {
 				d, err := parseDate(strings.TrimSpace(a.Date))
 				if err != nil {
-					return "", false, err
+					return "", err
 				}
 				date = d
 			}
@@ -214,7 +213,7 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 			for _, p := range a.Postings {
 				acc := strings.TrimSpace(p.Account)
 				if acc == "" {
-					return "", false, fmt.Errorf("posting 缺少 account")
+					return "", fmt.Errorf("posting 缺少 account")
 				}
 				post := Posting{Account: acc, Commodity: strings.TrimSpace(p.Commodity)}
 				if p.Amount != nil {
@@ -227,7 +226,7 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 				tx.Postings = append(tx.Postings, post)
 			}
 			if err := s.Book.Add(tx); err != nil {
-				return "", false, err
+				return "", err
 			}
 			// Add 收的是值，配平出来的那条金额只填在它自己那份上。
 			// 拿存进去的那笔来显示，否则自动配平的一条金额是 0。
@@ -276,7 +275,7 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 					msg += fmt.Sprintf("\n  %s %.2f", name, bal[name])
 				}
 			}
-			return msg, false, nil
+			return msg, nil
 		},
 	}
 }
@@ -291,7 +290,7 @@ func (s *Skill) toolListAccounts() agent.Tool {
 			}),
 		},
 		readonly: true,
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Account string `json:"account"`
 			}
@@ -309,9 +308,9 @@ func (s *Skill) toolListAccounts() agent.Tool {
 				shown++
 			}
 			if shown == 0 {
-				return "没有符合条件的账户。\n", false, nil
+				return "没有符合条件的账户。\n", nil
 			}
-			return fmt.Sprintf("共 %d 个账户：\n%s", shown, b.String()), false, nil
+			return fmt.Sprintf("共 %d 个账户：\n%s", shown, b.String()), nil
 		},
 	}
 }
@@ -327,7 +326,7 @@ func (s *Skill) toolListTransactions() agent.Tool {
 			}),
 		},
 		readonly: true,
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Account string `json:"account"`
 				Limit   int    `json:"limit"`
@@ -360,9 +359,9 @@ func (s *Skill) toolListTransactions() agent.Tool {
 				}
 			}
 			if shown == 0 {
-				return "没有符合条件的交易。\n", false, nil
+				return "没有符合条件的交易。\n", nil
 			}
-			return fmt.Sprintf("最近 %d 笔：\n%s", shown, b.String()), false, nil
+			return fmt.Sprintf("最近 %d 笔：\n%s", shown, b.String()), nil
 		},
 	}
 }

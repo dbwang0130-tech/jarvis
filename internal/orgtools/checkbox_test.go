@@ -12,8 +12,7 @@ import (
 )
 
 // 复选框那一摊：org 那边早有 ToggleCheckbox，但一直没有工具接出来，
-// 于是「第二项做完了」这句话谁也办不了——模型没有工具可调，手机上
-// 那几个框画出来也点不动。
+// 于是「第二项做完了」这句话谁也办不了——模型没有工具可调。
 //
 // 这几条钉的是接出来之后的行为：勾了要落盘、标题上的 [n/m] 要跟着变、
 // 说错了数要有句人话。
@@ -44,12 +43,9 @@ func newBoxWS(t *testing.T) (*Workspace, string) {
 func TestToggleCheckbox(t *testing.T) {
 	ws, path := newBoxWS(t)
 
-	msg, changed := run(t, ws, "toggle_checkbox", map[string]any{
+	msg := run(t, ws, "toggle_checkbox", map[string]any{
 		"ref": refTo(t, ws, "出门前检查"), "index": 2,
 	})
-	if !changed {
-		t.Fatal("勾了一项却说没动过文件")
-	}
 	if !strings.Contains(msg, "带钥匙") {
 		t.Fatalf("没说清勾的是哪一项：%s", msg)
 	}
@@ -77,7 +73,7 @@ func TestToggleCheckboxTwiceComesBack(t *testing.T) {
 	run(t, ws, "toggle_checkbox", map[string]any{
 		"ref": refTo(t, ws, "出门前检查"), "index": 1,
 	})
-	msg, _ := run(t, ws, "toggle_checkbox", map[string]any{
+	msg := run(t, ws, "toggle_checkbox", map[string]any{
 		"ref": refTo(t, ws, "出门前检查"), "index": 1,
 	})
 	if !strings.Contains(msg, "勾上了") {
@@ -109,7 +105,7 @@ func TestToggleCheckboxBadIndex(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, _, err = toolByName(t, ws, "toggle_checkbox").Run(string(raw))
+			_, err = toolByName(t, ws, "toggle_checkbox").Run(string(raw))
 			if err == nil {
 				t.Fatal("这种情况该报错")
 			}

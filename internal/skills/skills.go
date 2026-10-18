@@ -1,6 +1,6 @@
 // Package skills 读用户放在 skills/ 目录下的扩展技能。
 //
-// **现有能力（日程、邮件、记账、健康、浏览器、记忆）不走这儿**，它们是编进
+// **现有能力（日程、邮件、记账、健康、记忆）不走这儿**，它们是编进
 // 代码的 agent.Skill，带着自己的工具。这个包管的是用户自己加的那些：一份
 // SKILL.md，讲清某件事该怎么办，骑在现有工具上跑。
 //
@@ -42,7 +42,7 @@ const maxBody = 32 << 10
 // 这个包**不定义自己的技能类型**，直接交出 `agent.ExtraSkill`。
 //
 // 早先有一个字段完全重合的 `skills.Skill`（外加一个只写不读的 `Path`），于是
-// 桌面端和其他客户端各写了一遍逐字段搬运的循环——往扩展技能加一个字段要改四处，
+// 调用方要写一遍逐字段搬运的循环——往扩展技能加一个字段要改好几处，
 // 漏掉一处是静默的（那个字段就是空的）。
 
 // Load 扫 dir 下每个子目录里的 SKILL.md。
@@ -74,7 +74,7 @@ func Load(dir string) (list []agent.ExtraSkill, warns []string) {
 			}
 			continue
 		}
-		s, warn, ok := Parse(e.Name(), string(raw))
+		s, warn, ok := parseSkill(e.Name(), string(raw))
 		if warn != "" {
 			warns = append(warns, path+"："+warn)
 		}
@@ -86,17 +86,12 @@ func Load(dir string) (list []agent.ExtraSkill, warns []string) {
 	return list, warns
 }
 
-// Parse 把一份 SKILL.md 的原文变成 Skill。dirName 是它所在目录的名字，
+// parseSkill 把一份 SKILL.md 的原文变成 Skill。dirName 是它所在目录的名字，
 // frontmatter 里没写 name 就用它。
-//
-// **导出是为了让其他客户端共用这一份。** 其他客户端 上 Go 不碰文件，技能原文由 Swift
-// 读出来过桥送进来——格式解析必须还是这一份代码，Swift 那边再写一个的话，
-// 「BOM 算不算」「frontmatter 没闭合怎么办」这类判据迟早两边不一样，而表现
-// 出来是「同一份技能电脑上认、手机上不认」，最难猜。
 //
 // ok 为假表示这份不能用（正文空、frontmatter 没闭合）；warn 非空是有话要说，
 // 跟 ok 无关——缺 description 照样能用，但值得提一句。
-func Parse(dirName, content string) (s agent.ExtraSkill, warn string, ok bool) {
+func parseSkill(dirName, content string) (s agent.ExtraSkill, warn string, ok bool) {
 	s = parse(content)
 	if s.Name == "" {
 		s.Name = dirName

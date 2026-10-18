@@ -59,26 +59,6 @@ var cases = []Case{
 		},
 	},
 	{
-		Name: "回答里要给可点的条目链接",
-		Org:  map[string]string{"work.org": workOrg},
-		Ask:  "今天有什么要做的？",
-		Want: func(r Result) string {
-			// **断言的是「点得开」，不是「写得标准」。**
-			//
-			// 模型偶尔会漏掉 host，写成 `jarvis://work.org:12`（这条场景就抓到过
-			// 一次，同一轮里另外三条写对了）。那种写法界面现在也认（见
-			// 终端链接解析器能认出日程 ref 的形状），所以
-			// 它是合格的；真不合格的是压根没写链接。
-			if !strings.Contains(r.Reply, "jarvis://") {
-				return "提到了条目但一个链接都没写——链接就点不开（规则在 orgtools.Instructions）"
-			}
-			if !strings.Contains(r.Reply, ".org:") {
-				return "链接里没有 ref，界面拿它找不到条目：" + r.Reply
-			}
-			return ""
-		},
-	},
-	{
 		Name: "推迟是改这一条，不是新建一条",
 		Org:  map[string]string{"work.org": workOrg},
 		Ask:  "体检预约推迟到明天下午三点",
@@ -178,7 +158,7 @@ var cases = []Case{
 		},
 	},
 	{
-		// **人设改完要真落到文件里。** 这一整套（工具、指针语义、两端落盘）是这轮
+		// **人设改完要真落到文件里。** 这一整套（工具、指针语义、落盘）是这轮
 		// 会话做的，而「它说改好了、文件没变」恰恰是它最该防的失败——系统提示里
 		// 「绝不说自己做了没做的事」那一条点的就是这个。
 		Name:    "改人设要真写进文件",

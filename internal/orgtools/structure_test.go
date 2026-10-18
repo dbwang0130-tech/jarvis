@@ -50,10 +50,7 @@ func TestDemoteKeepsChildren(t *testing.T) {
 
 func TestListTodosShowsWhatMatters(t *testing.T) {
 	ws, _ := newWS(t)
-	out, changed := run(t, ws, "list_todos", map[string]any{})
-	if changed {
-		t.Error("只是看一眼，不该说动过文件")
-	}
+	out := run(t, ws, "list_todos", map[string]any{})
 	for _, want := range []string{"写毕业论文", "补开题报告", "每周组会"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("待办列表里少了 %q：\n%s", want, out)
@@ -67,7 +64,7 @@ func TestListTodosShowsWhatMatters(t *testing.T) {
 
 func TestGetItemShowsDetail(t *testing.T) {
 	ws, _ := newWS(t)
-	out, _ := run(t, ws, "get_item", map[string]any{"ref": refTo(t, ws, "写毕业论文")})
+	out := run(t, ws, "get_item", map[string]any{"ref": refTo(t, ws, "写毕业论文")})
 
 	for _, want := range []string{"写毕业论文", "NEXT", "thesis", "2026-09-16"} {
 		if !strings.Contains(out, want) {
@@ -78,12 +75,9 @@ func TestGetItemShowsDetail(t *testing.T) {
 
 func TestFindFreeSlots(t *testing.T) {
 	ws, _ := newWS(t)
-	out, changed := run(t, ws, "find_free_slots", map[string]any{
+	out := run(t, ws, "find_free_slots", map[string]any{
 		"date": "2026-09-16", "minutes": 60,
 	})
-	if changed {
-		t.Error("只是找空档，不该说动过文件")
-	}
 	// 那天 14:00-16:00 有事，空档要在它前后断开，而不是横跨过去。
 	for _, want := range []string{"09:00-14:00", "16:00-22:00"} {
 		if !strings.Contains(out, want) {

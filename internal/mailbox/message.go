@@ -44,14 +44,6 @@ func (m Message) From() string {
 	return m.FromAddr
 }
 
-// Domain 返回发件人域名，用于规则匹配和展示。
-func (m Message) Domain() string {
-	if i := strings.LastIndexByte(m.FromAddr, '@'); i >= 0 && i+1 < len(m.FromAddr) {
-		return strings.ToLower(m.FromAddr[i+1:])
-	}
-	return ""
-}
-
 // Key 是跨账号唯一的稳定标识。
 // Dedup 是**内存里去重用的**键，格式无所谓，只要一封信一个值。
 //

@@ -58,7 +58,7 @@ func TestBusyMergeOverlap(t *testing.T) {
 func TestFreeSlots(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Now = time.Date(2026, 9, 14, 7, 0, 0, 0, time.Local) // 早于工作时段
-	free := Free(load(t), base, DefaultWorkHours(), 30*time.Minute, opts)
+	free := Free(load(t), base, WorkHours{StartHour: 9, EndHour: 22}, 30*time.Minute, opts)
 	if len(free) == 0 {
 		t.Fatal("应有空档")
 	}
@@ -90,7 +90,7 @@ func TestFreeSlots(t *testing.T) {
 func TestFreeSlotsStartFromNow(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Now = time.Date(2026, 9, 14, 16, 20, 0, 0, time.Local)
-	free := Free(load(t), base, DefaultWorkHours(), 15*time.Minute, opts)
+	free := Free(load(t), base, WorkHours{StartHour: 9, EndHour: 22}, 15*time.Minute, opts)
 	if len(free) == 0 {
 		t.Fatal("下午仍应有空档")
 	}

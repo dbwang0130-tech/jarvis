@@ -1,4 +1,4 @@
-// jarvis 是个人助理：日程 + 邮箱 + 记账 + 浏览器，一个流式终端搞定。
+// jarvis 是个人助理：日程、邮件、记账、健康和长期记忆，一个流式终端搞定。
 package main
 
 import (
@@ -52,7 +52,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `jarvis — 个人助理：日程 + 邮箱 + 记账 + 浏览器
+	fmt.Fprint(os.Stderr, `jarvis — 个人助理：日程、邮件、记账、健康、长期记忆
 
 用法：
   jarvis         开一个全新会话
@@ -89,8 +89,7 @@ func runRemind() error {
 		}
 	}
 
-	// 到点收信。这是**桌面端独有**的：launchd 每五分钟给一次运行机会，
-	// 拿它真的连一趟 IMAP。手机上办不到——其他客户端 不让 app 在后台按点醒来连网。
+	// 到点收信：launchd 每五分钟给一次运行机会，拿它真的连一趟 IMAP。
 	if slot, due := remind.MailDue(cfg.MailCheckTimes, now, reminded); due {
 		if text := checkMail(cfg, slot); text != "" {
 			if err := remind.Notify(text); err != nil {

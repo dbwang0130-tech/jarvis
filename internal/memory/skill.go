@@ -65,13 +65,13 @@ func (s *Skill) Tools() []agent.Tool {
 
 type tool struct {
 	spec agent.ToolSpec
-	run  func(args string) (string, bool, error)
+	run  func(args string) (string, error)
 }
 
 func (t tool) Spec() agent.ToolSpec                   { return t.spec }
 func (t tool) Risk() agent.Risk                       { return agent.RiskNone }
 func (t tool) Preview(string) (string, string, error) { return "", "", nil }
-func (t tool) Run(args string) (string, bool, error)  { return t.run(args) }
+func (t tool) Run(args string) (string, error)        { return t.run(args) }
 
 func (s *Skill) toolRemember() agent.Tool {
 	return tool{
@@ -82,22 +82,22 @@ func (s *Skill) toolRemember() agent.Tool {
 				"note": str("要记住的内容，一句话说清"),
 			}, "note"),
 		},
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Note string `json:"note"`
 			}
 			if err := json.Unmarshal([]byte(raw), &a); err != nil {
-				return "", false, err
+				return "", err
 			}
 			note := strings.TrimSpace(a.Note)
 			if note == "" {
-				return "", false, fmt.Errorf("要记住的内容不能为空")
+				return "", fmt.Errorf("要记住的内容不能为空")
 			}
 			if err := s.append(note); err != nil {
-				return "", false, err
+				return "", err
 			}
 			s.Content = strings.TrimSpace(s.Content+"\n"+note) + "\n"
-			return "已记住：" + note, false, nil
+			return "已记住：" + note, nil
 		},
 	}
 }

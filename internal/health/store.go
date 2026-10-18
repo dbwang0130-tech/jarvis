@@ -14,8 +14,8 @@ import (
 
 // Store 是本地那份健康记录：一个 NDJSON 文件，一行一条 FHIR 资源。
 //
-// 只追加。跟账本一样，这个文件手机和电脑两头都在写，整文件重写就是在
-// 互相吃改动——一行一条，O_APPEND 写下去，两头同时写也只是交错，不会丢。
+// 只追加。跟账本一样，这个文件可能有几处同时在写（几台电脑、导入工具），整文件
+// 重写就是在互相吃改动——一行一条，O_APPEND 写下去，同时写也只是交错，不会丢。
 type Store struct {
 	Path      string
 	Resources []Resource
@@ -32,9 +32,6 @@ type Store struct {
 // **坏行跳过，不整份作废。** 这个文件可能被别的工具追加过、也可能上次
 // 写到一半断电留了半行。为一行坏数据把用户几年的记录全判死，比丢那一行
 // 糟得多。
-//
-// 只此一份：电脑上读文件、手机上读过桥传来的全文，走的必须是同一套规矩，
-// 否则同一个文件两头读出来的东西会不一样。
 func scan(r io.Reader) ([]Resource, error) {
 	sc := bufio.NewScanner(r)
 	// 一行一条资源，正常都很短；给大一点的缓冲防着某条带长附注的。
@@ -77,21 +74,11 @@ func Load(path string) (*Store, error) {
 	return s, err
 }
 
-// LoadString 从一份 NDJSON 全文里读记录。手机那边文件内容是过桥传进来的，
-// 不落盘，所以不能走 Load。
-func LoadString(raw string) (*Store, error) {
-	s := &Store{}
-	var err error
-	s.Resources, err = scan(strings.NewReader(raw))
-	s.reindex()
-	return s, err
-}
-
 // codes 是「LOINC 码 → 下标」，第一次用到时才建。
 //
 // 必须走这个口子，别直接摸 byCode：Store 有好几条不经过 scan 的出生路径
 // （文件不存在、没配路径、New 里读失败兜底的那份），它们的 byCode 是 nil，
-// 直接 append 进去就是空指针 panic——手机上崩一次就是整个 app 挂掉。
+// 直接 append 进去就是空指针 panic。
 func (s *Store) codes() map[string][]int {
 	if s.byCode == nil {
 		s.reindex()
@@ -171,67 +158,6 @@ func (s *Store) AppendAll(rs []Resource) error {
 		s.Resources = append(s.Resources, r)
 	}
 	return nil
-}
-
-// Void 把某项记录标成「录错了」，返回新的文件全文。
-//
-// **不删那一行。** FHIR 里记错的记录是改 status 成 entered-in-error，
-// 原样留在文件里——医疗记录跟账本一样不改历史：删掉的话说不清当时到底
-// 记过什么，别处（比如「健康」App）同步过来的那份也对不上。
-//
-// 按**体征名加时刻**定位，不按下标：下标会因为文件在别处被追加过而错位，
-// 而一条记录的「什么时候量的」不会变。跟账本冲账要核对日期和收款方
-// 是同一个道理——标错一条，人要过很久才发现。
-//
-// 按行重写，其余行一个字节都不碰：这个文件可能被别的工具追加过，也可能
-// 有我们不认得的资源类型，整份重新生成会把它们弄坏。
-func Void(raw, kind, at string) (string, error) {
-	kind = strings.TrimSpace(kind)
-	want, err := time.Parse(time.RFC3339, strings.TrimSpace(at))
-	if err != nil {
-		return raw, fmt.Errorf("时刻 %q 看不懂", at)
-	}
-
-	code := ""
-	meals := kind == "饮食"
-	if !meals {
-		v, ok := vitals[kind]
-		if !ok {
-			return raw, fmt.Errorf("不认识的记录种类 %q", kind)
-		}
-		code = v.Code
-	}
-
-	lines := strings.Split(raw, "\n")
-	for i, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		var r Resource
-		if err := json.Unmarshal([]byte(line), &r); err != nil {
-			continue // 坏行跳过，跟 scan 一个规矩
-		}
-		if meals && r.ResourceType != "NutritionIntake" {
-			continue
-		}
-		if code != "" && !r.hasCode(code) {
-			continue
-		}
-		if !r.when().Equal(want) {
-			continue
-		}
-		if r.voided() {
-			return raw, fmt.Errorf("这条已经标过「录错了」")
-		}
-		r.Status = StatusVoided
-		out, err := marshalLine(r)
-		if err != nil {
-			return raw, err
-		}
-		lines[i] = strings.TrimRight(out, "\n")
-		return strings.Join(lines, "\n"), nil
-	}
-	return raw, fmt.Errorf("找不到这条记录，下拉刷新一下再试")
 }
 
 // Patient 返回最后写进去的那份基础信息。

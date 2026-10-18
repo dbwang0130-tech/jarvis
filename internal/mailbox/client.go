@@ -24,9 +24,8 @@ const (
 	// 做简报时只取正文开头：分类和摘要用不上全文，省流量也省 token。
 	snippetBytes = 3072
 	snippetChars = 1200
-	// 读全文时取得多一些，够 agent 起草回信。
+	// 单个正文部分最多读这么多，防着超大的 HTML 邮件。
 	fullBytes = 64 * 1024
-	fullChars = 8000
 	// 降级模式下整封取回的字节数：够覆盖头部加正文开头。
 	fallbackBytes = 16 * 1024
 )
@@ -115,28 +114,6 @@ func (cl *Client) list() ([]*imap.ListData, error) {
 	return boxes, nil
 }
 
-// Mailboxes 列出所有文件夹，供 `mail boxes` 排查用。
-func (cl *Client) Mailboxes() ([]string, error) {
-	boxes, err := cl.list()
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, b := range boxes {
-		line := b.Mailbox
-		if len(b.Attrs) > 0 {
-			var at []string
-			for _, a := range b.Attrs {
-				at = append(at, string(a))
-			}
-			line += "  " + strings.Join(at, " ")
-		}
-		out = append(out, line)
-	}
-	sort.Strings(out)
-	return out, nil
-}
-
 // SyncInfo 描述一次拉取在服务器那边的情况，增量同步靠它记进度。
 type SyncInfo struct {
 	// UIDValidity 变了说明服务器重建过索引，之前记的 UID 作废。
@@ -147,24 +124,12 @@ type SyncInfo struct {
 	Matched, Fetched int
 }
 
-// Truncated 说明这次因为条数上限没把命中的邮件全取回来。
-func (i SyncInfo) Truncated() bool { return i.Matched > i.Fetched }
-
-// Fetch 拉取收件箱里最近 Days 天、最多 Limit 封邮件。
-// 全程用 PEEK，不会把邮件标记成已读。
-func (cl *Client) Fetch(unreadOnly bool) ([]*Message, error) {
-	msgs, _, err := cl.search(&imap.SearchCriteria{
-		Since: time.Now().AddDate(0, 0, -cl.Account.Days),
-	}, unreadOnly, cl.Account.Limit)
-	return msgs, err
-}
-
 // FetchBefore 拉取比 before 更早的最新一批，用来往前翻页。
 // 不受配置里 Days 的限制——往前翻本来就是要看窗口之外的信。
 // 注意 IMAP 的 BEFORE 只比较日期不比时间，同一天的邮件会再出现一次，
 // 由调用方按 UID 去重。
-func (cl *Client) FetchBefore(before time.Time, unreadOnly bool) ([]*Message, error) {
-	msgs, _, err := cl.search(&imap.SearchCriteria{Before: before}, unreadOnly, cl.Account.Limit)
+func (cl *Client) FetchBefore(before time.Time) ([]*Message, error) {
+	msgs, _, err := cl.search(&imap.SearchCriteria{Before: before}, cl.Account.Limit)
 	return msgs, err
 }
 
@@ -173,14 +138,14 @@ func (cl *Client) FetchBefore(before time.Time, unreadOnly bool) ([]*Message, er
 //
 // 用 UID 而不是时间划界：IMAP 的 SINCE 只比较日期不比时间，
 // 按时间增量会把上次同步当天的邮件重新拉一遍。
-func (cl *Client) FetchNew(sinceUID uint32, limit int, unreadOnly bool) ([]*Message, SyncInfo, error) {
+func (cl *Client) FetchNew(sinceUID uint32, limit int) ([]*Message, SyncInfo, error) {
 	criteria := &imap.SearchCriteria{}
 	if sinceUID > 0 {
 		var set imap.UIDSet
 		set.AddRange(imap.UID(sinceUID+1), 0) // Stop 为 0 即 *，没有上界
 		criteria.UID = []imap.UIDSet{set}
 	}
-	msgs, info, err := cl.search(criteria, unreadOnly, limit)
+	msgs, info, err := cl.search(criteria, limit)
 	if err != nil || sinceUID == 0 {
 		return msgs, info, err
 	}
@@ -207,8 +172,8 @@ func (cl *Client) FetchNew(sinceUID uint32, limit int, unreadOnly bool) ([]*Mess
 	return kept, info, nil
 }
 
-func (cl *Client) search(criteria *imap.SearchCriteria, unreadOnly bool, limit int) ([]*Message, SyncInfo, error) {
-	msgs, info, err := cl.fetchOnce(criteria, unreadOnly, limit)
+func (cl *Client) search(criteria *imap.SearchCriteria, limit int) ([]*Message, SyncInfo, error) {
+	msgs, info, err := cl.fetchOnce(criteria, limit)
 	if err == nil {
 		return msgs, info, nil
 	}
@@ -217,7 +182,7 @@ func (cl *Client) search(criteria *imap.SearchCriteria, unreadOnly bool, limit i
 		if rerr := cl.reconnect(); rerr != nil {
 			return nil, info, fmt.Errorf("连接已断开且重连失败: %w", rerr)
 		}
-		msgs, info, err = cl.fetchOnce(criteria, unreadOnly, limit)
+		msgs, info, err = cl.fetchOnce(criteria, limit)
 		if err == nil {
 			return msgs, info, nil
 		}
@@ -232,7 +197,7 @@ func (cl *Client) search(criteria *imap.SearchCriteria, unreadOnly bool, limit i
 	if rerr := cl.reconnect(); rerr != nil {
 		return nil, info, err // 重连都不行，报原来那个错更有用
 	}
-	return cl.fetchOnce(criteria, unreadOnly, limit)
+	return cl.fetchOnce(criteria, limit)
 }
 
 // reconnect 重建连接。解析失败会让 go-imap 关掉底层连接，只能重来。
@@ -249,7 +214,7 @@ func (cl *Client) reconnect() error {
 	return nil
 }
 
-func (cl *Client) fetchOnce(criteria *imap.SearchCriteria, unreadOnly bool, limit int) ([]*Message, SyncInfo, error) {
+func (cl *Client) fetchOnce(criteria *imap.SearchCriteria, limit int) ([]*Message, SyncInfo, error) {
 	var info SyncInfo
 
 	sel, err := cl.c.Select("INBOX", nil).Wait()
@@ -260,11 +225,6 @@ func (cl *Client) fetchOnce(criteria *imap.SearchCriteria, unreadOnly bool, limi
 		info.UIDValidity = sel.UIDValidity
 	}
 
-	if unreadOnly {
-		c := *criteria
-		c.NotFlag = []imap.Flag{imap.FlagSeen}
-		criteria = &c
-	}
 	res, err := cl.c.UIDSearch(criteria, nil).Wait()
 	if err != nil {
 		return nil, info, fmt.Errorf("搜索邮件失败: %w", err)
@@ -514,60 +474,6 @@ func pathKey(path []int) string {
 	return b.String()
 }
 
-// ReadFull 取回单封邮件的完整信息与正文，供 agent 起草回信时参考。
-func (cl *Client) ReadFull(uid imap.UID) (*Message, error) {
-	if _, err := cl.c.Select("INBOX", nil).Wait(); err != nil {
-		return nil, fmt.Errorf("打开 INBOX 失败: %w", err)
-	}
-	msgs, structs, err := cl.fetchMeta([]imap.UID{uid})
-	if err != nil {
-		return nil, err
-	}
-	if len(msgs) == 0 {
-		return nil, fmt.Errorf("邮件 %d 不存在（可能已被移走）", uid)
-	}
-	m := msgs[0]
-
-	if cl.noBodyStructure {
-		// 没有正文结构可用，整封多取一些自己解析。
-		buf, err := cl.c.Fetch(imap.UIDSetNum(uid), &imap.FetchOptions{
-			UID: true,
-			BodySection: []*imap.FetchItemBodySection{{
-				Peek:    true,
-				Partial: &imap.SectionPartial{Offset: 0, Size: fullBytes},
-			}},
-		}).Collect()
-		if err == nil && len(buf) > 0 && len(buf[0].BodySection) > 0 {
-			m.Snippet = extractFromRawMIME(buf[0].BodySection[0].Bytes, fullChars)
-		}
-		return m, nil
-	}
-
-	bs, ok := structs[uid]
-	if !ok {
-		return m, nil
-	}
-	part, path := pickTextPart(bs)
-	if part == nil {
-		return m, nil
-	}
-	sec := &imap.FetchItemBodySection{
-		Part:    path,
-		Peek:    true,
-		Partial: &imap.SectionPartial{Offset: 0, Size: fullBytes},
-	}
-	if len(path) == 0 {
-		sec.Specifier = imap.PartSpecifierText
-	}
-	buf, err := cl.c.Fetch(imap.UIDSetNum(uid),
-		&imap.FetchOptions{UID: true, BodySection: []*imap.FetchItemBodySection{sec}}).Collect()
-	if err != nil || len(buf) == 0 || len(buf[0].BodySection) == 0 {
-		return m, nil
-	}
-	m.Snippet = decodeText(buf[0].BodySection[0].Bytes, part, fullChars)
-	return m, nil
-}
-
 // MessageID 取回邮件的 Message-ID 与 References，回信时用来挂回原会话。
 func (cl *Client) MessageID(uid imap.UID) (msgID, refs string, err error) {
 	if _, err := cl.c.Select("INBOX", nil).Wait(); err != nil {
@@ -647,27 +553,4 @@ func (cl *Client) UIDValidity() (uint32, error) {
 		return 0, nil
 	}
 	return sel.UIDValidity, nil
-}
-
-// ReadRaw 取回整封原始邮件（RFC 822 字节）。
-//
-// 跟 ReadFull 的分工：那个只挑一段文本压成摘要喂给模型，这个是给人看的，
-// HTML、内联图片、附件都要留着，所以得把整封拿下来自己解析。
-func (cl *Client) ReadRaw(uid imap.UID) ([]byte, error) {
-	if _, err := cl.c.Select("INBOX", nil).Wait(); err != nil {
-		return nil, fmt.Errorf("打开 INBOX 失败: %w", err)
-	}
-	// Peek 是要紧的：不加的话光看一眼就把服务器上的未读标记抹了，
-	// 而用户可能只是想扫一下原文。
-	msgs, err := cl.c.Fetch(imap.UIDSetNum(uid), &imap.FetchOptions{
-		UID:         true,
-		BodySection: []*imap.FetchItemBodySection{{Peek: true}},
-	}).Collect()
-	if err != nil {
-		return nil, fmt.Errorf("取邮件 %d 失败: %w", uid, err)
-	}
-	if len(msgs) == 0 || len(msgs[0].BodySection) == 0 {
-		return nil, fmt.Errorf("邮件 %d 不存在（可能已被移走）", uid)
-	}
-	return msgs[0].BodySection[0].Bytes, nil
 }

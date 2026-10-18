@@ -19,7 +19,7 @@ func TestAddTransactionShowsBeforeAndAfter(t *testing.T) {
 	add := func(args string) string {
 		for _, tl := range s.Tools() {
 			if tl.Spec().Name == "add_transaction" {
-				out, _, err := tl.Run(args)
+				out, err := tl.Run(args)
 				if err != nil {
 					t.Fatal(err)
 				}

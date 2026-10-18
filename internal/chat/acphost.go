@@ -55,7 +55,7 @@ func (h *acpHost) Models() ([]string, string) {
 	return names, current
 }
 
-// UseModel 只换这个秘书的模型客户端，历史留着；配置文件不动——手机上给
+// UseModel 只换这个秘书的模型客户端，历史留着；配置文件不动——ACP 客户端里给
 // 一个会话换模型，不该连带改掉终端那边的默认。
 func (h *acpHost) UseModel(a *agent.Agent, name string) error {
 	cfg, _ := config.Load(h.cfgPath)

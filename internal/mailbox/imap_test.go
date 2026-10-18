@@ -107,7 +107,7 @@ func TestFetchParsesMessage(t *testing.T) {
 	cl, put := fakeIMAP(t)
 	put("INBOX", letter("季度报告要交了", "小王 <wang@example.com>", "记得周五之前交。"))
 
-	msgs, err := cl.Fetch(false)
+	msgs, _, err := cl.FetchNew(0, 0)
 	if err != nil {
 		t.Fatalf("拉取失败：%v", err)
 	}
@@ -137,7 +137,7 @@ func TestFetchDecodesEncodedSubject(t *testing.T) {
 		"Subject: =?utf-8?B?6ZO26KGM5a+554+t5o+Q6YCB?=\n"+
 		"Date: Sat, 26 Sep 2026 10:00:00 +0800\n\n正文\n")
 
-	msgs, err := cl.Fetch(false)
+	msgs, _, err := cl.FetchNew(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestFetchNewIsIncrementalByUID(t *testing.T) {
 	put("INBOX", letter("第一封", "a@example.com", "一"))
 	put("INBOX", letter("第二封", "b@example.com", "二"))
 
-	first, info, err := cl.FetchNew(0, 100, false)
+	first, info, err := cl.FetchNew(0, 100)
 	if err != nil {
 		t.Fatalf("首次同步失败：%v", err)
 	}
@@ -175,7 +175,7 @@ func TestFetchNewIsIncrementalByUID(t *testing.T) {
 	// 同一天又来了一封。按时间划界的话这三封会被一起拉回来。
 	put("INBOX", letter("第三封", "c@example.com", "三"))
 
-	again, info2, err := cl.FetchNew(info.MaxUID, 100, false)
+	again, info2, err := cl.FetchNew(info.MaxUID, 100)
 	if err != nil {
 		t.Fatalf("增量同步失败：%v", err)
 	}
@@ -195,34 +195,12 @@ func TestFetchNewIsIncrementalByUID(t *testing.T) {
 	}
 
 	// 再同步一次，没有新信就该是空的——不是又把第三封拉一遍。
-	empty, _, err := cl.FetchNew(info2.MaxUID, 100, false)
+	empty, _, err := cl.FetchNew(info2.MaxUID, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(empty) != 0 {
 		t.Errorf("没有新信却拉回 %d 封", len(empty))
-	}
-}
-
-// 只拉未读那条路。
-func TestFetchUnreadOnly(t *testing.T) {
-	cl, put := fakeIMAP(t)
-	uid := put("INBOX", letter("读过的", "a@example.com", "一"))
-	put("INBOX", letter("没读的", "b@example.com", "二"))
-
-	if err := cl.MarkSeen([]imap.UID{uid}, true); err != nil {
-		t.Fatalf("标已读失败：%v", err)
-	}
-	msgs, _, err := cl.FetchNew(0, 100, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(msgs) != 1 || msgs[0].Subject != "没读的" {
-		var got []string
-		for _, m := range msgs {
-			got = append(got, m.Subject)
-		}
-		t.Errorf("只该拉到没读的那封，实际 %v", got)
 	}
 }
 
@@ -235,7 +213,7 @@ func TestMoveToTrash(t *testing.T) {
 	if err := cl.MoveTo([]imap.UID{uid}, "Trash"); err != nil {
 		t.Fatalf("搬到垃圾箱失败：%v", err)
 	}
-	msgs, err := cl.Fetch(false)
+	msgs, _, err := cl.FetchNew(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,32 +258,5 @@ func TestDetectJunkOverRealIMAP(t *testing.T) {
 	}
 	if !strings.EqualFold(box, "Junk") {
 		t.Errorf("认出来的不是 Junk：%q", box)
-	}
-}
-
-// 读全文那条路要**比清单上那段长**：清单只取开头（snippetChars 1200），
-// 起草回信要更多（fullChars 8000）。两条路都填 Snippet，区别只在取多少。
-//
-// 分开两条是有意的：分拣一次可能有几十封，每封都按全文取就是几十倍的流量，
-// 而分类根本用不上那么多。
-func TestReadFullTakesMoreThanTheList(t *testing.T) {
-	cl, put := fakeIMAP(t)
-	long := strings.Repeat("这一段要足够长，好看出全文和清单上那段不是一回事。", 200)
-	uid := put("INBOX", letter("长信", "a@example.com", long))
-
-	listed, err := cl.Fetch(false)
-	if err != nil || len(listed) != 1 {
-		t.Fatalf("清单拉取失败：%v（%d 封）", err, len(listed))
-	}
-	full, err := cl.ReadFull(uid)
-	if err != nil {
-		t.Fatalf("读全文失败：%v", err)
-	}
-	if len([]rune(full.Snippet)) <= len([]rune(listed[0].Snippet)) {
-		t.Errorf("全文没比清单那段长：全文 %d 字、清单 %d 字",
-			len([]rune(full.Snippet)), len([]rune(listed[0].Snippet)))
-	}
-	if !strings.Contains(full.Snippet, "不是一回事") {
-		t.Errorf("正文内容不对：%.80q", full.Snippet)
 	}
 }

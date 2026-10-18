@@ -23,27 +23,6 @@ func compileEmphasis(marks ...string) []*regexp.Regexp {
 	return out
 }
 
-// Link 是正文或标题里的一个链接。
-type Link struct {
-	// URL 是链接目标，可能是网址、文件路径或 id:/ 内部引用。
-	URL string
-	// Text 是展示文字，没写描述时与 URL 相同。
-	Text string
-}
-
-// Links 提取文本里的全部链接。
-func Links(s string) []Link {
-	var out []Link
-	for _, m := range linkRe.FindAllStringSubmatch(s, -1) {
-		l := Link{URL: m[1], Text: m[2]}
-		if l.Text == "" {
-			l.Text = m[1]
-		}
-		out = append(out, l)
-	}
-	return out
-}
-
 // Plain 把 org 的行内标记转成适合终端显示的纯文本：
 // 链接只留描述，强调标记去掉符号。
 func Plain(s string) string {

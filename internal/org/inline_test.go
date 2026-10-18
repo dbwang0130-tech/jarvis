@@ -21,19 +21,3 @@ func TestPlain(t *testing.T) {
 		}
 	}
 }
-
-func TestLinks(t *testing.T) {
-	got := Links("见 [[https://example.com][官网]] 和 [[file:a.org]]")
-	if len(got) != 2 {
-		t.Fatalf("链接数 = %d: %+v", len(got), got)
-	}
-	if got[0].URL != "https://example.com" || got[0].Text != "官网" {
-		t.Errorf("第一个链接 = %+v", got[0])
-	}
-	if got[1].URL != "file:a.org" || got[1].Text != "file:a.org" {
-		t.Errorf("无描述链接应回退到 URL: %+v", got[1])
-	}
-	if len(Links("没有链接")) != 0 {
-		t.Error("不该凭空造出链接")
-	}
-}

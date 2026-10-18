@@ -76,13 +76,13 @@ func TestHistoryWithImagesDecodesAsPlainMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Swift 那边就是拿一个 content 为 String 的结构去解的。
+	// 会话存档（`jarvis -c`、ACP 的 session/load）就是按 content 为字符串去读的。
 	var back []struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
 	}
 	if err := json.Unmarshal(raw, &back); err != nil {
-		t.Fatalf("History 解不开——手机上就是这一下报「出参解不开」：%v\n%s", err, raw)
+		t.Fatalf("History 按字符串 content 解不开，会话存档读不回来：%v\n%s", err, raw)
 	}
 	if len(back) != 2 || back[0].Content != "看看这个" {
 		t.Fatalf("解出来不对：%+v", back)

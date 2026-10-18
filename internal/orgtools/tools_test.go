@@ -26,17 +26,17 @@ func toolByName(t *testing.T, ws *Workspace, name string) agent.Tool {
 }
 
 // run 调用工具并返回它说了什么。
-func run(t *testing.T, ws *Workspace, name string, args map[string]any) (string, bool) {
+func run(t *testing.T, ws *Workspace, name string, args map[string]any) string {
 	t.Helper()
 	raw, err := json.Marshal(args)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, changed, err := toolByName(t, ws, name).Run(string(raw))
+	out, err := toolByName(t, ws, name).Run(string(raw))
 	if err != nil {
 		t.Fatalf("%s 执行失败：%v", name, err)
 	}
-	return out, changed
+	return out
 }
 
 // refTo 找出某个标题的条目引用。
@@ -57,11 +57,9 @@ func TestSetTodoStateWritesBack(t *testing.T) {
 	ws, path := newWS(t)
 	ref := refTo(t, ws, "补开题报告")
 
-	if _, changed := run(t, ws, "update_item", map[string]any{
+	run(t, ws, "update_item", map[string]any{
 		"ref": ref, "title": "补开题报告", "state": "DONE",
-	}); !changed {
-		t.Fatal("改了状态却说没动过文件")
-	}
+	})
 
 	got := readBack(t, path)
 	if !strings.Contains(got, "** DONE 补开题报告") {
@@ -127,14 +125,11 @@ func TestSetPriority(t *testing.T) {
 func TestCreateItem(t *testing.T) {
 	ws, path := newWS(t)
 
-	out, changed := run(t, ws, "create_item", map[string]any{
+	out := run(t, ws, "create_item", map[string]any{
 		"title": "买菜", "state": "TODO", "priority": "C",
 		"scheduled": "2026-10-02 18:00", "tags": []string{"生活"},
 		"file": "test.org",
 	})
-	if !changed {
-		t.Fatal("新建条目却说没动过文件")
-	}
 	if !strings.Contains(out, "买菜") {
 		t.Fatalf("回话里该提到新建的条目：%q", out)
 	}
@@ -177,7 +172,7 @@ func TestDeleteItemChecksTitle(t *testing.T) {
 	ref := refTo(t, ws, "每周组会")
 
 	raw, _ := json.Marshal(map[string]any{"ref": ref, "title": "对不上的标题"})
-	_, _, err := toolByName(t, ws, "delete_item").Run(string(raw))
+	_, err := toolByName(t, ws, "delete_item").Run(string(raw))
 	if err == nil {
 		t.Fatal("标题对不上还是删了")
 	}
@@ -186,29 +181,8 @@ func TestDeleteItemChecksTitle(t *testing.T) {
 	}
 }
 
-// 改完之后撤销要能整个退回去——这是秘书改坏东西时的兜底。
-func TestToolChangesAreUndoable(t *testing.T) {
-	ws, path := newWS(t)
-	before := readBack(t, path)
-
-	run(t, ws, "update_item", map[string]any{
-		"ref": refTo(t, ws, "每周组会"), "title": "每周组会", "state": "DONE",
-	})
-	run(t, ws, "create_item", map[string]any{"title": "临时加的", "file": "test.org"})
-
-	if readBack(t, path) == before {
-		t.Fatal("改动没落盘")
-	}
-	if err := ws.Undo(); err != nil {
-		t.Fatal(err)
-	}
-	if got := readBack(t, path); got != before {
-		t.Fatalf("撤销之后没回到原样：\n%s", got)
-	}
-}
-
-// 只读的查询工具不该声明自己改过文件，否则界面会白刷一遍。
-func TestReadOnlyToolsReportNoChange(t *testing.T) {
+// 查询工具要标成只读（才能和别的查询并发跑），也不该有风险等级。
+func TestQueryToolsAreReadOnly(t *testing.T) {
 	ws, _ := newWS(t)
 	for _, name := range []string{"list_agenda", "list_todos", "get_item", "find_free_slots"} {
 		tl := toolByName(t, ws, name)
@@ -228,7 +202,7 @@ func TestStaleRefIsRejected(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{
 		"ref": "test.org:999", "title": "每周组会", "state": "DONE",
 	})
-	out, _, err := toolByName(t, ws, "update_item").Run(string(raw))
+	out, err := toolByName(t, ws, "update_item").Run(string(raw))
 	if err == nil && !strings.Contains(out, "每周组会") {
 		t.Fatalf("行号不存在时该报错或按标题纠正，得到：%q", out)
 	}

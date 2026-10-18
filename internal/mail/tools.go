@@ -39,9 +39,9 @@ func (t *Tool) Preview(raw string) (string, string, error) {
 	}
 	return t.preview(t.sess, raw)
 }
-func (t *Tool) Run(raw string) (string, bool, error) {
+func (t *Tool) Run(raw string) (string, error) {
 	out, err := t.run(t.sess, raw)
-	return out, false, err
+	return out, err
 }
 
 func spec(name, desc string, params map[string]any) agent.ToolSpec {
@@ -118,7 +118,7 @@ func toolLoadMore() *Tool {
 			"往前再加载一批更早的邮件，追加到清单末尾，已有邮件的编号不变。用户说「再往前看看」「还有更早的吗」「翻下一页」时用。",
 			obj(map[string]any{})),
 		run: func(s *Session, raw string) (string, error) {
-			res := s.LoadMore(false)
+			res := s.LoadMore()
 			if res.Total == 0 && len(res.Errors) == 0 {
 				return "再往前没有更多邮件了。", nil
 			}
@@ -139,8 +139,7 @@ func toolLoadMore() *Tool {
 // 这里原来有个 read_mail，把整封正文交给模型。删掉了。
 //
 // 正文是私人内容，**一个字都不往模型那儿去**。分拣靠发件人、主题和群发头
-// 就够了；真要看原文，用户在邮件页自己看——那条路（Mail 的 read 动作）
-// 只经过手机本地和邮件服务器，不经过模型。
+// 就够了；真要看原文，用户在自己的邮件客户端里看。
 //
 // 靠提示词说「别读正文」是不够的：工具摆在那儿，模型迟早会在某个它觉得
 // 「实在拿不准」的时候调一次。把工具拿掉，这条路才是真的没有。
