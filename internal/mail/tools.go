@@ -118,7 +118,7 @@ func toolLoadMore() *Tool {
 			"往前再加载一批更早的邮件，追加到清单末尾，已有邮件的编号不变。用户说「再往前看看」「还有更早的吗」「翻下一页」时用。",
 			obj(map[string]any{})),
 		run: func(s *Session, raw string) (string, error) {
-			res := s.LoadMore(false)
+			res := s.LoadMore()
 			if res.Total == 0 && len(res.Errors) == 0 {
 				return "再往前没有更多邮件了。", nil
 			}

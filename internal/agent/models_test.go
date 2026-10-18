@@ -136,21 +136,3 @@ func TestModelsFailsLoudly(t *testing.T) {
 		})
 	}
 }
-
-// Verify 和 Models 走同一次请求。分成两趟的话，设置页里「测试连接」
-// 和「拉模型列表」就是两趟网络，而它们问的是同一个问题。
-func TestVerifySharesTheModelsRequest(t *testing.T) {
-	tr := &modelsTransport{body: `{"data":[{"id":"x"}]}`}
-	if err := modelsClient(tr).Verify(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasSuffix(tr.url, "/models") {
-		t.Errorf("Verify 没去 /models：%s", tr.url)
-	}
-	// Verify 只看通不通，所以内容解不开也不该算失败——
-	// 这是它跟 Models 唯一的分别。
-	tr2 := &modelsTransport{body: `<html>行吧</html>`}
-	if err := modelsClient(tr2).Verify(context.Background()); err != nil {
-		t.Errorf("状态码是 200，Verify 该算通：%v", err)
-	}
-}

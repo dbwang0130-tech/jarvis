@@ -110,11 +110,6 @@ type Timestamp struct {
 // HasEnd 报告时间戳是否带结束时间。
 func (t *Timestamp) HasEnd() bool { return !t.End.IsZero() }
 
-// Date 返回时间戳所在的日期（零点）。
-func (t *Timestamp) Date() time.Time {
-	return time.Date(t.Start.Year(), t.Start.Month(), t.Start.Day(), 0, 0, 0, 0, t.Start.Location())
-}
-
 // String 按 org 语法渲染时间戳。
 func (t *Timestamp) String() string {
 	open, close := "<", ">"

@@ -496,17 +496,7 @@ func notChat(id string) bool {
 	return false
 }
 
-// Verify 用一次轻量请求确认接口地址与密钥可用。
-func (c *Client) Verify(ctx context.Context) error {
-	_, err := c.getModels(ctx)
-	return err
-}
-
 // getModels 发那一次 GET /models，并把各种失败翻译成人话。
-//
-// Verify 和 Models 走的是同一个请求——原先 Verify 把返回的内容整个丢掉，
-// 只看状态码。两处各发一次的话，设置页里「测试连接」和「拉模型列表」就是
-// 两趟网络，而它们问的是同一个问题。
 func (c *Client) getModels(ctx context.Context) ([]byte, error) {
 	url := strings.TrimSuffix(c.BaseURL, "/") + "/models"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

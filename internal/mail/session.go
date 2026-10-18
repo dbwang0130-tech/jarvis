@@ -61,12 +61,6 @@ type Item struct {
 type Session struct {
 	cfg config.Config
 
-	// UnreadOnly 让 Sync 只拉未读的。
-	//
-	// 手机上开着它：已读的多半是在别处处理过了，再拉回来只会让清单变长、
-	// 分拣多花钱。桌面端默认关着——那边有完整的邮件视图，读过的也要能翻。
-	UnreadOnly bool
-
 	mu      sync.Mutex
 	clients map[string]*mailbox.Client
 	items   []*Item
@@ -177,24 +171,6 @@ func (s *Session) collect(fetch func(*mailbox.Client, config.MailAccount) ([]*ma
 	return all, errs
 }
 
-// Fetch 并发拉取所有启用账号的收件箱，重建编号索引。
-func (s *Session) Fetch(unreadOnly bool) FetchResult {
-	all, errs := s.collect(func(c *mailbox.Client, a config.MailAccount) ([]*mailbox.Message, error) {
-		return c.Fetch(unreadOnly)
-	})
-
-	s.mu.Lock()
-	s.items = nil
-	s.byNo = map[int]*Item{}
-	s.seen = map[string]bool{}
-	s.nextNo = 0
-	added := s.appendLocked(all)
-	total := len(s.items)
-	s.mu.Unlock()
-
-	return FetchResult{Total: total, Errors: errs, New: added}
-}
-
 // Sync 只拉上次同步之后新到的邮件。
 // 没有同步记录的账号（首次运行，或服务器重建过索引）会全量拉一遍，
 // 由 first_sync_limit 兜住量。只有拉成功的账号才推进进度。
@@ -239,7 +215,7 @@ func (s *Session) Sync() FetchResult {
 				limit = acct.FirstSync()
 			}
 
-			msgs, info, err := c.FetchNew(lastUID, limit, s.UnreadOnly)
+			msgs, info, err := c.FetchNew(lastUID, limit)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -289,7 +265,7 @@ func (s *Session) Sync() FetchResult {
 }
 
 // LoadMore 往前再加载一批更早的邮件，追加到清单末尾。
-func (s *Session) LoadMore(unreadOnly bool) FetchResult {
+func (s *Session) LoadMore() FetchResult {
 	edge := map[string]time.Time{}
 	for _, it := range s.Items() {
 		acct := it.Msg.Account
@@ -303,7 +279,7 @@ func (s *Session) LoadMore(unreadOnly bool) FetchResult {
 		if !ok {
 			before = time.Now().AddDate(0, 0, -a.Days)
 		}
-		return c.FetchBefore(before, unreadOnly)
+		return c.FetchBefore(before)
 	})
 
 	s.mu.Lock()

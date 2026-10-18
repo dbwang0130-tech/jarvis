@@ -124,21 +124,12 @@ type SyncInfo struct {
 	Matched, Fetched int
 }
 
-// Fetch 拉取收件箱里最近 Days 天、最多 Limit 封邮件。
-// 全程用 PEEK，不会把邮件标记成已读。
-func (cl *Client) Fetch(unreadOnly bool) ([]*Message, error) {
-	msgs, _, err := cl.search(&imap.SearchCriteria{
-		Since: time.Now().AddDate(0, 0, -cl.Account.Days),
-	}, unreadOnly, cl.Account.Limit)
-	return msgs, err
-}
-
 // FetchBefore 拉取比 before 更早的最新一批，用来往前翻页。
 // 不受配置里 Days 的限制——往前翻本来就是要看窗口之外的信。
 // 注意 IMAP 的 BEFORE 只比较日期不比时间，同一天的邮件会再出现一次，
 // 由调用方按 UID 去重。
-func (cl *Client) FetchBefore(before time.Time, unreadOnly bool) ([]*Message, error) {
-	msgs, _, err := cl.search(&imap.SearchCriteria{Before: before}, unreadOnly, cl.Account.Limit)
+func (cl *Client) FetchBefore(before time.Time) ([]*Message, error) {
+	msgs, _, err := cl.search(&imap.SearchCriteria{Before: before}, cl.Account.Limit)
 	return msgs, err
 }
 
@@ -147,14 +138,14 @@ func (cl *Client) FetchBefore(before time.Time, unreadOnly bool) ([]*Message, er
 //
 // 用 UID 而不是时间划界：IMAP 的 SINCE 只比较日期不比时间，
 // 按时间增量会把上次同步当天的邮件重新拉一遍。
-func (cl *Client) FetchNew(sinceUID uint32, limit int, unreadOnly bool) ([]*Message, SyncInfo, error) {
+func (cl *Client) FetchNew(sinceUID uint32, limit int) ([]*Message, SyncInfo, error) {
 	criteria := &imap.SearchCriteria{}
 	if sinceUID > 0 {
 		var set imap.UIDSet
 		set.AddRange(imap.UID(sinceUID+1), 0) // Stop 为 0 即 *，没有上界
 		criteria.UID = []imap.UIDSet{set}
 	}
-	msgs, info, err := cl.search(criteria, unreadOnly, limit)
+	msgs, info, err := cl.search(criteria, limit)
 	if err != nil || sinceUID == 0 {
 		return msgs, info, err
 	}
@@ -181,8 +172,8 @@ func (cl *Client) FetchNew(sinceUID uint32, limit int, unreadOnly bool) ([]*Mess
 	return kept, info, nil
 }
 
-func (cl *Client) search(criteria *imap.SearchCriteria, unreadOnly bool, limit int) ([]*Message, SyncInfo, error) {
-	msgs, info, err := cl.fetchOnce(criteria, unreadOnly, limit)
+func (cl *Client) search(criteria *imap.SearchCriteria, limit int) ([]*Message, SyncInfo, error) {
+	msgs, info, err := cl.fetchOnce(criteria, limit)
 	if err == nil {
 		return msgs, info, nil
 	}
@@ -191,7 +182,7 @@ func (cl *Client) search(criteria *imap.SearchCriteria, unreadOnly bool, limit i
 		if rerr := cl.reconnect(); rerr != nil {
 			return nil, info, fmt.Errorf("连接已断开且重连失败: %w", rerr)
 		}
-		msgs, info, err = cl.fetchOnce(criteria, unreadOnly, limit)
+		msgs, info, err = cl.fetchOnce(criteria, limit)
 		if err == nil {
 			return msgs, info, nil
 		}
@@ -206,7 +197,7 @@ func (cl *Client) search(criteria *imap.SearchCriteria, unreadOnly bool, limit i
 	if rerr := cl.reconnect(); rerr != nil {
 		return nil, info, err // 重连都不行，报原来那个错更有用
 	}
-	return cl.fetchOnce(criteria, unreadOnly, limit)
+	return cl.fetchOnce(criteria, limit)
 }
 
 // reconnect 重建连接。解析失败会让 go-imap 关掉底层连接，只能重来。
@@ -223,7 +214,7 @@ func (cl *Client) reconnect() error {
 	return nil
 }
 
-func (cl *Client) fetchOnce(criteria *imap.SearchCriteria, unreadOnly bool, limit int) ([]*Message, SyncInfo, error) {
+func (cl *Client) fetchOnce(criteria *imap.SearchCriteria, limit int) ([]*Message, SyncInfo, error) {
 	var info SyncInfo
 
 	sel, err := cl.c.Select("INBOX", nil).Wait()
@@ -234,11 +225,6 @@ func (cl *Client) fetchOnce(criteria *imap.SearchCriteria, unreadOnly bool, limi
 		info.UIDValidity = sel.UIDValidity
 	}
 
-	if unreadOnly {
-		c := *criteria
-		c.NotFlag = []imap.Flag{imap.FlagSeen}
-		criteria = &c
-	}
 	res, err := cl.c.UIDSearch(criteria, nil).Wait()
 	if err != nil {
 		return nil, info, fmt.Errorf("搜索邮件失败: %w", err)

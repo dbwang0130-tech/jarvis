@@ -32,8 +32,6 @@ type Agent struct {
 	Temperature float64 `json:"temperature,omitempty"`
 	// MaxSteps 限制一次对话中最多执行多少轮工具调用。
 	MaxSteps int `json:"max_steps,omitempty"`
-	// AutoApprove 为真时秘书对日程的修改直接落盘（邮件动作仍受 Behavior 约束）。
-	AutoApprove bool `json:"auto_approve"`
 	// AutoCompact 为真时上下文接近上限会自动压缩成摘要，默认开启。
 	AutoCompact bool `json:"auto_compact"`
 	// ContextLimit 是**一次请求**的估算 token 预算：系统提示 + 工具声明 +
