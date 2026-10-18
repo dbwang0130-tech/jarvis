@@ -142,20 +142,6 @@ type vital struct {
 	// （血压就是收缩压 + 舒张压）。分开记两条的话，别的系统读进去
 	// 不知道这两个数是一次量的。
 	Parts []string
-	// Total 表示这个数是**一天累计出来的**（步数、睡眠时长），不是某一刻
-	// 量的读数。
-	//
-	// 这是关于这种体征的事实，不是界面口味：累计量画成柱子、瞬时量画成
-	// 折线，是因为「某天走了八千步」和「某刻体重 72.5」根本不是一类东西——
-	// 把累计量连成折线，等于在说两天之间的那些点也有意义。
-	Total bool
-	// Group 是归到哪一类，界面按它分区和配色（跟着「健康」App 的分法：
-	// 身体测量 / 心脏 / 活动 / 睡眠 / 呼吸 / 化验）。
-	//
-	// 跟 Cat 不是一回事：Cat 是 FHIR 的 observation-category，是给机器和
-	// 别的系统看的（就三档）；Group 是给人分区用的。两者都写在这张表里，
-	// 加一种体征仍然只改一行。
-	Group string
 	// Sub 表示它只作为别人的分项存在，自己不单独成一项，
 	// 所以不进展示顺序、不进提示词里那张「认得哪些」的清单。
 	Sub bool
@@ -164,25 +150,25 @@ type vital struct {
 // vitalList 是全部认得的体征，**顺序就是展示顺序**。
 //
 // 加一种体征就往这张表里加一行，别处一个字都不用动：提示词里的清单、
-// 界面上的卡片顺序、导入时导不导、要不要拆分项，全从这儿派生。
+// 导入时导不导、要不要拆分项，全从这儿派生。
 var vitalList = []vital{
-	{Name: "体重", Code: "29463-7", Display: "Body weight", Unit: "kg", UCUM: "kg", Cat: "vital-signs", Low: 2, High: 400, Group: "身体测量"},
-	{Name: "身高", Code: "8302-2", Display: "Body height", Unit: "cm", UCUM: "cm", Cat: "vital-signs", Low: 30, High: 260, Group: "身体测量"},
-	{Name: "BMI", Code: "39156-5", Display: "Body mass index (BMI) [Ratio]", Unit: "kg/m²", UCUM: "kg/m2", Cat: "vital-signs", Low: 5, High: 100, Derived: true, Group: "身体测量"},
-	{Name: "血压", Code: "85354-9", Display: "Blood pressure panel with all children optional", Unit: "mmHg", UCUM: "mm[Hg]", Cat: "vital-signs", Parts: []string{"收缩压", "舒张压"}, Group: "心脏"},
-	{Name: "静息心率", Code: "40443-4", Display: "Heart rate --resting", Unit: "次/分", UCUM: "/min", Cat: "vital-signs", Low: 20, High: 200, Group: "心脏"},
-	{Name: "心率", Code: "8867-4", Display: "Heart rate", Unit: "次/分", UCUM: "/min", Cat: "vital-signs", Low: 20, High: 250, Group: "心脏"},
-	{Name: "体温", Code: "8310-5", Display: "Body temperature", Unit: "℃", UCUM: "Cel", Cat: "vital-signs", Low: 30, High: 45, Group: "化验"},
-	{Name: "血氧", Code: "59408-5", Display: "Oxygen saturation in Arterial blood by Pulse oximetry", Unit: "%", UCUM: "%", Cat: "vital-signs", Low: 50, High: 100, Group: "呼吸"},
-	{Name: "呼吸", Code: "9279-1", Display: "Respiratory rate", Unit: "次/分", UCUM: "/min", Cat: "vital-signs", Low: 4, High: 80, Group: "呼吸"},
-	{Name: "血糖", Code: "15074-8", Display: "Glucose [Moles/volume] in Blood", Unit: "mmol/L", UCUM: "mmol/L", Cat: "laboratory", Low: 1, High: 40, Group: "化验"},
-	{Name: "腰围", Code: "56086-2", Display: "Waist Circumference", Unit: "cm", UCUM: "cm", Cat: "vital-signs", Low: 30, High: 250, Group: "身体测量"},
-	{Name: "步数", Code: "41950-7", Display: "Number of steps in 24 hour Measured", Unit: "步", UCUM: "{steps}", Cat: "activity", Low: 0, High: 200000, Group: "活动", Total: true},
-	{Name: "睡眠", Code: "93832-4", Display: "Sleep duration", Unit: "小时", UCUM: "h", Cat: "activity", Low: 0, High: 24, Group: "睡眠", Total: true},
+	{Name: "体重", Code: "29463-7", Display: "Body weight", Unit: "kg", UCUM: "kg", Cat: "vital-signs", Low: 2, High: 400},
+	{Name: "身高", Code: "8302-2", Display: "Body height", Unit: "cm", UCUM: "cm", Cat: "vital-signs", Low: 30, High: 260},
+	{Name: "BMI", Code: "39156-5", Display: "Body mass index (BMI) [Ratio]", Unit: "kg/m²", UCUM: "kg/m2", Cat: "vital-signs", Low: 5, High: 100, Derived: true},
+	{Name: "血压", Code: "85354-9", Display: "Blood pressure panel with all children optional", Unit: "mmHg", UCUM: "mm[Hg]", Cat: "vital-signs", Parts: []string{"收缩压", "舒张压"}},
+	{Name: "静息心率", Code: "40443-4", Display: "Heart rate --resting", Unit: "次/分", UCUM: "/min", Cat: "vital-signs", Low: 20, High: 200},
+	{Name: "心率", Code: "8867-4", Display: "Heart rate", Unit: "次/分", UCUM: "/min", Cat: "vital-signs", Low: 20, High: 250},
+	{Name: "体温", Code: "8310-5", Display: "Body temperature", Unit: "℃", UCUM: "Cel", Cat: "vital-signs", Low: 30, High: 45},
+	{Name: "血氧", Code: "59408-5", Display: "Oxygen saturation in Arterial blood by Pulse oximetry", Unit: "%", UCUM: "%", Cat: "vital-signs", Low: 50, High: 100},
+	{Name: "呼吸", Code: "9279-1", Display: "Respiratory rate", Unit: "次/分", UCUM: "/min", Cat: "vital-signs", Low: 4, High: 80},
+	{Name: "血糖", Code: "15074-8", Display: "Glucose [Moles/volume] in Blood", Unit: "mmol/L", UCUM: "mmol/L", Cat: "laboratory", Low: 1, High: 40},
+	{Name: "腰围", Code: "56086-2", Display: "Waist Circumference", Unit: "cm", UCUM: "cm", Cat: "vital-signs", Low: 30, High: 250},
+	{Name: "步数", Code: "41950-7", Display: "Number of steps in 24 hour Measured", Unit: "步", UCUM: "{steps}", Cat: "activity", Low: 0, High: 200000},
+	{Name: "睡眠", Code: "93832-4", Display: "Sleep duration", Unit: "小时", UCUM: "h", Cat: "activity", Low: 0, High: 24},
 
 	// 下面两条只作为血压的分项存在。
-	{Name: "收缩压", Code: "8480-6", Display: "Systolic blood pressure", Unit: "mmHg", UCUM: "mm[Hg]", Cat: "vital-signs", Low: 50, High: 300, Sub: true, Group: "心脏"},
-	{Name: "舒张压", Code: "8462-4", Display: "Diastolic blood pressure", Unit: "mmHg", UCUM: "mm[Hg]", Cat: "vital-signs", Low: 20, High: 200, Sub: true, Group: "心脏"},
+	{Name: "收缩压", Code: "8480-6", Display: "Systolic blood pressure", Unit: "mmHg", UCUM: "mm[Hg]", Cat: "vital-signs", Low: 50, High: 300, Sub: true},
+	{Name: "舒张压", Code: "8462-4", Display: "Diastolic blood pressure", Unit: "mmHg", UCUM: "mm[Hg]", Cat: "vital-signs", Low: 20, High: 200, Sub: true},
 }
 
 var (
