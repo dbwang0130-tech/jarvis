@@ -156,14 +156,14 @@ func (s *Skill) Tools() []agent.Tool {
 
 type tool struct {
 	spec     agent.ToolSpec
-	run      func(args string) (string, bool, error)
+	run      func(args string) (string, error)
 	readonly bool
 }
 
 func (t tool) Spec() agent.ToolSpec                   { return t.spec }
 func (t tool) Risk() agent.Risk                       { return agent.RiskNone }
 func (t tool) Preview(string) (string, string, error) { return "", "", nil }
-func (t tool) Run(args string) (string, bool, error)  { return t.run(args) }
+func (t tool) Run(args string) (string, error)        { return t.run(args) }
 func (t tool) ReadOnly() bool                         { return t.readonly }
 
 func (s *Skill) toolAddTransaction() agent.Tool {
@@ -182,7 +182,7 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 				}, "account"), "借贷条目，至少两条"),
 			}, "payee", "postings"),
 		},
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Date     string `json:"date"`
 				Payee    string `json:"payee"`
@@ -193,19 +193,19 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 				} `json:"postings"`
 			}
 			if err := json.Unmarshal([]byte(raw), &a); err != nil {
-				return "", false, err
+				return "", err
 			}
 			if strings.TrimSpace(a.Payee) == "" {
-				return "", false, fmt.Errorf("必须提供摘要 payee")
+				return "", fmt.Errorf("必须提供摘要 payee")
 			}
 			if len(a.Postings) < 2 {
-				return "", false, fmt.Errorf("复式记账至少需要两条 posting")
+				return "", fmt.Errorf("复式记账至少需要两条 posting")
 			}
 			date := s.now()
 			if strings.TrimSpace(a.Date) != "" {
 				d, err := parseDate(strings.TrimSpace(a.Date))
 				if err != nil {
-					return "", false, err
+					return "", err
 				}
 				date = d
 			}
@@ -214,7 +214,7 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 			for _, p := range a.Postings {
 				acc := strings.TrimSpace(p.Account)
 				if acc == "" {
-					return "", false, fmt.Errorf("posting 缺少 account")
+					return "", fmt.Errorf("posting 缺少 account")
 				}
 				post := Posting{Account: acc, Commodity: strings.TrimSpace(p.Commodity)}
 				if p.Amount != nil {
@@ -227,7 +227,7 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 				tx.Postings = append(tx.Postings, post)
 			}
 			if err := s.Book.Add(tx); err != nil {
-				return "", false, err
+				return "", err
 			}
 			// Add 收的是值，配平出来的那条金额只填在它自己那份上。
 			// 拿存进去的那笔来显示，否则自动配平的一条金额是 0。
@@ -276,7 +276,7 @@ func (s *Skill) toolAddTransaction() agent.Tool {
 					msg += fmt.Sprintf("\n  %s %.2f", name, bal[name])
 				}
 			}
-			return msg, false, nil
+			return msg, nil
 		},
 	}
 }
@@ -291,7 +291,7 @@ func (s *Skill) toolListAccounts() agent.Tool {
 			}),
 		},
 		readonly: true,
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Account string `json:"account"`
 			}
@@ -309,9 +309,9 @@ func (s *Skill) toolListAccounts() agent.Tool {
 				shown++
 			}
 			if shown == 0 {
-				return "没有符合条件的账户。\n", false, nil
+				return "没有符合条件的账户。\n", nil
 			}
-			return fmt.Sprintf("共 %d 个账户：\n%s", shown, b.String()), false, nil
+			return fmt.Sprintf("共 %d 个账户：\n%s", shown, b.String()), nil
 		},
 	}
 }
@@ -327,7 +327,7 @@ func (s *Skill) toolListTransactions() agent.Tool {
 			}),
 		},
 		readonly: true,
-		run: func(raw string) (string, bool, error) {
+		run: func(raw string) (string, error) {
 			var a struct {
 				Account string `json:"account"`
 				Limit   int    `json:"limit"`
@@ -360,9 +360,9 @@ func (s *Skill) toolListTransactions() agent.Tool {
 				}
 			}
 			if shown == 0 {
-				return "没有符合条件的交易。\n", false, nil
+				return "没有符合条件的交易。\n", nil
 			}
-			return fmt.Sprintf("最近 %d 笔：\n%s", shown, b.String()), false, nil
+			return fmt.Sprintf("最近 %d 笔：\n%s", shown, b.String()), nil
 		},
 	}
 }

@@ -32,8 +32,6 @@ const (
 	EventAuto
 	// EventPending 表示有一个动作在等用户确认。
 	EventPending
-	// EventDone 表示这一轮提问已经结束，Text 是最终答复，Err 是失败原因。
-	EventDone
 )
 
 // Event 是秘书工作过程中的一条进度信息。
@@ -44,8 +42,6 @@ type Event struct {
 	Text string
 	// Pending 仅 EventPending 使用，界面通过它回传是否批准。
 	Pending *Pending
-	// Err 仅 EventDone 使用，是这一轮提问的失败原因。
-	Err error
 
 	// 以下三项给需要逐个跟踪工具调用的宿主（ACP）用，终端界面只看上面几项。
 	//
@@ -449,7 +445,7 @@ func (a *Agent) executeParallel(emit func(Event), calls []ToolCall) {
 		go func(i int, c ToolCall) {
 			defer wg.Done()
 			t := a.lookupTool(c.Function.Name)
-			text, _, err := t.Run(c.Function.Arguments)
+			text, err := t.Run(c.Function.Arguments)
 			results[i] = res{content: text, err: err}
 		}(i, call)
 	}
@@ -500,14 +496,14 @@ func (a *Agent) executeCall(emit func(Event), call ToolCall) string {
 		}
 		p := &Pending{Tool: t.Spec().Name, Title: title, Detail: detail,
 			Risk: t.Risk(), Reply: make(chan bool, 1)}
-		p.run = func() (string, bool, error) { return t.Run(call.Function.Arguments) }
+		p.run = func() (string, error) { return t.Run(call.Function.Arguments) }
 		emit(Event{Kind: EventPending, Tool: p.Tool, Text: p.Title, Pending: p, ID: call.ID})
 		if !<-p.Reply {
 			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: "用户拒绝了这个操作",
 				ID: call.ID, Declined: true})
 			return "用户拒绝了这个操作，没有执行。请不要重试，改问他想怎么办。"
 		}
-		result, _, err := p.Do()
+		result, err := p.Do()
 		if err != nil {
 			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error(), ID: call.ID})
 			return "执行失败：" + err.Error()
@@ -524,7 +520,7 @@ func (a *Agent) executeCall(emit func(Event), call ToolCall) string {
 		}
 	}
 
-	result, _, err := t.Run(call.Function.Arguments)
+	result, err := t.Run(call.Function.Arguments)
 	if err != nil {
 		emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error(), ID: call.ID})
 		return "执行失败：" + err.Error()

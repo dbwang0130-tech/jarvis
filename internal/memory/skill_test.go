@@ -11,7 +11,7 @@ import (
 func remember(t *testing.T, s *Skill, note string) string {
 	t.Helper()
 	raw, _ := json.Marshal(map[string]any{"note": note})
-	out, _, err := s.Tools()[0].Run(string(raw))
+	out, err := s.Tools()[0].Run(string(raw))
 	if err != nil {
 		t.Fatalf("记不住：%v", err)
 	}
@@ -73,7 +73,7 @@ func TestNewOnMissingFile(t *testing.T) {
 func TestRememberRejectsEmpty(t *testing.T) {
 	s := New(filepath.Join(t.TempDir(), "memory.md"))
 	raw, _ := json.Marshal(map[string]any{"note": "   "})
-	if _, _, err := s.Tools()[0].Run(string(raw)); err == nil {
+	if _, err := s.Tools()[0].Run(string(raw)); err == nil {
 		t.Fatal("空备注该被挡下来")
 	}
 }

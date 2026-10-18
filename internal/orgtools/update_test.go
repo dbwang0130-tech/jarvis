@@ -78,7 +78,7 @@ func TestUpdateItemAppliesSeveralWithStateLast(t *testing.T) {
 func TestUpdateItemNeedsSomethingToDo(t *testing.T) {
 	ws, _ := newWS(t)
 
-	_, _, err := toolByName(t, ws, "update_item").
+	_, err := toolByName(t, ws, "update_item").
 		Run(`{"ref":"` + refTo(t, ws, "每周组会") + `"}`)
 	if err == nil {
 		t.Fatal("一项都没给，该报错")
@@ -89,7 +89,7 @@ func TestUpdateItemNeedsSomethingToDo(t *testing.T) {
 func TestMoveItemNeedsOneOfTwo(t *testing.T) {
 	ws, _ := newWS(t)
 
-	_, _, err := toolByName(t, ws, "move_item").
+	_, err := toolByName(t, ws, "move_item").
 		Run(`{"ref":"` + refTo(t, ws, "每周组会") + `"}`)
 	if err == nil {
 		t.Fatal("parent_ref 和 level_delta 都没给，该报错")
@@ -101,7 +101,7 @@ func TestMoveItemNeedsOneOfTwo(t *testing.T) {
 func TestMoveItemRejectsZeroDelta(t *testing.T) {
 	ws, _ := newWS(t)
 
-	_, _, err := toolByName(t, ws, "move_item").
+	_, err := toolByName(t, ws, "move_item").
 		Run(`{"ref":"` + refTo(t, ws, "每周组会") + `","level_delta":0}`)
 	if err == nil {
 		t.Fatal("level_delta 是 0，该报错")
@@ -113,7 +113,7 @@ func TestMoveItemRefusesToPromotePastTop(t *testing.T) {
 	ws, path := newWS(t)
 	before := readBack(t, path)
 
-	_, _, err := toolByName(t, ws, "move_item").
+	_, err := toolByName(t, ws, "move_item").
 		Run(`{"ref":"` + refTo(t, ws, "每周组会") + `","level_delta":-1}`)
 	if err == nil {
 		t.Fatal("顶层条目还能再升，该报错")

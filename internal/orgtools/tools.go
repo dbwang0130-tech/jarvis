@@ -23,14 +23,14 @@ var (
 // orgTool 是日程工具对 agent.Tool 的适配：只读、无风险、执行交给 execOrg。
 type orgTool struct {
 	spec     agent.ToolSpec
-	exec     func(args string) (string, bool, error)
+	exec     func(args string) (string, error)
 	readonly bool
 }
 
 func (t orgTool) Spec() agent.ToolSpec                   { return t.spec }
 func (t orgTool) Risk() agent.Risk                       { return agent.RiskNone }
 func (t orgTool) Preview(string) (string, string, error) { return "", "", nil }
-func (t orgTool) Run(args string) (string, bool, error)  { return t.exec(args) }
+func (t orgTool) Run(args string) (string, error)        { return t.exec(args) }
 func (t orgTool) ReadOnly() bool                         { return t.readonly }
 
 // wsToolDefs 返回日程工具的全部声明。
@@ -163,10 +163,10 @@ func wsToolDefs() []agent.ToolSpec {
 }
 
 // execOrg 执行日程工具，按名称分发。
-func (w *Workspace) execOrg(name, rawArgs string) (string, bool, error) {
+func (w *Workspace) execOrg(name, rawArgs string) (string, error) {
 	a, err := parseArgs(rawArgs)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 
 	switch name {
@@ -201,7 +201,7 @@ func (w *Workspace) execOrg(name, rawArgs string) (string, bool, error) {
 	case "move_item":
 		return w.moveOrShift(a)
 	}
-	return "", false, fmt.Errorf("未知工具 %q", name)
+	return "", fmt.Errorf("未知工具 %q", name)
 }
 
 func nonEmptyList(s string) []string {
@@ -211,12 +211,12 @@ func nonEmptyList(s string) []string {
 	return []string{s}
 }
 
-func (w *Workspace) listAgenda(startStr string, days int) (string, bool, error) {
+func (w *Workspace) listAgenda(startStr string, days int) (string, error) {
 	start := w.now()
 	if startStr != "" {
 		ts, err := parseTime(startStr, w.now())
 		if err != nil {
-			return "", false, err
+			return "", err
 		}
 		start = ts.Start
 	}
@@ -244,7 +244,7 @@ func (w *Workspace) listAgenda(startStr string, days int) (string, bool, error) 
 	if empty {
 		b.WriteString("\n这段时间没有任何安排。\n")
 	}
-	return b.String(), false, nil
+	return b.String(), nil
 }
 
 // formatItem 把一条 agenda 记录渲染成给模型看的一行。
@@ -286,10 +286,10 @@ func formatItem(it agenda.Item) string {
 	return strings.Join(parts, " ") + "  (" + strings.Join(meta, ", ") + ")"
 }
 
-func (w *Workspace) listTodos(f agenda.TodoFilter) (string, bool, error) {
+func (w *Workspace) listTodos(f agenda.TodoFilter) (string, error) {
 	items := agenda.Todos(w.Coll, f)
 	if len(items) == 0 {
-		return "没有符合条件的待办事项。\n", false, nil
+		return "没有符合条件的待办事项。\n", nil
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "共 %d 条待办：\n", len(items))
@@ -311,15 +311,15 @@ func (w *Workspace) listTodos(f agenda.TodoFilter) (string, bool, error) {
 		}
 		b.WriteString(line + "  (" + strings.Join(meta, ", ") + ")\n")
 	}
-	return b.String(), false, nil
+	return b.String(), nil
 }
 
-func (w *Workspace) findFree(dateStr string, minMinutes int) (string, bool, error) {
+func (w *Workspace) findFree(dateStr string, minMinutes int) (string, error) {
 	date := w.now()
 	if dateStr != "" {
 		ts, err := parseTime(dateStr, w.now())
 		if err != nil {
-			return "", false, err
+			return "", err
 		}
 		date = ts.Start
 	}
@@ -345,7 +345,7 @@ func (w *Workspace) findFree(dateStr string, minMinutes int) (string, bool, erro
 			fmt.Fprintf(&b, "  %s-%s %s\n", s.Start.Format("15:04"), s.End.Format("15:04"), s.Title)
 		}
 	}
-	return b.String(), false, nil
+	return b.String(), nil
 }
 
 func humanDuration(d time.Duration) string {
@@ -360,10 +360,10 @@ func humanDuration(d time.Duration) string {
 	}
 }
 
-func (w *Workspace) getItem(ref, title string) (string, bool, error) {
+func (w *Workspace) getItem(ref, title string) (string, error) {
 	doc, n, err := w.resolve(ref, title)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "标题: %s\n", n.Title)
@@ -396,7 +396,7 @@ func (w *Workspace) getItem(ref, title string) (string, bool, error) {
 			fmt.Fprintf(&b, "  - %s %s (ref=%s)\n", orDash(c.TODO), c.Title, refOf(doc, c))
 		}
 	}
-	return b.String(), false, nil
+	return b.String(), nil
 }
 
 func orDash(s string) string {
@@ -447,14 +447,14 @@ func nodeBody(doc *org.Document, n *org.Node) string {
 //
 // 全程只 snapshot 一次、save 一次。中间每改一步都要接住返回的新节点指针——
 // 写回会重新解析文档，之前那个指针就失效了。
-func (w *Workspace) updateItem(a args) (string, bool, error) {
+func (w *Workspace) updateItem(a args) (string, error) {
 	p := patchFrom(a)
 	if p.empty() {
-		return "", false, fmt.Errorf("没说要改什么：state / priority / scheduled / deadline / repeat 至少给一个")
+		return "", fmt.Errorf("没说要改什么：state / priority / scheduled / deadline / repeat 至少给一个")
 	}
 	doc, n, err := w.resolve(a.Str("ref"), a.Str("title"))
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	w.snapshot(doc)
 
@@ -463,7 +463,7 @@ func (w *Workspace) updateItem(a args) (string, bool, error) {
 	if p.Priority.ok {
 		prio, perr := checkPriority(p.Priority.v)
 		if perr != nil {
-			return "", false, perr
+			return "", perr
 		}
 		// 就地改字段再同步那一行，不必 Reparse：优先级只改标题行的内容、
 		// 不增减行数，n 本来就是 doc.Nodes 里的那个指针，已经是新值了。
@@ -486,7 +486,7 @@ func (w *Workspace) updateItem(a args) (string, bool, error) {
 		var ts *org.Timestamp
 		if f.val.v != "" {
 			if ts, err = parseTime(f.val.v, w.now()); err != nil {
-				return "", false, err
+				return "", err
 			}
 			old := n.Scheduled
 			if f.key == "DEADLINE" {
@@ -507,10 +507,10 @@ func (w *Workspace) updateItem(a args) (string, bool, error) {
 	if p.Repeat.ok {
 		r, rerr := org.ParseRepeat(p.Repeat.v)
 		if rerr != nil {
-			return "", false, rerr
+			return "", rerr
 		}
 		if n, err = doc.SetRepeat(n, "", r); err != nil {
-			return "", false, err
+			return "", err
 		}
 		if r == nil {
 			done = append(done, "不再循环")
@@ -524,7 +524,7 @@ func (w *Workspace) updateItem(a args) (string, bool, error) {
 	if p.State.ok {
 		old := n.TODO
 		if n, err = doc.SetTodo(n, strings.ToUpper(p.State.v)); err != nil {
-			return "", false, fmt.Errorf("%w（该文件可用状态：%s）", err, strings.Join(doc.AllKeywords(), "、"))
+			return "", fmt.Errorf("%w（该文件可用状态：%s）", err, strings.Join(doc.AllKeywords(), "、"))
 		}
 		// 重复任务标完成后，org 的做法是把状态退回原样、把计划推到下一个周期。
 		// 照字面说成「从 TODO 改为 TODO」，看着像没生效——模型也会原样转述给用户。
@@ -537,17 +537,17 @@ func (w *Workspace) updateItem(a args) (string, bool, error) {
 	}
 
 	if err := w.save(doc); err != nil {
-		return "", false, err
+		return "", err
 	}
 	summary := strings.Join(done, "、")
 	w.record(doc, "改「%s」：%s", n.Title, summary)
 	return fmt.Sprintf("已改「%s」：%s。（新引用 %s）",
-		n.Title, summary, refOf(doc, n)), true, nil
+		n.Title, summary, refOf(doc, n)), nil
 }
 
 // moveOrShift 把 move_item 的两种用法分开。二选一，都不给就说清楚——
 // 判据统一用「键在不在」，别一条按键、一条按值是不是零。
-func (w *Workspace) moveOrShift(a args) (string, bool, error) {
+func (w *Workspace) moveOrShift(a args) (string, error) {
 	ref, title := a.Str("ref"), a.Str("title")
 	switch {
 	case a.Has("parent_ref"):
@@ -555,22 +555,22 @@ func (w *Workspace) moveOrShift(a args) (string, bool, error) {
 	case a.Has("level_delta"):
 		return w.shiftLevel(ref, title, a.Int("level_delta", 0))
 	}
-	return "", false, fmt.Errorf("要么给 parent_ref（挂到某个父条目下，传空字符串移到顶层），" +
+	return "", fmt.Errorf("要么给 parent_ref（挂到某个父条目下，传空字符串移到顶层），" +
 		"要么给 level_delta（±1 升降级）")
 }
 
 // shiftLevel 把条目连同子树升降若干级：正数降级（缩得更深），负数升级。
 // 升级前先算够不够升——升到一半发现顶到天花板，内存里的文档已经改花了。
-func (w *Workspace) shiftLevel(ref, title string, delta int) (string, bool, error) {
+func (w *Workspace) shiftLevel(ref, title string, delta int) (string, error) {
 	doc, n, err := w.resolve(ref, title)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if delta == 0 {
-		return "", false, fmt.Errorf("level_delta 得是正数（降级）或负数（升级）")
+		return "", fmt.Errorf("level_delta 得是正数（降级）或负数（升级）")
 	}
 	if n.Level+delta < 1 {
-		return "", false, fmt.Errorf("「%s」在第 %d 级，升不了 %d 级", n.Title, n.Level, -delta)
+		return "", fmt.Errorf("「%s」在第 %d 级，升不了 %d 级", n.Title, n.Level, -delta)
 	}
 	w.snapshot(doc)
 
@@ -582,23 +582,23 @@ func (w *Workspace) shiftLevel(ref, title string, delta int) (string, bool, erro
 		n = step(n)
 	}
 	if err := w.save(doc); err != nil {
-		return "", false, err
+		return "", err
 	}
 	w.record(doc, "把「%s」%s了 %d 级", n.Title, dir, lv)
 	return fmt.Sprintf("已把「%s」%s了 %d 级（新引用 %s）。",
-		n.Title, dir, lv, refOf(doc, n)), true, nil
+		n.Title, dir, lv, refOf(doc, n)), nil
 }
 
-func (w *Workspace) deleteItem(ref, title string) (string, bool, error) {
+func (w *Workspace) deleteItem(ref, title string) (string, error) {
 	if strings.TrimSpace(title) == "" {
-		return "", false, fmt.Errorf("删除前必须提供 title，用来确认删的是哪一条")
+		return "", fmt.Errorf("删除前必须提供 title，用来确认删的是哪一条")
 	}
 	doc, n, err := w.resolve(ref, title)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if n.Title != title {
-		return "", false, fmt.Errorf("引用 %s 指向的是「%s」，和你给的标题「%s」对不上，请重新查询",
+		return "", fmt.Errorf("引用 %s 指向的是「%s」，和你给的标题「%s」对不上，请重新查询",
 			ref, n.Title, title)
 	}
 
@@ -606,7 +606,7 @@ func (w *Workspace) deleteItem(ref, title string) (string, bool, error) {
 	w.snapshot(doc)
 	doc.DeleteNode(n)
 	if err := w.save(doc); err != nil {
-		return "", false, err
+		return "", err
 	}
 	w.record(doc, "删除「%s」", title)
 
@@ -614,13 +614,13 @@ func (w *Workspace) deleteItem(ref, title string) (string, bool, error) {
 	if kids > 0 {
 		msg += fmt.Sprintf("及其 %d 个子条目", kids)
 	}
-	return msg + "。用户可以按 u 撤销。", true, nil
+	return msg + "。用户可以按 u 撤销。", nil
 }
 
-func (w *Workspace) createItem(a args) (string, bool, error) {
+func (w *Workspace) createItem(a args) (string, error) {
 	title := a.Str("title")
 	if title == "" {
-		return "", false, fmt.Errorf("必须提供标题")
+		return "", fmt.Errorf("必须提供标题")
 	}
 
 	// 给了父条目就跟着它走：子条目只能跟父亲待在同一个文件里，
@@ -630,18 +630,18 @@ func (w *Workspace) createItem(a args) (string, bool, error) {
 	if pref := a.Str("parent"); pref != "" {
 		var perr error
 		if doc, parent, perr = w.resolve(pref, ""); perr != nil {
-			return "", false, perr
+			return "", perr
 		}
 	} else {
 		target := a.Str("file")
 		doc = w.Coll.Doc(target)
 		if doc == nil && target != "" {
-			return "", false, fmt.Errorf("找不到文件 %s，可用文件：%s", target, strings.Join(w.fileNames(), "、"))
+			return "", fmt.Errorf("找不到文件 %s，可用文件：%s", target, strings.Join(w.fileNames(), "、"))
 		}
 		if doc == nil {
 			if doc = w.Coll.Doc(w.Cfg.InboxFile()); doc == nil {
 				if len(w.Coll.Docs) == 0 {
-					return "", false, fmt.Errorf("没有可写入的 org 文件")
+					return "", fmt.Errorf("没有可写入的 org 文件")
 				}
 				doc = w.Coll.Docs[0]
 			}
@@ -654,7 +654,7 @@ func (w *Workspace) createItem(a args) (string, bool, error) {
 	p := patchFrom(a)
 	prio, err := checkPriority(p.Priority.Or(""))
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	spec := org.NewNodeSpec{
 		Title: title,
@@ -667,18 +667,18 @@ func (w *Workspace) createItem(a args) (string, bool, error) {
 	}
 	if v := p.Scheduled.Or(""); v != "" {
 		if spec.Scheduled, err = parseTime(v, w.now()); err != nil {
-			return "", false, err
+			return "", err
 		}
 	}
 	if v := p.Deadline.Or(""); v != "" {
 		if spec.Deadline, err = parseTime(v, w.now()); err != nil {
-			return "", false, err
+			return "", err
 		}
 	}
 	if v := p.Repeat.Or(""); v != "" {
 		r, rerr := org.ParseRepeat(v)
 		if rerr != nil {
-			return "", false, rerr
+			return "", rerr
 		}
 		switch {
 		case spec.Scheduled != nil:
@@ -686,7 +686,7 @@ func (w *Workspace) createItem(a args) (string, bool, error) {
 		case spec.Deadline != nil:
 			spec.Deadline.Repeat = r
 		default:
-			return "", false, fmt.Errorf("要循环的条目得先有计划或截止时间")
+			return "", fmt.Errorf("要循环的条目得先有计划或截止时间")
 		}
 	}
 	if body := a.Str("body"); body != "" {
@@ -696,10 +696,10 @@ func (w *Workspace) createItem(a args) (string, bool, error) {
 	w.snapshot(doc)
 	n := doc.AddNode(spec)
 	if n == nil {
-		return "", false, fmt.Errorf("创建条目失败")
+		return "", fmt.Errorf("创建条目失败")
 	}
 	if err := w.save(doc); err != nil {
-		return "", false, err
+		return "", err
 	}
 	w.record(doc, "新建「%s」", title)
 
@@ -717,7 +717,7 @@ func (w *Workspace) createItem(a args) (string, bool, error) {
 	if len(extra) > 0 {
 		msg += "（" + strings.Join(extra, "，") + "）"
 	}
-	return msg + fmt.Sprintf("，引用 %s。", refOf(doc, n)), true, nil
+	return msg + fmt.Sprintf("，引用 %s。", refOf(doc, n)), nil
 }
 
 func (w *Workspace) fileNames() []string {
@@ -728,10 +728,10 @@ func (w *Workspace) fileNames() []string {
 	return out
 }
 
-func (w *Workspace) clockIn(ref, title string) (string, bool, error) {
+func (w *Workspace) clockIn(ref, title string) (string, error) {
 	doc, n, err := w.resolve(ref, title)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 
 	// 别的条目还在计时就先收掉。同时开着两个，统计出来的工时就是假的，
@@ -744,10 +744,10 @@ func (w *Workspace) clockIn(ref, title string) (string, bool, error) {
 	w.snapshot(doc)
 	n, err = doc.ClockIn(n, w.now())
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if err := w.save(doc); err != nil {
-		return "", false, err
+		return "", err
 	}
 	w.record(doc, "开始为「%s」计时", n.Title)
 
@@ -755,7 +755,7 @@ func (w *Workspace) clockIn(ref, title string) (string, bool, error) {
 	if len(closed) > 0 {
 		msg += fmt.Sprintf("（顺带停掉了还在计时的：%s）", strings.Join(closed, "、"))
 	}
-	return msg, true, nil
+	return msg, nil
 }
 
 // closeRunningClocks 把除 keep 之外所有还开着的计时收掉，返回它们的标题。
@@ -787,57 +787,57 @@ func (w *Workspace) closeRunningClocks(keep *org.Node) []string {
 	return closed
 }
 
-func (w *Workspace) clockOut(ref, title string) (string, bool, error) {
+func (w *Workspace) clockOut(ref, title string) (string, error) {
 	doc, n, err := w.resolve(ref, title)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	w.snapshot(doc)
 	n, err = doc.ClockOut(n, w.now())
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if err := w.save(doc); err != nil {
-		return "", false, err
+		return "", err
 	}
 	w.record(doc, "结束「%s」计时", n.Title)
-	return fmt.Sprintf("已结束「%s」计时，累计 %s。", n.Title, humanDuration(n.ClockedTotal())), true, nil
+	return fmt.Sprintf("已结束「%s」计时，累计 %s。", n.Title, humanDuration(n.ClockedTotal())), nil
 }
 
-func (w *Workspace) addNote(ref, title, text string) (string, bool, error) {
+func (w *Workspace) addNote(ref, title, text string) (string, error) {
 	if strings.TrimSpace(text) == "" {
-		return "", false, fmt.Errorf("笔记内容不能为空")
+		return "", fmt.Errorf("笔记内容不能为空")
 	}
 	doc, n, err := w.resolve(ref, title)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	w.snapshot(doc)
 	doc.AddNote(n, strings.TrimSpace(text), w.now())
 	if err := w.save(doc); err != nil {
-		return "", false, err
+		return "", err
 	}
 	w.record(doc, "为「%s」记了一条笔记", n.Title)
-	return fmt.Sprintf("已在「%s」的 LOGBOOK 里记下笔记。", n.Title), true, nil
+	return fmt.Sprintf("已在「%s」的 LOGBOOK 里记下笔记。", n.Title), nil
 }
 
 // toggleBox 勾上/取消正文里的第 index 个复选框（从 1 数起）。
 //
 // 对外从 1 数起是有意的：用户和模型说的是「第二项」，不是「下标 1」。
 // 转成下标这一下放在这里，org 那边照旧按 0 起。
-func (w *Workspace) toggleBox(ref, title string, index int) (string, bool, error) {
+func (w *Workspace) toggleBox(ref, title string, index int) (string, error) {
 	if index < 1 {
-		return "", false, fmt.Errorf("要说清是第几个复选框（从 1 数起）")
+		return "", fmt.Errorf("要说清是第几个复选框（从 1 数起）")
 	}
 	doc, n, err := w.resolve(ref, title)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if len(n.Boxes) == 0 {
-		return "", false, fmt.Errorf("「%s」正文里没有复选框", n.Title)
+		return "", fmt.Errorf("「%s」正文里没有复选框", n.Title)
 	}
 	if index > len(n.Boxes) {
-		return "", false, fmt.Errorf("「%s」只有 %d 个复选框，没有第 %d 个",
+		return "", fmt.Errorf("「%s」只有 %d 个复选框，没有第 %d 个",
 			n.Title, len(n.Boxes), index)
 	}
 	// 先把要报的话攒下来：Toggle 之后 n 会被重新解析，Boxes 也跟着换了。
@@ -845,10 +845,10 @@ func (w *Workspace) toggleBox(ref, title string, index int) (string, bool, error
 	w.snapshot(doc)
 	n, err = doc.ToggleCheckbox(n, index-1)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if err := w.save(doc); err != nil {
-		return "", false, err
+		return "", err
 	}
 	what := "勾上了"
 	if box.Done {
@@ -857,37 +857,37 @@ func (w *Workspace) toggleBox(ref, title string, index int) (string, bool, error
 	done, total := n.Progress()
 	w.record(doc, "%s「%s」的第 %d 项", what, n.Title, index)
 	return fmt.Sprintf("%s「%s」里的「%s」，现在 %d/%d。",
-		what, n.Title, strings.TrimSpace(box.Text), done, total), true, nil
+		what, n.Title, strings.TrimSpace(box.Text), done, total), nil
 }
 
-func (w *Workspace) moveItem(ref, title, parentRef string) (string, bool, error) {
+func (w *Workspace) moveItem(ref, title, parentRef string) (string, error) {
 	doc, n, err := w.resolve(ref, title)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	var parent *org.Node
 	if strings.TrimSpace(parentRef) != "" {
 		pdoc, pn, perr := w.resolve(parentRef, "")
 		if perr != nil {
-			return "", false, perr
+			return "", perr
 		}
 		if pdoc != doc {
-			return "", false, fmt.Errorf("暂不支持跨文件移动")
+			return "", fmt.Errorf("暂不支持跨文件移动")
 		}
 		parent = pn
 	}
 	w.snapshot(doc)
 	n, err = doc.MoveNode(n, parent)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if err := w.save(doc); err != nil {
-		return "", false, err
+		return "", err
 	}
 	where := "文件顶层"
 	if parent != nil {
 		where = "「" + parent.Title + "」下"
 	}
 	w.record(doc, "把「%s」移动到%s", n.Title, where)
-	return fmt.Sprintf("已把「%s」移动到%s（新引用 %s）。", n.Title, where, refOf(doc, n)), true, nil
+	return fmt.Sprintf("已把「%s」移动到%s（新引用 %s）。", n.Title, where, refOf(doc, n)), nil
 }

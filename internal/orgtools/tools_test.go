@@ -26,17 +26,17 @@ func toolByName(t *testing.T, ws *Workspace, name string) agent.Tool {
 }
 
 // run 调用工具并返回它说了什么。
-func run(t *testing.T, ws *Workspace, name string, args map[string]any) (string, bool) {
+func run(t *testing.T, ws *Workspace, name string, args map[string]any) string {
 	t.Helper()
 	raw, err := json.Marshal(args)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, changed, err := toolByName(t, ws, name).Run(string(raw))
+	out, err := toolByName(t, ws, name).Run(string(raw))
 	if err != nil {
 		t.Fatalf("%s 执行失败：%v", name, err)
 	}
-	return out, changed
+	return out
 }
 
 // refTo 找出某个标题的条目引用。
@@ -57,11 +57,9 @@ func TestSetTodoStateWritesBack(t *testing.T) {
 	ws, path := newWS(t)
 	ref := refTo(t, ws, "补开题报告")
 
-	if _, changed := run(t, ws, "update_item", map[string]any{
+	run(t, ws, "update_item", map[string]any{
 		"ref": ref, "title": "补开题报告", "state": "DONE",
-	}); !changed {
-		t.Fatal("改了状态却说没动过文件")
-	}
+	})
 
 	got := readBack(t, path)
 	if !strings.Contains(got, "** DONE 补开题报告") {
@@ -127,14 +125,11 @@ func TestSetPriority(t *testing.T) {
 func TestCreateItem(t *testing.T) {
 	ws, path := newWS(t)
 
-	out, changed := run(t, ws, "create_item", map[string]any{
+	out := run(t, ws, "create_item", map[string]any{
 		"title": "买菜", "state": "TODO", "priority": "C",
 		"scheduled": "2026-10-02 18:00", "tags": []string{"生活"},
 		"file": "test.org",
 	})
-	if !changed {
-		t.Fatal("新建条目却说没动过文件")
-	}
 	if !strings.Contains(out, "买菜") {
 		t.Fatalf("回话里该提到新建的条目：%q", out)
 	}
@@ -177,7 +172,7 @@ func TestDeleteItemChecksTitle(t *testing.T) {
 	ref := refTo(t, ws, "每周组会")
 
 	raw, _ := json.Marshal(map[string]any{"ref": ref, "title": "对不上的标题"})
-	_, _, err := toolByName(t, ws, "delete_item").Run(string(raw))
+	_, err := toolByName(t, ws, "delete_item").Run(string(raw))
 	if err == nil {
 		t.Fatal("标题对不上还是删了")
 	}
@@ -228,7 +223,7 @@ func TestStaleRefIsRejected(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{
 		"ref": "test.org:999", "title": "每周组会", "state": "DONE",
 	})
-	out, _, err := toolByName(t, ws, "update_item").Run(string(raw))
+	out, err := toolByName(t, ws, "update_item").Run(string(raw))
 	if err == nil && !strings.Contains(out, "每周组会") {
 		t.Fatalf("行号不存在时该报错或按标题纠正，得到：%q", out)
 	}

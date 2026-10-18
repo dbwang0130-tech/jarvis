@@ -271,7 +271,7 @@ func (p *Skill) Tools() []agent.Tool {
 	tools := make([]agent.Tool, 0, len(defs))
 	for _, d := range defs {
 		name := d.Name
-		tools = append(tools, orgTool{spec: d, readonly: orgReadOnly(name), exec: func(args string) (string, bool, error) {
+		tools = append(tools, orgTool{spec: d, readonly: orgReadOnly(name), exec: func(args string) (string, error) {
 			return ws.execOrg(name, args)
 		}})
 	}

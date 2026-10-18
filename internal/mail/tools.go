@@ -39,9 +39,9 @@ func (t *Tool) Preview(raw string) (string, string, error) {
 	}
 	return t.preview(t.sess, raw)
 }
-func (t *Tool) Run(raw string) (string, bool, error) {
+func (t *Tool) Run(raw string) (string, error) {
 	out, err := t.run(t.sess, raw)
-	return out, false, err
+	return out, err
 }
 
 func spec(name, desc string, params map[string]any) agent.ToolSpec {

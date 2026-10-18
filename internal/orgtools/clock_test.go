@@ -12,9 +12,7 @@ func TestClockInOut(t *testing.T) {
 	ws, path := newWS(t)
 	ref := refTo(t, ws, "写毕业论文")
 
-	if _, changed := run(t, ws, "clock_in", map[string]any{"ref": ref}); !changed {
-		t.Fatal("开始计时却说没动过文件")
-	}
+	run(t, ws, "clock_in", map[string]any{"ref": ref})
 	got := readBack(t, path)
 	if !strings.Contains(got, ":LOGBOOK:") || !strings.Contains(got, "CLOCK:") {
 		t.Fatalf("计时没写进 LOGBOOK：\n%s", got)
@@ -41,7 +39,7 @@ func TestClockInClosesOthers(t *testing.T) {
 	ws, path := readyClock(t)
 
 	second := refTo(t, ws, "每周组会")
-	msg, _ := run(t, ws, "clock_in", map[string]any{"ref": second})
+	msg := run(t, ws, "clock_in", map[string]any{"ref": second})
 
 	got := readBack(t, path)
 	if n := strings.Count(got, "CLOCK:"); n != 2 {
@@ -61,7 +59,7 @@ func TestClockInClosesOthers(t *testing.T) {
 func TestClockOutWithoutClockIn(t *testing.T) {
 	ws, _ := newWS(t)
 	ref := refTo(t, ws, "每周组会")
-	if _, _, err := toolByName(t, ws, "clock_out").
+	if _, err := toolByName(t, ws, "clock_out").
 		Run(`{"ref":"` + ref + `"}`); err == nil {
 		t.Error("没在计时却说停掉了")
 	}

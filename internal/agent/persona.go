@@ -69,14 +69,14 @@ func (t personaTool) Risk() Risk { return RiskNone }
 
 func (t personaTool) Preview(string) (string, string, error) { return "", "", nil }
 
-func (t personaTool) Run(raw string) (string, bool, error) {
+func (t personaTool) Run(raw string) (string, error) {
 	var a struct {
 		Text *string `json:"text"`
 	}
 	// 读那一路模型常常连 {} 都不给，空参数不算错。
 	if s := strings.TrimSpace(raw); s != "" && s != "{}" {
 		if err := json.Unmarshal([]byte(raw), &a); err != nil {
-			return "", false, err
+			return "", err
 		}
 	}
 
@@ -84,19 +84,19 @@ func (t personaTool) Run(raw string) (string, bool, error) {
 		// 读。说清是自定义的还是内置的——用户问「你的人设是什么」，
 		// 「这是内置的默认人设」和「这是你上次让我改的」不是一回事。
 		if strings.TrimSpace(t.a.Persona) == "" {
-			return "当前用的是内置人设：\n\n" + DefaultPersona, false, nil
+			return "当前用的是内置人设：\n\n" + DefaultPersona, nil
 		}
-		return "当前人设（自定义）：\n\n" + t.a.personaText(), false, nil
+		return "当前人设（自定义）：\n\n" + t.a.personaText(), nil
 	}
 
 	if t.a.SavePersona == nil {
-		return "", false, fmt.Errorf("这一端不支持改人设")
+		return "", fmt.Errorf("这一端不支持改人设")
 	}
 
 	old := t.a.personaText()
 	text := strings.TrimSpace(*a.Text)
 	if err := t.a.SavePersona(text); err != nil {
-		return "", false, err
+		return "", err
 	}
 	t.a.Persona = text
 
@@ -106,7 +106,7 @@ func (t personaTool) Run(raw string) (string, bool, error) {
 	// 前提——代价低到可以直接做。
 	if text == "" {
 		return "已清掉自定义人设，回到内置那套：\n\n" + DefaultPersona +
-			"\n换下来的是：\n\n" + old, false, nil
+			"\n换下来的是：\n\n" + old, nil
 	}
-	return "人设已更新为：\n\n" + text + "\n\n换下来的是：\n\n" + old, false, nil
+	return "人设已更新为：\n\n" + text + "\n\n换下来的是：\n\n" + old, nil
 }

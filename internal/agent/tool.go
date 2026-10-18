@@ -80,8 +80,8 @@ type Tool interface {
 	Risk() Risk
 	// Preview 在确认前生成给人看的标题和详情；RiskNone 的工具可返回空。
 	Preview(args string) (title, detail string, err error)
-	// Run 真正执行。changed 表示是否改动了本地文件（界面据此刷新）。
-	Run(args string) (result string, changed bool, err error)
+	// Run 真正执行。
+	Run(args string) (result string, err error)
 }
 
 // Pending 是一个等待用户确认的动作。
@@ -93,11 +93,11 @@ type Pending struct {
 	Risk Risk
 	// Reply 是界面回传是否批准的通道（缓冲 1，发送不阻塞）。
 	Reply chan bool
-	run   func() (string, bool, error)
+	run   func() (string, error)
 }
 
 // Do 在用户批准后执行该动作。
-func (p *Pending) Do() (string, bool, error) { return p.run() }
+func (p *Pending) Do() (string, error) { return p.run() }
 
 // ReadOnlyTool 是可选接口：实现它的工具表示只读、不修改共享状态，
 // 可以和其他只读工具并发执行。未实现的工具一律按「会改状态」串行处理。

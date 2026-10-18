@@ -208,7 +208,7 @@ func TestSaveReloadsAfterConflict(t *testing.T) {
 	}
 
 	// 这一次该被拒。
-	_, _, err := toolByName(t, ws, "update_item").
+	_, err := toolByName(t, ws, "update_item").
 		Run(`{"ref":"` + ref + `","state":"DONE"}`)
 	if err == nil {
 		t.Fatal("文件被改过了，不该直接覆盖")
@@ -223,7 +223,7 @@ func TestSaveReloadsAfterConflict(t *testing.T) {
 
 	// 重读之后重新查引用，这一次该成。
 	ref = refTo(t, ws, "补开题报告")
-	if _, _, err := toolByName(t, ws, "update_item").
+	if _, err := toolByName(t, ws, "update_item").
 		Run(`{"ref":"` + ref + `","state":"DONE"}`); err != nil {
 		t.Fatalf("重读之后该能改：%v", err)
 	}

@@ -67,22 +67,22 @@ func (t skillTool) Preview(string) (string, string, error) { return "", "", nil 
 // 一起拉回串行。
 func (t skillTool) ReadOnly() bool { return true }
 
-func (t skillTool) Run(raw string) (string, bool, error) {
+func (t skillTool) Run(raw string) (string, error) {
 	var a struct {
 		Name string `json:"name"`
 	}
 	if err := json.Unmarshal([]byte(raw), &a); err != nil {
-		return "", false, err
+		return "", err
 	}
 	want := strings.TrimSpace(a.Name)
 	if want == "" {
-		return "", false, fmt.Errorf("要读哪一份？name 不能为空")
+		return "", fmt.Errorf("要读哪一份？name 不能为空")
 	}
 	// 先精确后前缀，都不区分大小写：模型常把名字抄短一截或大小写记错，
 	// 为这个白费一个来回不值得。
 	for _, s := range t.a.Extra {
 		if strings.EqualFold(s.Name, want) {
-			return s.Body, false, nil
+			return s.Body, nil
 		}
 	}
 	var hit []ExtraSkill
@@ -92,7 +92,7 @@ func (t skillTool) Run(raw string) (string, bool, error) {
 		}
 	}
 	if len(hit) == 1 {
-		return hit[0].Body, false, nil
+		return hit[0].Body, nil
 	}
 	// 没找到就把有哪些一起说了，省一个来回。
 	names := make([]string, 0, len(t.a.Extra))
@@ -100,8 +100,8 @@ func (t skillTool) Run(raw string) (string, bool, error) {
 		names = append(names, s.Name)
 	}
 	if len(names) == 0 {
-		return "", false, fmt.Errorf("没有任何扩展技能")
+		return "", fmt.Errorf("没有任何扩展技能")
 	}
-	return "", false, fmt.Errorf("没有叫「%s」的技能。现有这些：%s",
+	return "", fmt.Errorf("没有叫「%s」的技能。现有这些：%s",
 		want, strings.Join(names, "、"))
 }

@@ -44,12 +44,9 @@ func newBoxWS(t *testing.T) (*Workspace, string) {
 func TestToggleCheckbox(t *testing.T) {
 	ws, path := newBoxWS(t)
 
-	msg, changed := run(t, ws, "toggle_checkbox", map[string]any{
+	msg := run(t, ws, "toggle_checkbox", map[string]any{
 		"ref": refTo(t, ws, "出门前检查"), "index": 2,
 	})
-	if !changed {
-		t.Fatal("勾了一项却说没动过文件")
-	}
 	if !strings.Contains(msg, "带钥匙") {
 		t.Fatalf("没说清勾的是哪一项：%s", msg)
 	}
@@ -77,7 +74,7 @@ func TestToggleCheckboxTwiceComesBack(t *testing.T) {
 	run(t, ws, "toggle_checkbox", map[string]any{
 		"ref": refTo(t, ws, "出门前检查"), "index": 1,
 	})
-	msg, _ := run(t, ws, "toggle_checkbox", map[string]any{
+	msg := run(t, ws, "toggle_checkbox", map[string]any{
 		"ref": refTo(t, ws, "出门前检查"), "index": 1,
 	})
 	if !strings.Contains(msg, "勾上了") {
@@ -109,7 +106,7 @@ func TestToggleCheckboxBadIndex(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, _, err = toolByName(t, ws, "toggle_checkbox").Run(string(raw))
+			_, err = toolByName(t, ws, "toggle_checkbox").Run(string(raw))
 			if err == nil {
 				t.Fatal("这种情况该报错")
 			}

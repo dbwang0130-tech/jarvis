@@ -75,10 +75,10 @@ func (t *fakeTool) ReadOnly() bool { return t.readOnly }
 func (t *fakeTool) Preview(string) (string, string, error) {
 	return "要对「" + t.name + "」动手了", "细节若干", nil
 }
-func (t *fakeTool) Run(string) (string, bool, error) {
+func (t *fakeTool) Run(string) (string, error) {
 	t.calls.Add(1)
 	time.Sleep(t.took)
-	return t.name + " 干完了", t.risk != RiskNone, nil
+	return t.name + " 干完了", nil
 }
 
 type fakeSkill struct{ tools []Tool }
