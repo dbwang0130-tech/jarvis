@@ -46,6 +46,20 @@ type Event struct {
 	Pending *Pending
 	// Err 仅 EventDone 使用，是这一轮提问的失败原因。
 	Err error
+
+	// 以下三项给需要逐个跟踪工具调用的宿主（ACP）用，终端界面只看上面几项。
+	//
+	// ID 是模型给的工具调用 id，EventToolCall / EventPending 和这次调用的收尾事件
+	// 都带它。**每个 EventToolCall 都恰好有一个带同一 ID 的收尾事件**：成功是
+	// EventToolResult，失败或被拒绝是 EventError——宿主靠它把卡片收掉，不必猜。
+	ID string
+	// Args 是 EventToolCall 的原始 JSON 参数（Text 只是压成一行的摘要）。
+	Args string
+	// Output 是 EventToolResult 的完整结果（Text 只有第一行）。
+	Output string
+	// Declined 标记 EventError 是用户拒绝了确认，不是执行出错。界面已经在
+	// 确认框里看到了自己的决定，不必再报一遍错。
+	Declined bool
 }
 
 // Agent 是核心工具调用循环，与具体业务解耦。
@@ -388,7 +402,7 @@ func (a *Agent) AskWith(ctx context.Context, input string, images []string,
 
 		for _, call := range reply.ToolCalls {
 			emit(Event{Kind: EventToolCall, Tool: call.Function.Name,
-				Text: describeCall(call)})
+				Text: describeCall(call), ID: call.ID, Args: call.Function.Arguments})
 		}
 		if a.canParallel(reply.ToolCalls) && len(reply.ToolCalls) > 1 {
 			a.executeParallel(emit, reply.ToolCalls)
@@ -444,11 +458,11 @@ func (a *Agent) executeParallel(emit func(Event), calls []ToolCall) {
 		r := results[i]
 		content := r.content
 		if r.err != nil {
-			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: r.err.Error()})
+			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: r.err.Error(), ID: call.ID})
 			content = "执行失败：" + r.err.Error()
-		} else if r.content != "" {
+		} else {
 			emit(Event{Kind: EventToolResult, Tool: call.Function.Name,
-				Text: firstLine(r.content)})
+				Text: firstLine(r.content), ID: call.ID, Output: r.content})
 		}
 		a.History = append(a.History, Message{
 			Role:       "tool",
@@ -474,29 +488,32 @@ func (a *Agent) executeCall(emit func(Event), call ToolCall) string {
 	t := a.lookupTool(call.Function.Name)
 	if t == nil {
 		msg := fmt.Sprintf("没有名为 %s 的工具", call.Function.Name)
-		emit(Event{Kind: EventError, Tool: call.Function.Name, Text: msg})
+		emit(Event{Kind: EventError, Tool: call.Function.Name, Text: msg, ID: call.ID})
 		return msg
 	}
 
 	if !a.Auto.Allows(t.Risk()) {
 		title, detail, err := t.Preview(call.Function.Arguments)
 		if err != nil {
-			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error()})
+			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error(), ID: call.ID})
 			return "执行失败：" + err.Error()
 		}
 		p := &Pending{Tool: t.Spec().Name, Title: title, Detail: detail,
 			Risk: t.Risk(), Reply: make(chan bool, 1)}
 		p.run = func() (string, bool, error) { return t.Run(call.Function.Arguments) }
-		emit(Event{Kind: EventPending, Tool: p.Tool, Text: p.Title, Pending: p})
+		emit(Event{Kind: EventPending, Tool: p.Tool, Text: p.Title, Pending: p, ID: call.ID})
 		if !<-p.Reply {
+			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: "用户拒绝了这个操作",
+				ID: call.ID, Declined: true})
 			return "用户拒绝了这个操作，没有执行。请不要重试，改问他想怎么办。"
 		}
 		result, _, err := p.Do()
 		if err != nil {
-			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error()})
+			emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error(), ID: call.ID})
 			return "执行失败：" + err.Error()
 		}
-		emit(Event{Kind: EventToolResult, Tool: call.Function.Name, Text: firstLine(result)})
+		emit(Event{Kind: EventToolResult, Tool: call.Function.Name, Text: firstLine(result),
+			ID: call.ID, Output: result})
 		return result
 	}
 
@@ -509,12 +526,11 @@ func (a *Agent) executeCall(emit func(Event), call ToolCall) string {
 
 	result, _, err := t.Run(call.Function.Arguments)
 	if err != nil {
-		emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error()})
+		emit(Event{Kind: EventError, Tool: call.Function.Name, Text: err.Error(), ID: call.ID})
 		return "执行失败：" + err.Error()
 	}
-	if result != "" {
-		emit(Event{Kind: EventToolResult, Tool: call.Function.Name, Text: firstLine(result)})
-	}
+	emit(Event{Kind: EventToolResult, Tool: call.Function.Name, Text: firstLine(result),
+		ID: call.ID, Output: result})
 	return result
 }
 

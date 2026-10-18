@@ -544,9 +544,15 @@ func (s *Session) emit(e agent.Event) {
 		msg(lvTool, "%s%s%s", bold, toolLabel(e.Tool), reset+dim+callArgs(e.Text)+reset)
 		scr.startSpin() // 又开始干活了，转圈接着转
 	case agent.EventToolResult:
-		msg(lvResult, "%s", e.Text)
+		// 结果为空也会发一条（给 ACP 收卡片用），终端上空行没意义。
+		if e.Text != "" {
+			msg(lvResult, "%s", e.Text)
+		}
 	case agent.EventError:
-		msg(lvError, "%s", e.Text)
+		// 拒绝是用户自己在确认框里点的，不当错误再报一遍。
+		if !e.Declined {
+			msg(lvError, "%s", e.Text)
+		}
 	case agent.EventAuto:
 		note("已自动执行：%s", e.Text)
 	case agent.EventCompact:
