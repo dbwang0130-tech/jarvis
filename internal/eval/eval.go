@@ -154,7 +154,7 @@ func Run(ctx context.Context, cfg config.Config, c Case, now time.Time) Result {
 		Ledger: ledger.NewSkill(ledgerPath),
 		Health: health.New(cfg.HealthFile),
 		Memory: memory.New(cfg.MemoryFile),
-		// 邮件和浏览器都要真连外部的东西，评测里一律不带。
+		// 邮件要真连外部的服务器，评测里不带。
 	})
 	ag, err := agent.Build(cfg, skills...)
 	if err != nil {

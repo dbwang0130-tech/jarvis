@@ -517,9 +517,7 @@ func (s *Session) Clean(nos []int) (done int, fails []string) {
 
 // CleanUIDs 按账号和 UID 直接把邮件移进垃圾箱，不要求它们在当前清单里。
 //
-// Clean 走的是清单编号，那套编号只对「这次拉下来的那批」有效。手机上
-// 邮件存在本地，用户看的是本地那份，里面的邮件多半早就不在当前会话里了——
-// 让他为了清一封信先去同步一次，是拿实现细节为难人。
+// Clean 把清单编号翻成账号和 UID 之后交给它。
 func (s *Session) CleanUIDs(account string, uids []imap.UID) error {
 	if len(uids) == 0 {
 		return nil
@@ -550,10 +548,3 @@ func (s *Session) CleanUIDs(account string, uids []imap.UID) error {
 	s.Remove(nos)
 	return nil
 }
-
-// 这里原来有个 Body(no)：按清单编号拉整封正文，read_mail 靠它。
-// 两个一起删了——正文只经过手机本地和邮件服务器，不经过模型，
-// 留着一个现成的「按编号取正文」摆在这儿，早晚有人把它接回工具表里。
-//
-// 界面要显示原文走的是另一条：邮件工具的 Mail(read) → RawUID
-// 给 Swift 渲染，全程不进模型的上下文。

@@ -14,8 +14,8 @@ import (
 
 // Store 是本地那份健康记录：一个 NDJSON 文件，一行一条 FHIR 资源。
 //
-// 只追加。跟账本一样，这个文件手机和电脑两头都在写，整文件重写就是在
-// 互相吃改动——一行一条，O_APPEND 写下去，两头同时写也只是交错，不会丢。
+// 只追加。跟账本一样，这个文件可能有几处同时在写（几台电脑、导入工具），整文件
+// 重写就是在互相吃改动——一行一条，O_APPEND 写下去，同时写也只是交错，不会丢。
 type Store struct {
 	Path      string
 	Resources []Resource
@@ -78,7 +78,7 @@ func Load(path string) (*Store, error) {
 //
 // 必须走这个口子，别直接摸 byCode：Store 有好几条不经过 scan 的出生路径
 // （文件不存在、没配路径、New 里读失败兜底的那份），它们的 byCode 是 nil，
-// 直接 append 进去就是空指针 panic——手机上崩一次就是整个 app 挂掉。
+// 直接 append 进去就是空指针 panic。
 func (s *Store) codes() map[string][]int {
 	if s.byCode == nil {
 		s.reindex()

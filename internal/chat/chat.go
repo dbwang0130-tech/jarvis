@@ -195,10 +195,10 @@ func (s *Session) buildAgent() (*agent.Agent, error) {
 	return ag, nil
 }
 
-// buildSkills 交出桌面端这一轮的技能清单。
+// buildSkills 交出这一轮的技能清单。
 //
-// 清单本身归 internal/skillset——那儿只有一份，其他客户端走的是同一个 Build。
-// 这边只负责说清桌面端手上有什么。
+// 清单本身归 internal/skillset——那儿只有一份，ACP 走的也是这里（见 acphost.go）。
+// 这边只负责说清手上有什么。
 func (s *Session) buildSkills() []agent.Skill {
 	return skillset.Build(skillset.Deps{
 		Org:    s.orgWS,
@@ -572,7 +572,7 @@ func (s *Session) emit(e agent.Event) {
 
 // toolLabel 把工具名翻成界面上显示的中文。
 //
-// 表在 agent 包里（只此一份，见 agent/label.go）——手机那头也要用，
+// 表在 agent 包里（只此一份，见 agent/label.go）——ACP 的工具卡片标题也用它，
 // 各写一份的结果是两边慢慢走散。
 func toolLabel(name string) string { return agent.ToolLabel(name) }
 

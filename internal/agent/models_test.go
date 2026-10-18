@@ -39,7 +39,7 @@ func modelsClient(tr *modelsTransport) *Client {
 }
 
 // 服务商报的那几项要如实带出来，**尤其是「认不认图片」**：它原先硬编码在
-// Presets 里，而厂商自己就说了。手机那端会拍照记账，选了纯文本模型，图发出去
+// Presets 里，而厂商自己就说了。ACP 客户端会发图记账，选了纯文本模型，图发出去
 // 石沉大海，是最难查的一类错。
 func TestModelsReadsVendorList(t *testing.T) {
 	tr := &modelsTransport{body: `{"data":[

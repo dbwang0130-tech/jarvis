@@ -23,7 +23,7 @@ type Preset struct {
 	KeyEnv  string
 	// NoTools 表示该模型不支持 function calling。
 	NoTools bool
-	// Vision 表示这个默认模型认得图片。其他客户端能发图、能拍照记账，
+	// Vision 表示这个默认模型认得图片。ACP 客户端能发图（拍小票记账），
 	// 发给纯文本模型不是报错就是装作没看见——后者尤其难查，所以这件事
 	// 要在切模型的时候就说清楚，别等用户拍完小票才发现白拍。
 	Vision bool
@@ -31,7 +31,7 @@ type Preset struct {
 	//
 	// **整个配置流程只有一个真门槛：密钥。** 而界面上原先只有一个空的密码框，
 	// 没有任何地方说它从哪儿来——第一次用的人卡在这儿，得自己去搜。这个地址
-	// 属于服务商表，跟 BaseURL 是同一类东西，所以放这儿而不是在 Swift 里另抄
+	// 属于服务商表，跟 BaseURL 是同一类东西，所以放这儿而不是在界面里另抄
 	// 一份（抄的那份不会跟着更新，服务商列表变了它就是错的）。
 	Console string
 }
@@ -44,7 +44,7 @@ type Preset struct {
 // 用户切过去只会得到一句看不懂的 400。所以默认模型一律挑**当前在产**
 // 的那个，宁可几个月更新一次，也别留个打不通的名字在这儿。
 //
-// 默认一律选**看得见图片**的那一档：其他客户端能发图、能拍照记账，而
+// 默认一律选**看得见图片**的那一档：ACP 客户端能发图、能拍照记账，而
 // 纯文本模型收到图片不是报错就是装作没看见，两种都难排查。
 var Presets = map[string]Preset{
 	"deepseek": {
@@ -146,9 +146,7 @@ type Message struct {
 	// 有图片时，**发给模型**的 content 要从一个字符串摊成「文本块 + 图片块」
 	// 的数组，这是 OpenAI 兼容接口对多模态的规定格式。那件事在 toWire 里做，
 	// 不做成 Message 的 MarshalJSON——方法是挂在类型上的，凡是序列化这个
-	// 类型的地方都会走它，而 History 还要原样交给 其他客户端 存档和回传。
-	// 早先就是这么写的，结果手机上发一张图必报「出参解不开」：Swift 那边
-	// content 声明的是 String，收到数组整个出参就解不动了。
+	// 类型的地方都会走它，而会话存档里 content 得一直是字符串（见 wireMessages）。
 	Images []string `json:"-"`
 }
 
@@ -166,13 +164,13 @@ type imageRef struct {
 // wireMessages 是发给模型的那串消息。
 //
 // **MarshalJSON 挂在这个切片类型上，不是挂在 Message 上。** 「发给模型的
-// 样子」和「存档回传的样子」是两件事：带图片的消息，发出去时 content 要摊成
+// 样子」和「存档的样子」是两件事：带图片的消息，发出去时 content 要摊成
 // 「文本块 + 图片块」的数组（OpenAI 兼容接口对多模态的规定格式），而同一条
-// 消息留在 History 里还要原样交给 其他客户端——Swift 那边 content 声明的是 String，
-// 收到数组整个出参就解不动了。
+// 消息存进会话文件时 content 得是字符串——`jarvis -c` 和 ACP 的 session/load
+// 都按字符串读。
 //
 // 早先图省事写成了 Message.MarshalJSON，方法挂在类型上，凡是序列化这个类型
-// 的地方都会走它，于是手机上发一张图必报「出参解不开」。
+// 的地方都会走它，存档就跟着变成了数组。
 type wireMessages []Message
 
 // modelMessage 是**发给模型**的那几个字段，照 OpenAI 的 wire 格式列全。

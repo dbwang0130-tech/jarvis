@@ -106,7 +106,7 @@ func TestLoadPartialJSONFallsBackClean(t *testing.T) {
 	}
 }
 
-// 记忆本来只在电脑上，放配置目录没问题；现在两端共用得放 iCloud。
+// 记忆以前放配置目录，现在跟日程一起放 iCloud。
 // 老用户升上来那份记忆还在旧地方，不搬的话秘书就把之前记住的全忘了。
 func TestMigrateMemory(t *testing.T) {
 	dir := t.TempDir()

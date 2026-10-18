@@ -84,10 +84,10 @@ type Agent struct {
 	// Profile 是用户的自述，交给模型判断什么算要紧。
 	Profile string
 	// Persona 是 Jarvis 自己的人设，空串表示用内置的 DefaultPersona。
-	// 它存在 iCloud 里，两端共用一份，由调用方读好了塞进来——agent
-	// 不碰文件，这跟它对业务零感知是同一条线。
+	// 它存在 iCloud 里，由调用方读好了塞进来——agent 不碰文件，这跟它
+	// 对业务零感知是同一条线。
 	Persona string
-	// SavePersona 落盘新人设，nil 表示这一端不让改（工具就不注入）。
+	// SavePersona 落盘新人设，nil 表示不让改（工具就不注入）。
 	// 见 SetPersona。
 	SavePersona func(text string) error
 	// Extra 是用户放在 skills/ 目录下的扩展技能，只有名字和用途常驻提示，
@@ -108,14 +108,13 @@ func NewAgent(c *Client, skills []Skill, maxSteps int, auto AutoLevel) *Agent {
 // flattenTools 把所有技能的工具按名字拍平，重名的后来者跳过。
 //
 // 原先它开头先塞两个内置工具 plan / step_done。那两个已经删了——`Agent.Plan`
-// 除了 plan.go 自己没有任何读点，界面、桥、其他客户端 一个都不读，也就是说它们喂的那个
-// 进度展示压根不存在。代价却是每轮 239 token 的声明、提示里一条规则，以及模型
+// 除了 plan.go 自己没有任何读点，也就是说它们喂的那个进度展示压根不存在。代价却是每轮 239 token 的声明、提示里一条规则，以及模型
 // 照做时一个三步任务要多四次完整往返（每次都带着整份提示和全部历史）。
 // 更糟的是 plan 返回给模型的那句「已展示给用户」是假话，而系统提示里写着
 // 「绝不说自己做了没做的事」。
 //
-// 干活的进度界面一直有：`EventToolCall` 那串事件（桌面端状态行、其他客户端 的
-// ThinkingRow「正在查日程（第 2 步）」），不需要模型再花一次调用去声明。
+// 干活的进度界面一直有：`EventToolCall` 那串事件（终端的状态行、ACP 的工具
+// 卡片），不需要模型再花一次调用去声明。
 func (a *Agent) flattenTools() []Tool {
 	var out []Tool
 	seen := map[string]bool{}
@@ -193,7 +192,7 @@ func (a *Agent) systemPrompt() string {
 	b.WriteString("\n")
 
 	// 说清楚这一轮手上有什么。不说的话，模型会照着「一个全能管家」去应承，
-	// 张口就是「我去看看邮件」——而手机上根本没带邮件这项能力。
+	// 张口就是「我去看看邮件」——而没配邮箱时根本没带邮件这项能力。
 	if names := a.skillNames(); len(names) > 0 {
 		fmt.Fprintf(&b, "这一轮你能用的能力：%s。\n", strings.Join(names, "、"))
 		b.WriteString("没列出来的事就是做不到，直说做不到，别应承也别绕。\n\n")
@@ -329,8 +328,8 @@ func (a *Agent) Ask(ctx context.Context, input string, emit func(Event)) (string
 //
 // **图片只跟当前这一轮走。** 它们挂在刚追加的那条用户消息上，随着对话
 // 往下走会留在 History 里——这是有意的：模型下一步调工具时可能还要回头
-// 看那张图（「把小票上的金额记下来」是两步）。但 Swift 那边不会把图片
-// 存进会话存档，所以下次启动 app 时它们不会跟着回来。
+// 看那张图（「把小票上的金额记下来」是两步）。但图片不进会话存档
+// （Images 是 `json:"-"`），所以恢复会话时它们不会跟着回来。
 func (a *Agent) AskWith(ctx context.Context, input string, images []string,
 	emit func(Event)) (string, error) {
 	if emit == nil {
@@ -349,7 +348,7 @@ func (a *Agent) AskWith(ctx context.Context, input string, images []string,
 	// 第二步看到的余额已经包含了第一步刚记的那笔——它自称的那句话就成了假话。
 	//
 	// 顺带省掉的活不小：每建一次要跑全部 Describe，账本余额是不带缓存的全账本
-	// 重算，健康那边 13 项体征各过一遍历史。手机上 MaxSteps 默认十几，一次
+	// 重算，健康那边 13 项体征各过一遍历史。MaxSteps 默认二十，一次
 	// 「记一笔顺手查一下」原先要重算十来遍。
 	//
 	// 系统提示同理：这一轮里它一个字都不会变（只随 SetSkills / SetPersona /

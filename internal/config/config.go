@@ -150,8 +150,7 @@ type Config struct {
 	// MailCheckTimes 是每天什么时候自动收一次信，形如 ["08:30", "12:00"]。
 	//
 	// 空着就不自动收。这件事只有装了后台提醒（launchd 每五分钟跑一次
-	// `jarvis remind`）才会发生——手机上办不到，其他客户端 不让 app 在后台按点
-	// 醒来连网。
+	// `jarvis remind`）才会发生。
 	//
 	// 为什么要能设好几个：收信这事的节奏因人而异，有人早上看一次就够，
 	// 有人上午下午各一次。定成固定间隔（比如「每两小时」）的话，半夜
@@ -162,8 +161,7 @@ type Config struct {
 // Default 返回默认配置。
 // ICloudDir 返回 iCloud Drive 里的 Jarvis 目录，没有 iCloud Drive 就返回空串。
 //
-// 这是 macOS 上 iCloud Drive 的固定位置。其他客户端那份由用户亲手选目录拿到
-// （沙箱不让猜），两边指的是同一个文件夹。
+// 这是 macOS 上 iCloud Drive 的固定位置。
 func ICloudDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -178,7 +176,7 @@ func ICloudDir() string {
 
 // Default 是没有配置文件时的那份配置。
 //
-// 有 iCloud Drive 就默认放在里面——日程、账本、记忆都该跟手机上是同一份，
+// 有 iCloud Drive 就默认放在里面——日程、账本、记忆在几台电脑上都该是同一份，
 // 这是默认值该有的样子，不该逼人先去设置一遍。没有就退回本地目录。
 func Default() Config {
 	c := defaultLocal()
@@ -391,25 +389,25 @@ func (c Config) icloudOr(override, name string) string {
 
 // MemoryPath 返回长期记忆文件的路径。
 //
-// 没配就跟着日程走——日程在 iCloud 里，记忆也该在，否则手机上那位秘书
-// 记不得电脑上这位刚记住的事。日程也没配才退回配置目录。
+// 没配就跟着日程走——日程在 iCloud 里，记忆也该在，否则另一台电脑上的秘书
+// 记不得这边刚记住的事。日程也没配才退回配置目录。
 func (c Config) MemoryPath() string { return c.icloudOr(c.MemoryFile, "memory.md") }
 
 // PersonaPath 返回人设文件的路径。
 //
-// 跟记忆同一个道理，也放 iCloud：人设是「秘书是谁」，手机上那位和电脑上
-// 这位必须是同一个人——两边各存一份的话，用户在手机上说「以后别叫我先生」，
-// 回到电脑上它照旧叫，而这种不一致看起来像模型记性差，不像配置问题。
+// 跟记忆同一个道理，也放 iCloud：人设是「秘书是谁」，每台电脑上的必须是
+// 同一个人——各存一份的话，用户在这边说「以后别叫我先生」，换台电脑它照旧叫，
+// 而这种不一致看起来像模型记性差，不像配置问题。
 func (c Config) PersonaPath() string { return c.icloudOr(c.PersonaFile, "persona.md") }
 
 // SkillsPath 返回扩展技能目录。
 //
-// 跟人设、记忆同一个地方：用户在手机上放进去的技能，电脑上这位也该会。
+// 跟人设、记忆同一个地方：在一台电脑上放进去的技能，别处的秘书也该会。
 func (c Config) SkillsPath() string { return c.icloudOr(c.SkillsDir, "skills") }
 
 // MigrateMemory 把老位置（配置目录）的记忆挪到现在该在的地方。
 //
-// 记忆本来只在电脑上，放配置目录没问题；现在两端共用，得放 iCloud。
+// 记忆以前放配置目录，现在跟日程一起放 iCloud（见 MemoryPath）。
 // 老用户升上来时那份记忆还在旧地方，不搬的话秘书就把之前记住的全忘了。
 //
 // **复制，不删原件**：原件留着当备份，出岔子还能翻回去。

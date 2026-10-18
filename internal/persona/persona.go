@@ -1,9 +1,7 @@
-// Package persona 读写 Jarvis 的人设文件。
+// Package persona 读写 Jarvis 的人设文件（默认在 iCloud 里的 persona.md）。
 //
-// 单独成一个包是因为**两端都要用同一份读写规则**：桌面端直接读 iCloud 里的
-// persona.md，所有文件读写统一由桌面端宿主负责
-// 的话，「空文件算不算清空」「要不要 TrimSpace」这类判据迟早在两边走散，
-// 而表现出来是「手机上改了人设，电脑上没生效」，看着像同步问题。
+// agent 不碰文件，人设由调用方读好了交进去、改了经 SavePersona 写回来；
+// 「空文件算不算清空」「要不要 TrimSpace」这类判据集中在这里。
 package persona
 
 import (

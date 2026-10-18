@@ -3,7 +3,7 @@
 // 存的是 HL7 FHIR（R5）资源，一行一条，也就是 FHIR Bulk Data 规定的
 // NDJSON 格式。选它有三个理由：
 //
-//   - **只追加**。跟账本一个路子——手机和电脑两头都在写同一个文件，
+//   - **只追加**。跟账本一个路子——同一个文件可能有几处同时在写，
 //     整文件重写就是在互相吃改动。一行一条，写的时候 O_APPEND 就完事。
 //   - **每一行单独拿出来都是合法的 FHIR 资源**。哪天要导给医院、导进
 //     Apple 健康、或者拿别的 FHIR 工具看，不需要我们写转换器。
@@ -214,13 +214,11 @@ var ErrOutOfRange = errors.New("这个数不像是真的")
 
 // NewVital 是**造一条体征记录的唯一入口**。
 //
-// 手记（record_vital）和从「健康」导入（toResource）两条路原先各写了一遍
-// 「查表 → 是不是血压 → 分别校验范围 → 选 panel 还是单值」，于是两边的
-// 判断已经开始不一样了。加第三条录入路径（Shortcuts、CSV、桌面端命令）
-// 还得再抄一遍。
+// 「查表 → 是不是血压 → 分别校验范围 → 选 panel 还是单值」只在这里写一遍。
+// 以后加别的录入路径（导入、Shortcuts、CSV）也走它，各抄一份的话判断迟早走散。
 //
-// 两条路真正不同的只有**拿到错误怎么办**：导入是丢掉，手记是报给模型让它
-// 跟用户确认。所以错误分了类型，策略留在调用方。
+// 不同的录入路径真正不同的只有**拿到错误怎么办**：导入多半是丢掉，手记
+// （record_vital）是报给模型让它跟用户确认。所以错误分了类型，策略留在调用方。
 func NewVital(kind string, v1, v2 float64, at time.Time, note string) (Resource, error) {
 	v, ok := vitals[strings.TrimSpace(kind)]
 	if !ok {
@@ -403,9 +401,9 @@ func (r Resource) label() string {
 
 // valueText 是这条记录的值，带单位，不带项目名。
 //
-// 摘要卡片上「体重」和「72.5kg」是分开两栏的，原先是拿 label() 拼好再把
+// 【当下】表里「体重」和「72.5kg」是分开两栏的。别拿 label() 拼好再把
 // 「体重 」这个前缀剪回去——从自己刚格式化出来的字符串里反解，改一下
-// label() 的排版就会静默把手机上的数字弄坏。
+// label() 的排版就会静默把数字弄坏。
 func (r Resource) valueText() string {
 	n, u := r.numberText(), r.unitText()
 	if n == "" {

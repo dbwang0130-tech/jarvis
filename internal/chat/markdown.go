@@ -343,8 +343,8 @@ func inlineMD(s string) string {
 	s = mdStrike.ReplaceAllString(s, dim+"$1"+reset)
 	s = mdLink.ReplaceAllStringFunc(s, func(m string) string {
 		p := mdLink.FindStringSubmatch(m)
-		// jarvis:// 是给手机界面用的内部链接（jarvis://item/<ref>、
-		// jarvis://mail/<编号>）：那边点一下会展开详情卡片。桌面上没有这个
+		// jarvis:// 是以前手机界面用的内部链接（jarvis://item/<ref>、
+		// jarvis://mail/<编号>），旧会话里还有，模型也可能照着学。终端没有这个
 		// scheme 的处理程序，发成 OSC 8 就是一个点了没反应的链接，有些终端
 		// 还会把这串地址显示在状态栏上。只留下划线——它在这儿的作用就剩
 		// 「这几个字指的是一条具体的东西」。
