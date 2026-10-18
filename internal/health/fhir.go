@@ -350,15 +350,15 @@ func (r Resource) hasCode(code string) bool {
 func (r Resource) isPanel() bool { return len(r.Component) == 2 }
 
 // when 是这条记录说的那个时刻。
-// StatusVoided 是 FHIR 里「这条记错了」的状态。
+// statusVoided 是 FHIR 里「这条记错了」的状态。
 //
 // 记错的记录**不删**：医疗记录跟账本一样不改历史，那条仍留在文件里，
 // 只是读的人要当它不存在。FHIR 为此专门留了这个状态，不是这个项目
 // 自己发明的约定——别的工具写进来的也认得。
-const StatusVoided = "entered-in-error"
+const statusVoided = "entered-in-error"
 
 // voided 报告这条是不是被标成了「录错了」。
-func (r Resource) voided() bool { return r.Status == StatusVoided }
+func (r Resource) voided() bool { return r.Status == statusVoided }
 
 func (r Resource) when() time.Time {
 	if !r.at.IsZero() {

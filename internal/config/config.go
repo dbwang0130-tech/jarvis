@@ -93,13 +93,9 @@ type MailAccount struct {
 	Port        int    `json:"port"`
 	User        string `json:"user"`
 	PasswordCmd string `json:"password_cmd,omitempty"`
-	// Password 是直接给定的密码，只有 其他客户端会用——那边没有 macOS 钥匙串，
-	// 密码存在 其他客户端 自己的钥匙串里，由界面取出来传进来。
-	// `json:"-"` 保证它永远不会被写进配置文件。
-	Password string `json:"-"`
-	Junk     string `json:"junk,omitempty"`  // 垃圾箱路径；留空则按 \Junk 标记自动探测
-	Limit    int    `json:"limit,omitempty"` // 单次最多拉取多少封
-	Days     int    `json:"days,omitempty"`  // 只看最近几天
+	Junk        string `json:"junk,omitempty"`  // 垃圾箱路径；留空则按 \Junk 标记自动探测
+	Limit       int    `json:"limit,omitempty"` // 单次最多拉取多少封
+	Days        int    `json:"days,omitempty"`  // 只看最近几天
 	// FirstSyncLimit 是首次同步（没有进度记录时）最多拉多少封，0 表示不限。
 	FirstSyncLimit *int `json:"first_sync_limit,omitempty"`
 	Disabled       bool `json:"disabled,omitempty"`
@@ -223,24 +219,8 @@ func defaultLocal() Config {
 	}
 }
 
-// dirOverride 是程序内部指定的配置目录。
-//
-// 不借 JARVIS_CONFIG 环境变量传这个值：那是留给用户覆盖的入口，程序自己
-// 拿它当参数通道，会跟用户设的那份撞上，也让「这个值是谁设的」查不清楚。
-var dirOverride string
-
-// SetDir 指定配置目录。给那些默认路径不可用的宿主用——其他客户端 上 ~ 是应用
-// 容器根目录，不可写，`~/.config` 一建就是 operation not permitted。
-//
-// 要在读写任何配置之前调。
-func SetDir(dir string) { dirOverride = dir }
-
-// Path 返回配置文件路径：SetDir 指定的目录 > $JARVIS_CONFIG >
-// ~/.config/jarvis/config.json。
+// Path 返回配置文件路径：$JARVIS_CONFIG > ~/.config/jarvis/config.json。
 func Path() string {
-	if dirOverride != "" {
-		return filepath.Join(dirOverride, "config.json")
-	}
 	if p := os.Getenv("JARVIS_CONFIG"); p != "" {
 		return Expand(p)
 	}
@@ -508,11 +488,8 @@ func (a MailAccount) FirstSync() int {
 	return *a.FirstSyncLimit
 }
 
-// Secret 按优先级取邮箱密码：直接给定 > password_cmd > macOS 钥匙串。
+// Secret 按优先级取邮箱密码：password_cmd > macOS 钥匙串。
 func (a MailAccount) Secret() (string, error) {
-	if a.Password != "" {
-		return a.Password, nil
-	}
 	if a.PasswordCmd != "" {
 		return RunCmd(a.PasswordCmd)
 	}

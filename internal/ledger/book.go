@@ -65,14 +65,6 @@ var (
 )
 
 // Load 读取账本；文件不存在时自动创建，返回空账本。
-// ParseBook 从文本解析账本，不碰文件系统。
-// 其他客户端 那边文件要经沙箱协调读写，Go 这头只当纯函数用。
-func ParseBook(text string) *Book {
-	b := &Book{}
-	b.parse(text)
-	return b
-}
-
 func Load(path string) (*Book, error) {
 	b := &Book{Path: path}
 	if path == "" {

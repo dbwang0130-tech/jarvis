@@ -91,7 +91,7 @@ func TestTransactionNoteRoundTrip(t *testing.T) {
 		t.Fatalf("注释没写出去：\n%s", text)
 	}
 
-	again := ParseBook(text)
+	again := parseBook(text)
 	if len(again.Transactions) != 1 {
 		t.Fatalf("解析出 %d 笔：\n%s", len(again.Transactions), text)
 	}
@@ -116,7 +116,7 @@ func TestTransactionNoteRoundTrip(t *testing.T) {
 
 // 顶格的注释是文件级的，别挂到交易上。
 func TestFileLevelCommentNotAttached(t *testing.T) {
-	b := ParseBook(`; 我的账本
+	b := parseBook(`; 我的账本
 2026-09-19 * 午饭
     Expenses:餐饮   35.00 CNY
     Assets:招行
@@ -127,4 +127,11 @@ func TestFileLevelCommentNotAttached(t *testing.T) {
 	if b.Transactions[0].Note != "" {
 		t.Errorf("把文件头的注释挂到交易上了：%q", b.Transactions[0].Note)
 	}
+}
+
+// parseBook 从文本解析账本，不碰文件系统。
+func parseBook(text string) *Book {
+	b := &Book{}
+	b.parse(text)
+	return b
 }

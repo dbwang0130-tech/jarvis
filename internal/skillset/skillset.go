@@ -62,12 +62,3 @@ func Build(d Deps) []agent.Skill {
 	add(d.Memory, d.Memory != nil)
 	return out
 }
-
-// Names 交出清单里各技能的名字，供界面和文档用——别再手抄一份。
-func Names(skills []agent.Skill) []string {
-	out := make([]string, 0, len(skills))
-	for _, s := range skills {
-		out = append(out, s.Name())
-	}
-	return out
-}

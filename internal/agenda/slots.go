@@ -26,9 +26,6 @@ type WorkHours struct {
 	StartHour, EndHour int
 }
 
-// DefaultWorkHours 是默认的可安排时段：09:00-22:00。
-func DefaultWorkHours() WorkHours { return WorkHours{StartHour: 9, EndHour: 22} }
-
 func (w WorkHours) bounds(date time.Time) (time.Time, time.Time) {
 	d := dayOf(date)
 	return d.Add(time.Duration(w.StartHour) * time.Hour),

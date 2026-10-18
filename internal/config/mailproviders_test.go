@@ -72,7 +72,7 @@ func TestLookupRejectsNonAddress(t *testing.T) {
 // 而写表的人多半以为是后写的那条生效），端口不许是 0。
 func TestProviderTableIsSane(t *testing.T) {
 	seen := map[string]string{}
-	for _, p := range MailProviders() {
+	for _, p := range mailProviders {
 		if p.Host == "" || p.Port == 0 {
 			t.Errorf("%s 没写全：%+v", p.Name, p)
 		}
