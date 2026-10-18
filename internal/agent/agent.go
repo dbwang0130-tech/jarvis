@@ -543,6 +543,9 @@ func (a *Agent) lookupTool(name string) Tool {
 	return nil
 }
 
+// DescribeCall 把工具参数压成一行，给要自己回放历史的宿主（ACP）用。
+func DescribeCall(call ToolCall) string { return describeCall(call) }
+
 // describeCall 把工具参数压成一行。
 func describeCall(call ToolCall) string {
 	var args map[string]any

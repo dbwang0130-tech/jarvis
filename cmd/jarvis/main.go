@@ -15,7 +15,19 @@ import (
 	"github.com/dabao/jarvis/internal/remind"
 )
 
+// version 是发布时的版本号，ACP 握手时报给客户端（UULink 据此判断兼容）。
+// 改了 ACP 的行为就涨一下。
+var version = "0.1.0"
+
 func main() {
+	// 子命令：jarvis acp 经 stdio 跑 Agent Client Protocol，供 UULink、Zed 等客户端驱动。
+	if len(os.Args) > 1 && os.Args[1] == "acp" {
+		if err := chat.RunACP(version); err != nil {
+			fmt.Fprintln(os.Stderr, "jarvis acp: "+err.Error())
+			os.Exit(1)
+		}
+		return
+	}
 	// 子命令：jarvis remind 由 launchd 定时调用，检查一次日程提醒后退出。
 	if len(os.Args) > 1 && os.Args[1] == "remind" {
 		if err := runRemind(); err != nil {
@@ -26,8 +38,13 @@ func main() {
 	}
 
 	cont := flag.Bool("c", false, "继续上次的会话")
+	showVersion := flag.Bool("version", false, "显示版本号")
 	flag.Usage = usage
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("jarvis " + version)
+		return
+	}
 	if err := chat.Run(*cont); err != nil {
 		fmt.Fprintln(os.Stderr, "jarvis: "+err.Error())
 		os.Exit(1)
@@ -41,6 +58,8 @@ func usage() {
   jarvis         开一个全新会话
   jarvis -c      继续上次的会话
   jarvis remind  检查一次日程提醒（供 launchd 定时调用）
+  jarvis acp     经 stdio 提供 ACP（Agent Client Protocol），供 UULink、Zed 等客户端驱动
+  jarvis --version
 
 进去之后：直接说话，滚轮或 PageUp/PageDown 往回翻历史，
 tab 补全 / 命令，/help 看全部命令。
