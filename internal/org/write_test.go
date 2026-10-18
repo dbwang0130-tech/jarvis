@@ -578,3 +578,24 @@ CLOCK: [2026-09-14 Mon 16:00]--[2026-09-14 Mon 16:30] =>  0:30
 		t.Errorf("子树计时合计 = %v", got)
 	}
 }
+
+func TestRefreshCookiesFollowsSubtasks(t *testing.T) {
+	// 「别的」那行的标记本来就对，标签前的空格也是手排的——重算时不该碰它。
+	const other = "* 别的 [1/1]        :生活:"
+	d := Parse("* TODO 项目 [0/2]\n** TODO 甲\n** TODO 乙\n" + other + "\n- [X] 已办\n")
+	if _, err := d.SetTodo(mustNode(t, d, "甲"), "DONE"); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.RefreshCookies(); got != 1 {
+		t.Errorf("该只改父条目那一处，实际 %d 处", got)
+	}
+	if n := mustNode(t, d, "项目"); n.Cookie != "[1/2]" {
+		t.Errorf("子任务完成后 cookie = %q", n.Cookie)
+	}
+	if line := d.Lines[mustNode(t, d, "别的").Line]; line != other {
+		t.Errorf("没过时的那行被动了：%q", line)
+	}
+	if d.RefreshCookies() != 0 {
+		t.Error("重算第二遍不该再有改动")
+	}
+}

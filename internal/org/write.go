@@ -501,17 +501,40 @@ func (n *Node) updateCookie() {
 	if n.Cookie == "" {
 		return
 	}
+	n.Cookie = n.freshCookie()
+	n.Doc.Lines[n.Line] = n.String()
+}
+
+// freshCookie 是按当前进度该写成的标记，形式（[n/m] 还是 [p%]）跟原来那个一样。
+func (n *Node) freshCookie() string {
 	done, total := n.Progress()
 	if strings.HasSuffix(n.Cookie, "%]") {
 		pct := 0
 		if total > 0 {
 			pct = done * 100 / total
 		}
-		n.Cookie = fmt.Sprintf("[%d%%]", pct)
-	} else {
-		n.Cookie = fmt.Sprintf("[%d/%d]", done, total)
+		return fmt.Sprintf("[%d%%]", pct)
 	}
-	n.Doc.Lines[n.Line] = n.String()
+	return fmt.Sprintf("[%d/%d]", done, total)
+}
+
+// RefreshCookies 把文档里过时的进度标记按当前的子任务和复选框重算，返回改了几处。
+//
+// 子任务的状态、增删、挪位置都会让父条目上的 [n/m] 过时，一个个工具各自去补
+// 迟早漏一处（原先 update_item 把子任务标成 DONE 就没人管父条目），所以统一在
+// 写盘前过一遍。只改标记确实变了的那几行——标记没变的标题行重新渲染一遍可能
+// 动到别的排版（标签对齐之类），不碰。标记只在标题行内变，行号不动，手里的
+// 节点指针照样能用。
+func (d *Document) RefreshCookies() int {
+	changed := 0
+	for _, n := range d.Nodes {
+		if n.Cookie == "" || n.freshCookie() == n.Cookie {
+			continue
+		}
+		n.updateCookie()
+		changed++
+	}
+	return changed
 }
 
 // DeleteNode 删除节点及其整个子树，返回被删掉的行数。
