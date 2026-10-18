@@ -6,6 +6,8 @@ Jarvis 是一个运行在终端里的个人助理。你用自然语言交代事�
 
 > 项目目前处于早期阶段。数据格式、配置项和工具行为仍可能变化，重要数据请先做好备份。
 
+> Jarvis 不提供 iOS App。想在 iPhone 上用，可以通过 [UULink](https://uulink.pro/) 连回 Mac 上的 Jarvis，见下文「在 iPhone 上使用」。
+
 ## 能做什么
 
 - **日程与待办**：读取 org-mode 文件，查日程、待办和空档，创建和修改条目，设置截止日期、优先级和循环任务。
@@ -69,6 +71,17 @@ jarvis
 ```
 
 默认情况下，日程文件使用 `~/org`，账本使用 `~/finance/ledger.dat`。不存在的目录会在需要时创建。
+
+## 在 iPhone 上使用
+
+Jarvis 不提供 iOS App。需要在手机上用时，可以安装 [UULink](https://uulink.pro/)（[App Store](https://apps.apple.com/app/id6819126745)），
+由它经 ACP 反向连接到 Mac 上运行的 Jarvis：
+
+1. 在 Mac 上安装 Jarvis（见上文「安装」），并在终端里完成 `/setup`；
+2. 在 Mac 上安装并打开 UULink，用 iPhone 上的 UULink 扫码配对；
+3. 在 Mac 的 UULink「设置 › Agent」中点按「+」添加 Jarvis。
+
+之后在 iPhone 上新建 Jarvis 会话即可。对话、日程、邮件、账本等数据仍在 Mac 本地，发信、清理邮件这类需要确认的动作会在 iPhone 上弹出审批。
 
 ## 用其他客户端驱动（ACP）
 
