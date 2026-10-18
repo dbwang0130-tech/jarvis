@@ -6,7 +6,8 @@ jarvis 是一个 Go 终端个人助理，支持日程、邮件、记账、健康
 
 - `cmd/jarvis/`：桌面端可执行程序入口。
 - `internal/agent/`：模型客户端、工具调用循环、风险确认和上下文压缩。
-- `internal/chat/`：终端界面和交互命令。
+- `internal/chat/`：终端界面和交互命令；`acphost.go` 给 ACP 装配秘书。
+- `internal/acp/`：`jarvis acp` 的协议层（Agent Client Protocol，stdio JSON-RPC），只管协议不管装配。改了它的行为就涨 `cmd/jarvis` 里的 `version`，UULink 按版本判断兼容。
 - `internal/orgtools/`、`internal/mail/`、`internal/ledger/`、`internal/health/`、`internal/memory/`：业务技能。
 - `internal/org/`、`internal/mailbox/`、`internal/mailstore/`：领域解析、邮件协议和本地存储。
 - `internal/config/`、`internal/state/`、`internal/session/`：配置、状态和会话持久化。

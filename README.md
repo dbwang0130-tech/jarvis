@@ -70,6 +70,23 @@ jarvis
 
 默认情况下，日程文件使用 `~/org`，账本使用 `~/finance/ledger.dat`。不存在的目录会在需要时创建。
 
+## 用其他客户端驱动（ACP）
+
+```sh
+jarvis acp
+```
+
+经 stdio 提供 [Agent Client Protocol](https://agentclientprotocol.com)（换行分隔的 JSON-RPC 2.0），
+UULink、Zed 等 ACP 客户端可以直接把 Jarvis 当作一个 agent 接入。支持：
+
+- `session/new`、`session/load`（回放历史）、`session/list`、`session/close`、`session/delete`；
+- `session/prompt` 流式推送正文、思考和工具卡片，可带图片；`session/cancel` 中断；
+- 有风险的动作用 `session/request_permission` 向客户端确认，「以后不再问」会把本会话的自动化级别抬到正好放行这一级；
+- 自动化级别是会话模式（`off` / `clean` / `all`，`session/set_mode`）；配置里存了多套模型时，以 `model` 选项出现（`session/set_config_option`，只影响当前会话）。
+
+会话和终端界面存在同一个目录里，`jarvis -c` 也能接着 ACP 里聊过的会话。ACP 会话额外记下所在目录和标题
+（`sessions/meta/`），终端里开的会话归在主目录下。`jarvis --version` 显示版本号。
+
 ## 配置与数据
 
 配置文件默认位于：

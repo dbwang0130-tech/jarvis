@@ -494,3 +494,52 @@ func TestSystemPromptProfile(t *testing.T) {
 		t.Errorf("自述没带上：\n%s", p)
 	}
 }
+
+// 每个工具调用都恰好收一次尾，且带同一个 ID——ACP 那边靠它关卡片。
+// 成功（含空结果）、执行失败、被拒绝三条路都要覆盖到。
+func TestEveryToolCallIsClosedOnce(t *testing.T) {
+	cases := []struct {
+		name    string
+		tool    *fakeTool
+		approve bool
+		want    EventKind
+	}{
+		{"自动放行", &fakeTool{name: "查日程"}, true, EventToolResult},
+		{"点头后执行", &fakeTool{name: "发信", risk: RiskIrreversible}, true, EventToolResult},
+		{"被拒绝", &fakeTool{name: "发信", risk: RiskIrreversible}, false, EventError},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a, _ := newTestAgent(t, AutoOff, []string{callTool(c.tool.name, `{"x":1}`), say("好了。")}, c.tool)
+			var calls, closes []Event
+			_, err := a.Ask(context.Background(), "办一下", func(e Event) {
+				switch e.Kind {
+				case EventToolCall:
+					calls = append(calls, e)
+				case EventToolResult, EventError:
+					closes = append(closes, e)
+				case EventPending:
+					if e.ID != "c1" {
+						t.Errorf("确认事件该带调用 id，实际 %q", e.ID)
+					}
+					e.Pending.Reply <- c.approve
+				}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(calls) != 1 || calls[0].ID != "c1" || calls[0].Args != `{"x":1}` {
+				t.Fatalf("工具调用事件不对：%+v", calls)
+			}
+			if len(closes) != 1 || closes[0].ID != "c1" || closes[0].Kind != c.want {
+				t.Fatalf("收尾事件不对：%+v", closes)
+			}
+			if c.want == EventToolResult && closes[0].Output == "" {
+				t.Fatal("成功的收尾该带完整结果")
+			}
+			if !c.approve && !closes[0].Declined {
+				t.Fatal("拒绝要标成 Declined")
+			}
+		})
+	}
+}
