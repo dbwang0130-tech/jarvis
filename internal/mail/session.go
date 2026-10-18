@@ -27,9 +27,6 @@ const (
 	VerdictSpam      Verdict = "spam"      // 垃圾/诈骗，该清理
 )
 
-// ShouldClean 表示这类邮件适合移进垃圾箱。
-func (v Verdict) ShouldClean() bool { return v == VerdictPromo || v == VerdictSpam }
-
 // Label 是展示用的中文短标签。
 func (v Verdict) Label() string {
 	switch v {
@@ -437,17 +434,6 @@ func (s *Session) pickForMark(nos []int, seen, auto bool) map[string][]*Item {
 	return out
 }
 
-// Counts 按处置类别统计，用于简报头部。
-func (s *Session) Counts() map[Verdict]int {
-	out := map[Verdict]int{}
-	for _, it := range s.Items() {
-		if it.Verdict != "" {
-			out[it.Verdict]++
-		}
-	}
-	return out
-}
-
 // AddDraft 存一份草稿并返回它的引用 id。
 func (s *Session) AddDraft(d *mailbox.Draft) string {
 	s.mu.Lock()
@@ -553,22 +539,6 @@ func (s *Session) Clean(nos []int) (done int, fails []string) {
 	return done, fails
 }
 
-// MarkSeenUIDs 按账号和 UID 把邮件标成已读，不要求它们在当前清单里。
-//
-// 跟 CleanUIDs 同一个道理：MarkSeen 走的是清单编号，那套编号只对「这次
-// 拉下来的那批」有效；手机上用户看的是本地存的那份，里面的邮件多半早就
-// 不在当前会话里了。
-func (s *Session) MarkSeenUIDs(account string, uids []imap.UID, seen bool) error {
-	if len(uids) == 0 {
-		return nil
-	}
-	c, err := s.client(account)
-	if err != nil {
-		return err
-	}
-	return c.MarkSeen(uids, seen)
-}
-
 // CleanUIDs 按账号和 UID 直接把邮件移进垃圾箱，不要求它们在当前清单里。
 //
 // Clean 走的是清单编号，那套编号只对「这次拉下来的那批」有效。手机上
@@ -603,15 +573,6 @@ func (s *Session) CleanUIDs(account string, uids []imap.UID) error {
 	}
 	s.Remove(nos)
 	return nil
-}
-
-// RawUID 按账号和 UID 直接取原始邮件，同样不要求它在当前清单里。
-func (s *Session) RawUID(account string, uid imap.UID) ([]byte, error) {
-	c, err := s.client(account)
-	if err != nil {
-		return nil, err
-	}
-	return c.ReadRaw(uid)
 }
 
 // 这里原来有个 Body(no)：按清单编号拉整封正文，read_mail 靠它。

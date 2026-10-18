@@ -33,17 +33,6 @@ func TestFixedTokensGrowWithTools(t *testing.T) {
 	}
 }
 
-// 换技能（配好邮箱那一刻）要马上反映到账上。
-func TestSetSkillsChangesFixedTokens(t *testing.T) {
-	a := NewAgent(nil, []Skill{fakeSkill{}}, 10, AutoOff)
-	before := a.fixedTokens()
-
-	a.SetSkills([]Skill{fakeSkill{tools: []Tool{&fakeTool{name: "新来的"}}}})
-	if a.fixedTokens() == before {
-		t.Fatal("换了技能，固定开销没跟着变")
-	}
-}
-
 // 老配置里存的是旧口径的数（那会儿只管历史，不含提示和工具声明）。
 // 直接拿来用的话，一进门就过压缩线，每轮都在压缩。
 func TestStaleContextLimitFallsBackToDefault(t *testing.T) {

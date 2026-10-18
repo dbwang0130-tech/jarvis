@@ -282,30 +282,3 @@ func TestDetectJunkOverRealIMAP(t *testing.T) {
 		t.Errorf("认出来的不是 Junk：%q", box)
 	}
 }
-
-// 读全文那条路要**比清单上那段长**：清单只取开头（snippetChars 1200），
-// 起草回信要更多（fullChars 8000）。两条路都填 Snippet，区别只在取多少。
-//
-// 分开两条是有意的：分拣一次可能有几十封，每封都按全文取就是几十倍的流量，
-// 而分类根本用不上那么多。
-func TestReadFullTakesMoreThanTheList(t *testing.T) {
-	cl, put := fakeIMAP(t)
-	long := strings.Repeat("这一段要足够长，好看出全文和清单上那段不是一回事。", 200)
-	uid := put("INBOX", letter("长信", "a@example.com", long))
-
-	listed, err := cl.Fetch(false)
-	if err != nil || len(listed) != 1 {
-		t.Fatalf("清单拉取失败：%v（%d 封）", err, len(listed))
-	}
-	full, err := cl.ReadFull(uid)
-	if err != nil {
-		t.Fatalf("读全文失败：%v", err)
-	}
-	if len([]rune(full.Snippet)) <= len([]rune(listed[0].Snippet)) {
-		t.Errorf("全文没比清单那段长：全文 %d 字、清单 %d 字",
-			len([]rune(full.Snippet)), len([]rune(listed[0].Snippet)))
-	}
-	if !strings.Contains(full.Snippet, "不是一回事") {
-		t.Errorf("正文内容不对：%.80q", full.Snippet)
-	}
-}

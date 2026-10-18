@@ -105,12 +105,6 @@ func NewAgent(c *Client, skills []Skill, maxSteps int, auto AutoLevel) *Agent {
 	return a
 }
 
-// SetSkills 替换技能并重建工具表（配置邮箱后需要重载）。
-func (a *Agent) SetSkills(skills []Skill) {
-	a.Skills = skills
-	a.tools = a.flattenTools()
-}
-
 // flattenTools 把所有技能的工具按名字拍平，重名的后来者跳过。
 //
 // 原先它开头先塞两个内置工具 plan / step_done。那两个已经删了——`Agent.Plan`

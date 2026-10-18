@@ -1,8 +1,6 @@
 package org
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -231,26 +229,6 @@ func (d *Document) SetTodo(n *Node, kw string) (*Node, error) {
 	return d.NodeAt(line), nil
 }
 
-// NextTodo 返回状态循环中的下一个关键字：无状态 -> 第一个未完成态 -> ... -> 完成态 -> 无状态。
-func (d *Document) NextTodo(cur string) string {
-	all := d.AllKeywords()
-	if len(all) == 0 {
-		return ""
-	}
-	if cur == "" {
-		return all[0]
-	}
-	for i, k := range all {
-		if k == cur {
-			if i+1 < len(all) {
-				return all[i+1]
-			}
-			return ""
-		}
-	}
-	return all[0]
-}
-
 func (n *Node) hasRepeater() bool {
 	return (n.Scheduled != nil && n.Scheduled.Repeat != nil) ||
 		(n.Deadline != nil && n.Deadline.Repeat != nil)
@@ -338,38 +316,6 @@ func (n *Node) writeProp(key string) {
 	}
 	at := n.ensureDrawer("PROPERTIES")
 	n.Doc.insertLines(at, fmt.Sprintf("%s:%s: %s", n.bodyIndent(), key, val))
-}
-
-// SetProp 设置一个属性并写回；val 为空字符串表示删除该属性。
-func (d *Document) SetProp(n *Node, key, val string) *Node {
-	line := n.Line
-	key = strings.ToUpper(key)
-	if val == "" {
-		delete(n.Props, key)
-	} else {
-		n.Props[key] = val
-	}
-	n.writeProp(key)
-	d.Reparse()
-	return d.NodeAt(line)
-}
-
-// EnsureID 保证节点带有稳定的 :ID: 属性，返回该 ID 和重新解析后的节点。
-func (d *Document) EnsureID(n *Node) (string, *Node) {
-	if id := n.Props["ID"]; id != "" {
-		return id, n
-	}
-	id := newID()
-	return id, d.SetProp(n, "ID", id)
-}
-
-func newID() string {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return fmt.Sprintf("orgtui-%d", time.Now().UnixNano())
-	}
-	h := hex.EncodeToString(b[:])
-	return fmt.Sprintf("%s-%s-%s-%s-%s", h[0:8], h[8:12], h[12:16], h[16:20], h[20:32])
 }
 
 // ClockIn 为节点开始一段计时。已有进行中的计时时返回错误。
@@ -568,17 +514,6 @@ func (n *Node) updateCookie() {
 	n.Doc.Lines[n.Line] = n.String()
 }
 
-// RefreshCookie 重算标题上的进度标记并写回，没有标记时什么也不做。
-func (d *Document) RefreshCookie(n *Node) *Node {
-	if n.Cookie == "" {
-		return n
-	}
-	line := n.Line
-	n.updateCookie()
-	d.Reparse()
-	return d.NodeAt(line)
-}
-
 // DeleteNode 删除节点及其整个子树，返回被删掉的行数。
 // 调用后此前持有的节点指针全部失效。
 func (d *Document) DeleteNode(n *Node) int {
@@ -716,18 +651,6 @@ func containsNode(node, maybeDesc *Node) bool {
 	return false
 }
 
-// Subtree 返回节点及其子树的原始行，可用于删除前留底或移动。
-func (n *Node) Subtree() []string {
-	end := n.End
-	if end > len(n.Doc.Lines) {
-		end = len(n.Doc.Lines)
-	}
-	if n.Line >= end {
-		return nil
-	}
-	return append([]string(nil), n.Doc.Lines[n.Line:end]...)
-}
-
 // DescendantCount 返回子树里除自身之外的条目数。
 func (n *Node) DescendantCount() int {
 	count := 0
@@ -770,19 +693,4 @@ func (d *Document) AddNote(n *Node, text string, at time.Time) *Node {
 	d.insertLines(pos, lines...)
 	d.Reparse()
 	return d.NodeAt(line)
-}
-
-// ReplaceSubtree 用新的内容替换节点及其整棵子树。
-// 调用后此前持有的节点指针全部失效。
-func (d *Document) ReplaceSubtree(n *Node, lines []string) {
-	start, end := n.Line, n.End
-	if end > len(d.Lines) {
-		end = len(d.Lines)
-	}
-	if start < 0 || start > len(d.Lines) {
-		return
-	}
-	rest := append([]string{}, d.Lines[end:]...)
-	d.Lines = append(append(d.Lines[:start:start], lines...), rest...)
-	d.Reparse()
 }

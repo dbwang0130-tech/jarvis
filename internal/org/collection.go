@@ -129,21 +129,6 @@ func (c *Collection) Doc(path string) *Document {
 	return nil
 }
 
-// FindByID 按 :ID: 属性查找节点。
-func (c *Collection) FindByID(id string) (*Document, *Node) {
-	if id == "" {
-		return nil, nil
-	}
-	for _, d := range c.Docs {
-		for _, n := range d.Nodes {
-			if n.Props["ID"] == id {
-				return d, n
-			}
-		}
-	}
-	return nil, nil
-}
-
 // Save 保存全部有改动的文件。
 func (c *Collection) Save() error {
 	var errs []string

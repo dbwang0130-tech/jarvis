@@ -73,18 +73,6 @@ func TestSetTodoAdvancesRepeater(t *testing.T) {
 	}
 }
 
-func TestNextTodoCycle(t *testing.T) {
-	d := Parse("#+TODO: TODO NEXT | DONE\n* 条目\n")
-	want := []string{"TODO", "NEXT", "DONE", ""}
-	cur := ""
-	for _, w := range want {
-		cur = d.NextTodo(cur)
-		if cur != w {
-			t.Fatalf("循环到 %q，期望 %q", cur, w)
-		}
-	}
-}
-
 func TestSetPlanning(t *testing.T) {
 	d := Parse("* TODO 买菜\n")
 	n := mustNode(t, d, "买菜")
@@ -178,22 +166,6 @@ func TestAddNode(t *testing.T) {
 	top := d.AddNode(NewNodeSpec{Title: "独立条目", TODO: "TODO"})
 	if top == nil || top.Level != 1 {
 		t.Fatalf("顶层节点 = %+v", top)
-	}
-}
-
-func TestEnsureIDStable(t *testing.T) {
-	d := Parse("* TODO 甲\n* TODO 乙\n")
-	id, n := d.EnsureID(mustNode(t, d, "甲"))
-	if id == "" || n.Props["ID"] != id {
-		t.Fatalf("ID = %q, props = %v", id, n.Props)
-	}
-	again, _ := d.EnsureID(d.NodeAt(n.Line))
-	if again != id {
-		t.Errorf("ID 应保持稳定: %q != %q", again, id)
-	}
-	// 插入属性抽屉不应影响后一个节点的解析
-	if b := mustNode(t, d, "乙"); b.Title != "乙" {
-		t.Errorf("后续节点被破坏: %+v", b)
 	}
 }
 
@@ -390,42 +362,6 @@ func TestCookiePercent(t *testing.T) {
 	}
 }
 
-func TestCookieFollowsSubtasks(t *testing.T) {
-	d := Parse("* TODO 项目 [0/2]\n** TODO 甲\n** TODO 乙\n")
-	n := mustNode(t, d, "项目")
-	child := mustNode(t, d, "甲")
-	if _, err := d.SetTodo(child, "DONE"); err != nil {
-		t.Fatal(err)
-	}
-	n = d.RefreshCookie(d.NodeAt(n.Line))
-	if n.Cookie != "[1/2]" {
-		t.Errorf("子任务完成后 cookie = %q", n.Cookie)
-	}
-}
-
-func TestDeleteNode(t *testing.T) {
-	d := Parse("* 甲\n正文甲\n** 甲一\n** 甲二\n\n* 乙\n正文乙\n")
-	n := mustNode(t, d, "甲")
-	if got := n.DescendantCount(); got != 2 {
-		t.Errorf("子条目数 = %d", got)
-	}
-	// 子树一直延伸到下一个同级标题之前，中间的空行也算在内
-	if sub := n.Subtree(); len(sub) != 5 || sub[0] != "* 甲" || sub[4] != "" {
-		t.Errorf("子树内容 = %q", sub)
-	}
-
-	removed := d.DeleteNode(n)
-	if removed != 5 {
-		t.Errorf("删除行数 = %d", removed)
-	}
-	if len(d.Nodes) != 1 || d.Nodes[0].Title != "乙" {
-		t.Errorf("剩余节点 = %v", d.Nodes)
-	}
-	if strings.Join(d.Lines, "\n") != "* 乙\n正文乙" {
-		t.Errorf("剩余内容 = %q", strings.Join(d.Lines, "\n"))
-	}
-}
-
 func TestDeleteChildKeepsParent(t *testing.T) {
 	d := Parse("* 项目\n** TODO 甲\n** TODO 乙\n")
 	d.DeleteNode(mustNode(t, d, "甲"))
@@ -542,40 +478,6 @@ func TestAddNote(t *testing.T) {
 	}
 }
 
-func TestClockSummaries(t *testing.T) {
-	d := Parse(`* 项目
-:LOGBOOK:
-CLOCK: [2026-09-14 Mon 09:00]--[2026-09-14 Mon 10:30] =>  1:30
-:END:
-** 子任务
-:LOGBOOK:
-CLOCK: [2026-09-13 Sun 14:00]--[2026-09-13 Sun 15:00] =>  1:00
-CLOCK: [2026-09-14 Mon 16:00]--[2026-09-14 Mon 16:30] =>  0:30
-:END:
-`)
-	parent := mustNode(t, d, "项目")
-	if got := parent.ClockedTotal(); got != 90*time.Minute {
-		t.Errorf("自身计时 = %v", got)
-	}
-	if got := parent.SubtreeClocked(); got != 3*time.Hour {
-		t.Errorf("子树计时合计 = %v", got)
-	}
-
-	day := time.Date(2026, 9, 14, 0, 0, 0, 0, time.Local)
-	child := mustNode(t, d, "子任务")
-	if got := child.ClockedBetween(day, day.AddDate(0, 0, 1)); got != 30*time.Minute {
-		t.Errorf("当天计时 = %v", got)
-	}
-	if got := child.ClockedBetween(day.AddDate(0, 0, -1), day); got != time.Hour {
-		t.Errorf("前一天计时 = %v", got)
-	}
-	// 区间只覆盖一半时按重叠部分算
-	half := time.Date(2026, 9, 14, 9, 30, 0, 0, time.Local)
-	if got := parent.ClockedBetween(half, half.Add(time.Hour)); got != time.Hour {
-		t.Errorf("部分重叠 = %v", got)
-	}
-}
-
 // 整文件覆盖的写法必须配一道「文件被别人改过没有」的检查，否则两个地方
 // 同时用（手机 + 电脑）就是在互相吃改动。
 //
@@ -636,5 +538,44 @@ func TestSaveAllowsBrandNew(t *testing.T) {
 	doc.Path = filepath.Join(t.TempDir(), "new.org")
 	if err := doc.Save(); err != nil {
 		t.Fatalf("新建的文档该能存：%v", err)
+	}
+}
+
+func TestDeleteNode(t *testing.T) {
+	d := Parse("* 甲\n正文甲\n** 甲一\n** 甲二\n\n* 乙\n正文乙\n")
+	n := mustNode(t, d, "甲")
+	if got := n.DescendantCount(); got != 2 {
+		t.Errorf("子条目数 = %d", got)
+	}
+	// 子树一直延伸到下一个同级标题之前，中间的空行也算在内
+	removed := d.DeleteNode(n)
+	if removed != 5 {
+		t.Errorf("删除行数 = %d", removed)
+	}
+	if len(d.Nodes) != 1 || d.Nodes[0].Title != "乙" {
+		t.Errorf("剩余节点 = %v", d.Nodes)
+	}
+	if strings.Join(d.Lines, "\n") != "* 乙\n正文乙" {
+		t.Errorf("剩余内容 = %q", strings.Join(d.Lines, "\n"))
+	}
+}
+
+func TestClockSummaries(t *testing.T) {
+	d := Parse(`* 项目
+:LOGBOOK:
+CLOCK: [2026-09-14 Mon 09:00]--[2026-09-14 Mon 10:30] =>  1:30
+:END:
+** 子任务
+:LOGBOOK:
+CLOCK: [2026-09-13 Sun 14:00]--[2026-09-13 Sun 15:00] =>  1:00
+CLOCK: [2026-09-14 Mon 16:00]--[2026-09-14 Mon 16:30] =>  0:30
+:END:
+`)
+	parent := mustNode(t, d, "项目")
+	if got := parent.ClockedTotal(); got != 90*time.Minute {
+		t.Errorf("自身计时 = %v", got)
+	}
+	if got := parent.SubtreeClocked(); got != 3*time.Hour {
+		t.Errorf("子树计时合计 = %v", got)
 	}
 }

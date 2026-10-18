@@ -3,7 +3,6 @@ package health
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -14,66 +13,15 @@ import (
 // 重复实现迟早会对不上，而这份数据的全部意义就在于
 // 它是标准的。
 
-// ProfileLine 是基础信息那一行，没填就是空串。
-func (s *Store) ProfileLine(now time.Time) string {
-	p, ok := s.Patient()
-	if !ok {
-		return ""
-	}
-	parts := []string{}
-	if g := genderCN(p.Gender); g != "未填" {
-		parts = append(parts, g)
-	}
-	if age, ok := ageOf(p.BirthDate, now); ok {
-		parts = append(parts, fmt.Sprintf("%d 岁", age))
-	}
-	return strings.Join(parts, "，")
-}
-
-// VitalSummary 是一项体征最近的样子。
+// VitalSummary 是一项体征最近的样子，【当下】里那张表一行一项。
 type VitalSummary struct {
 	Kind  string
 	Value string
-	When  time.Time
 	Ago   string
 	// Trend 是跟上一次比的变化，如「+0.8kg」。只有一次记录时是空串——
 	// 拿第一次当基线画个 0 出来，看着像「没变化」，其实是没得比。
 	Trend string
-	// Unit 是画图时坐标轴上那个单位。
-	Unit string
-	// Number 是不带单位的那一串（「72.5」「124/81」）。
-	//
-	// 跟 Value 分开给，是因为界面要把数字排成大号、单位排成小号——
-	// 让它去切 Value 那个串的话，得知道单位可能是「次/分」这种带斜杠的，
-	// 而那是这边才有的知识。
-	Number string
-	// Group 是归到哪一类（身体测量 / 心脏 / 活动 …），界面按它分区配色。
-	Group string
-	// Total 表示这个数是一天累计出来的（步数、睡眠），画图时该用柱子
-	// 而不是折线——把累计量连成折线，等于在说两天之间的点也有意义。
-	Total bool
-	// Points 是按时间升序的历史，给趋势图用。
-	Points []Point
 }
-
-// Point 是趋势图上的一个点。血压一个点有两个值。
-type Point struct {
-	At time.Time
-	V  float64
-	V2 float64
-}
-
-// seriesDays 是趋势图往回看几天。
-//
-// 半年。再长在手机那块屏上就挤成一条毛线了，看不出趋势；再短又盖不住
-// 「今年比去年重了几斤」这种真正想看的事。
-const seriesDays = 180
-
-// seriesMax 是一项最多给几个点。
-//
-// 每天量一次，半年也就 180 个点。有人一天量好几次（体重秤连着 app），
-// 那就会多出来——超了只留最近的，图的右半边才是要看的。
-const seriesMax = 400
 
 // Summary 给出每一项最近一次的测量，按 vitalNames 的顺序。
 func (s *Store) Summary(now time.Time) []VitalSummary {
@@ -84,13 +32,7 @@ func (s *Store) Summary(now time.Time) []VitalSummary {
 			continue
 		}
 		last := hist[len(hist)-1]
-		sum := VitalSummary{
-			Kind: name, Value: last.valueText(),
-			When: last.when(), Ago: agoCN(last.when(), now),
-			Unit: vitals[name].Unit, Number: last.numberText(),
-			Group: vitals[name].Group, Total: vitals[name].Total,
-			Points: pointsOf(hist, now),
-		}
+		sum := VitalSummary{Kind: name, Value: last.valueText(), Ago: agoCN(last.when(), now)}
 		if len(hist) > 1 {
 			sum.Trend = trendOf(hist[len(hist)-2], last)
 		}
@@ -135,30 +77,6 @@ func (s *Store) history(name string) []Resource {
 	return out
 }
 
-// pointsOf 把历史削成能画的一条线。
-func pointsOf(hist []Resource, now time.Time) []Point {
-	cut := now.AddDate(0, 0, -seriesDays)
-	out := make([]Point, 0, len(hist))
-	for _, r := range hist {
-		t := r.when()
-		if t.Before(cut) {
-			continue
-		}
-		switch {
-		case r.isPanel():
-			out = append(out, Point{At: t,
-				V:  r.Component[0].ValueQuantity.Value,
-				V2: r.Component[1].ValueQuantity.Value})
-		case r.ValueQuantity != nil:
-			out = append(out, Point{At: t, V: r.ValueQuantity.Value})
-		}
-	}
-	if len(out) > seriesMax {
-		out = out[len(out)-seriesMax:]
-	}
-	return out
-}
-
 // trendOf 说这一次比上一次差多少。
 //
 // 血压有两个数，说「+8/-2」而不是只说一个——只报收缩压的话，
@@ -185,20 +103,4 @@ func trendOf(prev, now Resource) string {
 		d = -d
 	}
 	return sign + trimNum(d) + now.ValueQuantity.Unit
-}
-
-// MealEntry 是一条饮食记录。
-type MealEntry struct {
-	When time.Time
-	Ago  string
-	Text string
-}
-
-// RecentMeals 给出最近几天吃了什么，新的在前。
-func (s *Store) RecentMeals(now time.Time, days, limit int) []MealEntry {
-	var out []MealEntry
-	for _, r := range s.Recent("饮食", now.AddDate(0, 0, -days), limit) {
-		out = append(out, MealEntry{When: r.when(), Ago: agoCN(r.when(), now), Text: r.label()})
-	}
-	return out
 }

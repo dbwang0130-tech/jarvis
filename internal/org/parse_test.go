@@ -135,7 +135,7 @@ func TestParseFile(t *testing.T) {
 	if len(n.Children) != 2 {
 		t.Errorf("子节点数 = %d", len(n.Children))
 	}
-	if !n.IsTodo() || n.IsDone() {
+	if n.TODO == "" || n.IsDone() {
 		t.Error("NEXT 应是未完成状态")
 	}
 	if done := n.Children[1]; !done.IsDone() || done.Closed == nil {
